@@ -14,11 +14,14 @@ The following steps assume that you are located in the project directory.
 An example json file can be found in this repo under example/example.json
 
 4. Create & activate  snakemake environment
-Install mamba/micromamba
-mamba create env -p $(pwd)/env -f environment.yml
-mamba activate $(pwd)/env
+   
+  Install mamba/micromamba
+  
+  mamba create env -p $(pwd)/env -f environment.yml
+  
+  mamba activate $(pwd)/env
 
-5. Run the workflow
+6. Run the workflow
 # Dry local run 
 snakemake --use-singularity --config af3_container=<path_to_your_alphafold3_container> --singularity-args '--nv -B <alphafold3_weights_dir>:/root/models -B $(pwd)/<dataset_directory>/af_input:/root/af_input -B $(pwd)/<dataset_directory>/af_output:/root/af_output -B <path_to_alphafold3_db_directory>:/root/public_databases' -c all --set-scatter split=<number_of_inference_job_lists> -n
 # Dry run with slurm
