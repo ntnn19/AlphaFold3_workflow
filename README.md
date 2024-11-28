@@ -14,8 +14,11 @@ The following steps assume that you are located in the project directory.
 An example json file can be found in this repo under example/example.json
 
 4. Create & activate  snakemake environment
+
    Install mamba/micromamba
+
    mamba create env -p $(pwd)/env -f environment.yml
+
    mamba activate $(pwd)/env
 
 6. Run the workflow
