@@ -1,0 +1,115 @@
+import subprocess
+import os
+
+DATASETS, INPUTS  = glob_wildcards("{dataset}/af_input/data_pipeline/{i}.json")
+print(DATASETS,INPUTS) 
+N_INFERENCES= [int(subprocess.check_output(f"grep -c 'name' {j}",shell=True).decode()) for j in expand("{dataset}/af_input/data_pipeline/{i}.json",zip, i=INPUTS,dataset=DATASETS)]
+
+print("N_INFERENCES=",N_INFERENCES)
+
+padded_input=[[INPUTS[i]]*n for i,n in enumerate(N_INFERENCES)]
+padded_input = [x for xs in padded_input for x in xs]
+
+padded_inferences = [list(range(n)) for n in N_INFERENCES]
+padded_inferences = [x for xs in padded_inferences for x in xs]
+
+padded_datasets = [[DATASETS[i]]*n for i,n in enumerate(N_INFERENCES)]
+padded_datasets = [x for xs in padded_datasets for x in xs]
+
+
+
+
+#exit()
+# Rule to collect all JSON files for processing
+scattergather:
+    split=4
+SPLIT_TOTAL = workflow._scatter["split"]
+print(SPLIT_TOTAL)
+PADDED_BATCH = sorted(list(range(1,SPLIT_TOTAL+1))*len(DATASETS))
+PADDED_DATASETS = DATASETS*SPLIT_TOTAL
+PADDED_INPUTS = INPUTS*SPLIT_TOTAL
+PADDED_SPLITS = [SPLIT_TOTAL] * SPLIT_TOTAL *len(DATASETS)
+print(PADDED_BATCH,PADDED_DATASETS,PADDED_INPUTS,PADDED_SPLITS)
+rule all:
+    input:
+        expand("{dataset}/af_output/done_flags/{i}_inference_job_list_{j}-of-{n}.done.txt",zip, i=PADDED_INPUTS,n=PADDED_SPLITS ,dataset=PADDED_DATASETS,j=PADDED_BATCH),
+
+
+# Rule to create inference inputs and job list
+rule SPLIT_JSON_AND_CREATE_JOB_LIST:
+    input:
+        "{dataset}/af_input/data_pipeline/{i}.json"
+    output:
+        "{dataset}/af_output/inference_job_lists/{i}_job_list.txt"
+    resources:
+        slurm_account="cssb",
+        slurm_partition="topfgpu",
+        constraint="A100",
+        nodes=1,
+        runtime=0,
+    shell:
+        """
+        python workflow/scripts/split_json_and_create_job_list.py {input} {output}
+        """
+
+rule RUN_AF3_DATA:
+    input:
+        "{dataset}/af_input/data_pipeline/{i}.json"
+    output:
+        touch("{dataset}/af_output/done_flags/{i}_data_pipeline.json.done.txt")
+    resources:
+        slurm_account="cssb",
+        slurm_partition="topfgpu",
+        constraint="A100",
+        nodes=1,
+        runtime=0,
+    container:
+        config["af3_container"]
+    shell:
+        """
+        python /app/alphafold/run_alphafold.py --json_path={input} \
+        --model_dir=/root/models \
+        --output_dir=/root/af_output \
+        --db_dir=/root/public_databases \
+        --run_data_pipeline=true \
+        --run_inference=false
+        """
+
+rule SPLIT_INFERENCE_JOB_LIST:
+    input:
+        inference_job_list="{dataset}/af_output/inference_job_lists/{i}_job_list.txt"
+    params: 
+        SPLIT_TOTAL = SPLIT_TOTAL
+    output:
+        scatter.split("{{dataset}}/af_output/inference_job_lists/split/{{i}}_job_list_{scatteritem}.txt")
+    resources:
+        slurm_account="cssb",
+        slurm_partition="topfgpu",
+        constraint="A100",
+        nodes=1,
+        runtime=0,
+    run:
+        import os
+        os.makedirs(os.path.join(wildcards.dataset,"af_output/inference_job_lists/split"),exist_ok=True)
+        lines = open(input.inference_job_list).readlines() 
+        [open(os.path.join(wildcards.dataset,f"af_output/inference_job_lists/split/{wildcards.i}_job_list_{i+1}-of-{params.SPLIT_TOTAL}.txt"), "w").writelines(lines[i*len(lines)//params.SPLIT_TOTAL:(i+1)*len(lines)//params.SPLIT_TOTAL + (1 if i == 3 else 0)]) for i in range(params.SPLIT_TOTAL)]
+
+
+rule RUN_AF3_INFERENCE:
+    input:
+        inference_job_list="{dataset}/af_output/inference_job_lists/split/{i}_job_list_{j}-of-{n}.txt",
+        data_pipeline_done_flag="{dataset}/af_output/done_flags/{i}_data_pipeline.json.done.txt"
+    output:
+        touch("{dataset}/af_output/done_flags/{i}_inference_job_list_{j}-of-{n}.done.txt")
+    resources:
+        slurm_account="cssb",
+        slurm_partition="topfgpu",
+        constraint="A100",
+        nodes=1,
+        runtime=0,
+    container:
+        config["af3_container"]
+    shell:
+        """
+        bash workflow/scripts/parallel.sh {input.inference_job_list}
+        """

@@ -1,0 +1,14 @@
+name: alphafold3_snakemake
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - python>=3.12.3
+  - click>=8.1.7
+  - biopython>=1.83
+  - pandas>=2.2.2
+  - snakemake>=8.14.0
+  - snakemake-executor-plugin-slurm
+  - numpy>=1.26.4
+
