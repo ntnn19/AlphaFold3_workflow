@@ -1,0 +1,26 @@
+[
+  {
+    "name": "P16724_chopped_2_pac1",
+    "modelSeeds": [],
+    "sequences": [
+      {
+        "proteinChain": {
+          "sequence": "MEMNLLQKLCVVCSKCNEY"
+          "count": 2
+        }
+      },
+      {
+        "dnaSequence": {
+          "sequence": "CGTGGTGGGTC",
+          "count": 1
+        }
+      },
+      {
+        "dnaSequence": {
+          "sequence": "CACACGCAAC",
+          "count": 1
+        }
+      }
+    ]
+  }
+]
