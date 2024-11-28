@@ -7,6 +7,8 @@ singularity build alphafold3_parallel.sif docker://ntnn19/alphafold3:latest_para
 The following steps assume that you are located in the project directory.
 
 3. Clone this repo to your project directory. It must follow the following structure after cloning:
+
+
 .
 ├── dataset_1
 │   ├── af_input
