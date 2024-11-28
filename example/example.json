@@ -1,7 +1,79 @@
 [
   {
-    "name": "P16724_chopped_2_pac1",
-    "modelSeeds": [],
+    "name": "example1",
+    "modelSeeds": [1],
+    "sequences": [
+      {
+        "proteinChain": {
+          "sequence": "MEMNLLQKLCVVCSKCNEY"
+          "count": 2
+        }
+      },
+      {
+        "dnaSequence": {
+          "sequence": "CGTGGTGGGTC",
+          "count": 1
+        }
+      },
+      {
+        "dnaSequence": {
+          "sequence": "CACACGCAAC",
+          "count": 1
+        }
+      }
+    ]
+  },
+  {
+    "name": "example2",
+    "modelSeeds": [1],
+    "sequences": [
+      {
+        "proteinChain": {
+          "sequence": "MEMNLLQKLCVVCSKCNEY"
+          "count": 2
+        }
+      },
+      {
+        "dnaSequence": {
+          "sequence": "CGTGGTGGGTC",
+          "count": 1
+        }
+      },
+      {
+        "dnaSequence": {
+          "sequence": "CACACGCAAC",
+          "count": 1
+        }
+      }
+    ]
+  },
+  {
+    "name": "example3",
+    "modelSeeds": [1],
+    "sequences": [
+      {
+        "proteinChain": {
+          "sequence": "MEMNLLQKLCVVCSKCNEY"
+          "count": 2
+        }
+      },
+      {
+        "dnaSequence": {
+          "sequence": "CGTGGTGGGTC",
+          "count": 1
+        }
+      },
+      {
+        "dnaSequence": {
+          "sequence": "CACACGCAAC",
+          "count": 1
+        }
+      }
+    ]
+  },
+  {
+    "name": "example4",
+    "modelSeeds": [1],
     "sequences": [
       {
         "proteinChain": {
