@@ -8,14 +8,8 @@ The following steps assume that you are located in the project directory.
 
 3. Clone this repo to your project directory. It must follow the following structure after cloning:
 
+![image](https://github.com/user-attachments/assets/18bb634a-fa2d-41a0-b3a9-e55b72c7fb6a)
 
-.
-├── dataset_1
-│   ├── af_input
-│       ├── data_pipeline
-│           └── alphafold3_server_like_json.json
-└── workflow
-    └── scripts
 
 An example json file can be found in this repo under example/example.json
 
