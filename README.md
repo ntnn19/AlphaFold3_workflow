@@ -1,33 +1,88 @@
-This Workflow allows separate execution of the CPU &  GPU steps. It also distributes the inference runs accross multiple GPU devices using GNU parallel. 
-1. Build the singularity container that supports parallel inference runs using the following command:
+# AlphaFold3 Workflow
+
+This workflow supports separate execution of the **CPU** and **GPU** steps. It also distributes inference runs across multiple GPU devices using **GNU parallel**.
+
+## Steps to setup & execute
+
+### 1. Build the Singularity Container
+
+Run the following command to build the Singularity container that supports parallel inference runs:
+
+```bash
 singularity build alphafold3_parallel.sif docker://ntnn19/alphafold3:latest_parallel_a100_40gb
-<number_of_inference_job_lists> should be set to 1 for local runs and n for slurm runs, where n is the number of nodes with GPU
-2. Download alphafold3 databases and obtain the weights
+```
 
-The following steps assume that you are located in the project directory.
+**Notes**
+- Set <number_of_inference_job_lists> to 1 for local runs.
+- For SLURM runs, set <number_of_inference_job_lists> to n, where n is the number of nodes with GPUs.
+- Make sure to download the required [AlphaFold3 databases](https://github.com/google-deepmind/alphafold3/blob/main/docs/installation.md#obtaining-genetic-databases) and [weights](https://forms.gle/svvpY4u2jsHEwWYS6) before proceeding.
 
-3. Clone this repo to your project directory. It must follow the following structure after cloning:
+### 2. Clone This Repository
 
-![image](https://github.com/user-attachments/assets/18bb634a-fa2d-41a0-b3a9-e55b72c7fb6a)
+Clone this repository into your project directory. After cloning, your project structure should look like this:
 
+```bash
+.  <-- This represents your current location
+├── dataset_1
+│   ├── af_input
+│   ├── data_pipeline
+│       └── <your_input_json_file>
+├── example
+│   └── example.json
+├── README.md
+└── workflow
+    ├── scripts
+    │   ├── create_job_list.py
+    │   ├── parallel.sh
+    │   └── split_json_and_create_job_list.py
+    ├── Snakefile
+```
+An example JSON file is available in the example/ directory:
+example/example.json
 
-An example json file can be found in this repo under example/example.json
+### 3. Create and Activate the Snakemake Environment
 
-4. Create & activate  snakemake environment:
+Install mamba or micromamba if not already installed. Then, set up and activate the environment using the following commands:
+```bash 
+mamba create -p $(pwd)/env -f environment.yml
+```
+```bash
+mamba activate $(pwd)/env
+```
 
-   Install mamba/micromamba
+### 4. Run the Workflow
+**Dry run (local)**
+```bash
+snakemake --use-singularity \
+    --config af3_container=<path_to_your_alphafold3_container> \
+    --singularity-args '--nv -B <alphafold3_weights_dir>:/root/models -B $(pwd)/<dataset_directory>/af_input:/root/af_input -B $(pwd)/<dataset_directory>/af_output:/root/af_output -B <path_to_alphafold3_db_directory>:/root/public_databases' \
+    -c all \
+    --set-scatter split=<number_of_inference_job_lists> -n
+```
+**Dry run (slurm)**
+```bash
+snakemake --use-singularity \
+    --config af3_container=<path_to_your_alphafold3_container> \
+    --singularity-args '--nv -B <alphafold3_weights_dir>:/root/models -B $(pwd)/<dataset_directory>/af_input:/root/af_input -B $(pwd)/<dataset_directory>/af_output:/root/af_output -B <path_to_alphafold3_db_directory>:/root/public_databases' \
+    -j 99 \
+    --executor slurm \
+    --set-scatter split=<number_of_inference_job_lists> -n
+```
+**Local run**
+```bash
+snakemake --use-singularity \
+    --config af3_container=<path_to_your_alphafold3_container> \
+    --singularity-args '--nv -B <alphafold3_weights_dir>:/root/models -B $(pwd)/<dataset_directory>/af_input:/root/af_input -B $(pwd)/<dataset_directory>/af_output:/root/af_output -B <path_to_alphafold3_db_directory>:/root/public_databases' \
+    -c all \
+    --set-scatter split=<number_of_inference_job_lists>
+```
 
-   mamba create env -p $(pwd)/env -f environment.yml
-
-   mamba activate $(pwd)/env
-
-6. Run the workflow
-# Dry local run 
-snakemake --use-singularity --config af3_container=<path_to_your_alphafold3_container> --singularity-args \'--nv -B <alphafold3_weights_dir>:/root/models -B $(pwd)/<dataset_directory>/af_input:/root/af_input -B $(pwd)/<dataset_directory>/af_output:/root/af_output -B <path_to_alphafold3_db_directory>:/root/public_databases\' -c all --set-scatter split=<number_of_inference_job_lists> -n
-# Dry run with slurm
-snakemake --use-singularity --config af3_container=<path_to_your_alphafold3_container> --singularity-args '\--nv -B <alphafold3_weights_dir>:/root/models -B $(pwd)/<dataset_directory>/af_input:/root/af_input -B $(pwd)/<dataset_directory>/af_output:/root/af_output -B <path_to_alphafold3_db_directory>:/root/public_databases\' -j 99 --executor slurm --set-scatter split==<number_of_inference_job_lists> -n
-
-# Local run 
-snakemake --use-singularity --config af3_container=<path_to_your_alphafold3_container> --singularity-args \'--nv -B <alphafold3_weights_dir>:/root/models -B $(pwd)/<dataset_directory>/af_input:/root/af_input -B $(pwd)/<dataset_directory>/af_output:/root/af_output -B <path_to_alphafold3_db_directory>:/root/public_databases\' -c all --set-scatter split=<number_of_inference_job_lists>
-# Run with slurm
-snakemake --use-singularity --config af3_container=<path_to_your_alphafold3_container> --singularity-args \'--nv -B <alphafold3_weights_dir>:/root/models -B $(pwd)/<dataset_directory>/af_input:/root/af_input -B $(pwd)/<dataset_directory>/af_output:/root/af_output -B <path_to_alphafold3_db_directory>:/root/public_databases\' -j 99 --executor slurm --set-scatter split==<number_of_inference_job_lists>
+**slurm run**
+```bash
+snakemake --use-singularity \
+    --config af3_container=<path_to_your_alphafold3_container> \
+    --singularity-args '--nv -B <alphafold3_weights_dir>:/root/models -B $(pwd)/<dataset_directory>/af_input:/root/af_input -B $(pwd)/<dataset_directory>/af_output:/root/af_output -B <path_to_alphafold3_db_directory>:/root/public_databases' \
+    -j 99 \
+    --executor slurm \
+    --set-scatter split=<number_of_inference_job_lists> -n
+```
