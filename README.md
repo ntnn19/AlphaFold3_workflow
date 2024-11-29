@@ -2,6 +2,14 @@
 
 This workflow supports separate execution of the **CPU** and **GPU** steps. It also distributes inference runs across multiple GPU devices using **GNU parallel**.
 
+
+### TO DO
+- Add a config file to allow running using different alphafold3 configurations & encode the configuration in the output file/directory names.
+- Add a json preparation step for different analyses such as all-vs-all (e.g. for binary PPI) , baits-vs-targets (e.g. for drug screens), assembly, etc.
+- Add steps for downstream analyses such as relaxation, assembly, binding site prediction, scoring etc. 
+- Add a reporting step to the workflow in a form of a table that describe each predicted structure.
+
+
 ## Steps to setup & execute
 
 ### 1. Build the Singularity container
