@@ -4,7 +4,7 @@ This workflow supports separate execution of the **CPU** and **GPU** steps. It a
 
 ## Steps to setup & execute
 
-### 1. Build the Singularity Container
+### 1. Build the Singularity container
 
 Run the following command to build the Singularity container that supports parallel inference runs:
 
@@ -17,7 +17,7 @@ singularity build alphafold3_parallel.sif docker://ntnn19/alphafold3:latest_para
 - For SLURM runs, set <number_of_inference_job_lists> to n, where n is the number of nodes with GPUs.
 - Make sure to download the required [AlphaFold3 databases](https://github.com/google-deepmind/alphafold3/blob/main/docs/installation.md#obtaining-genetic-databases) and [weights](https://forms.gle/svvpY4u2jsHEwWYS6) before proceeding.
 
-### 2. Clone This Repository
+### 2. Clone This repository
 
 Clone this repository into your project directory. After cloning, your project structure should look like this:
 
@@ -40,7 +40,7 @@ Clone this repository into your project directory. After cloning, your project s
 An example JSON file is available in the example/ directory:
 example/example.json
 
-### 3. Create and Activate the Snakemake Environment
+### 3. Create & activate the Snakemake environment
 
 Install mamba or micromamba if not already installed. Then, set up and activate the environment using the following commands:
 ```bash 
@@ -50,7 +50,7 @@ mamba create -p $(pwd)/env -f environment.yml
 mamba activate $(pwd)/env
 ```
 
-### 4. Run the Workflow
+### 4. Run the workflow
 **Dry run (local)**
 ```bash
 snakemake --use-singularity \
