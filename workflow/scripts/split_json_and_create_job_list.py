@@ -20,7 +20,8 @@ def split_json_and_create_job_list(input_json,output):
 
     split_json_output_dir_output_path.mkdir(parents=True, exist_ok=True)
     joblist_output_dir_output_path.mkdir(parents=True, exist_ok=True)
-
+    print(os.path.dirname(joblist_output_dir_output_path))
+    predictions_root_dir= os.path.dirname(joblist_output_dir_output_path)
     with open(input_json, 'r') as f:
         data = json.load(f)
 
@@ -30,19 +31,21 @@ def split_json_and_create_job_list(input_json,output):
 
     lines=[]
     for index, item in enumerate(data):
-        if index==4: # DEBUG
-            break
-        output_json_file = split_json_output_dir_output_path / f"{os.path.splitext(os.path.basename(input_json))[0]}_{index}.json"
-        with open(output_json_file, 'w') as f:
-            json.dump([item], f, indent=2)  # Wrap item in a list
+#        if index==4: # DEBUG
+#            break
+        item_output_dir = os.path.join(predictions_root_dir,item['name'].lower())
+        item_json_file = os.path.join(item_output_dir,f"{item['name'].lower()}_data.json")
+#        output_json_file = split_json_output_dir_output_path / f"{os.path.splitext(os.path.basename(input_json))[0]}_{index}.json"
+#        with open(output_json_file, 'w') as f:
+#            json.dump([item], f, indent=2)  # Wrap item in a list
 
-        cmd=f"python /app/alphafold/run_alphafold.py --json_path={output_json_file} --model_dir=/root/models --output_dir=/root/af_output --db_dir=/root/public_databases --run_data_pipeline=false --run_inference=true"
+        cmd=f"python /app/alphafold/run_alphafold.py --json_path={item_json_file} --model_dir=/root/models --output_dir=/root/af_output/{item['name'].lower()} --db_dir=/root/public_databases --run_data_pipeline=false --run_inference=true"
         lines.append(cmd)
 
     with open(output, 'w') as f:
         f.write("\n".join(lines))
 
-    click.echo(f"Split {len(data)} items into {split_json_output_dir_output_path}")
+#    click.echo(f"Split {len(data)} items into {split_json_output_dir_output_path}")
     click.echo(f"Prepared job list {output}")
 
 

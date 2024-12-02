@@ -2,6 +2,7 @@ import subprocess
 import os
 
 DATASETS, INPUTS  = glob_wildcards("{dataset}/af_input/data_pipeline/{i}.json")
+
 print(DATASETS,INPUTS) 
 N_INFERENCES= [int(subprocess.check_output(f"grep -c 'name' {j}",shell=True).decode()) for j in expand("{dataset}/af_input/data_pipeline/{i}.json",zip, i=INPUTS,dataset=DATASETS)]
 
