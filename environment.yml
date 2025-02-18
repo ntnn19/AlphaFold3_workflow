@@ -3,6 +3,7 @@ channels:
   - conda-forge
   - bioconda
 dependencies:
+  - conda=24.7.1
   - python>=3.12.3
   - click>=8.1.7
   - biopython>=1.83
@@ -11,3 +12,5 @@ dependencies:
   - snakemake-executor-plugin-slurm
   - numpy>=1.26.4
   - gemmi=0.6.7
+  - pymol-open-source=3.0.0
+  - matplotlib=3.9

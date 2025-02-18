@@ -1,12 +1,12 @@
+localrules: SPLIT_JSON_AND_CREATE_JOB_LIST, SPLIT_INFERENCE_JOB_LIST
 import subprocess
 import os
 
 DATASETS, INPUTS  = glob_wildcards("{dataset}/af_input/data_pipeline/{i}.json")
 
-print(DATASETS,INPUTS) 
 N_INFERENCES= [int(subprocess.check_output(f"grep -c 'name' {j}",shell=True).decode()) for j in expand("{dataset}/af_input/data_pipeline/{i}.json",zip, i=INPUTS,dataset=DATASETS)]
 
-print("N_INFERENCES=",N_INFERENCES)
+#print("N_INFERENCES=",N_INFERENCES)
 
 padded_input=[[INPUTS[i]]*n for i,n in enumerate(N_INFERENCES)]
 padded_input = [x for xs in padded_input for x in xs]
@@ -18,52 +18,57 @@ padded_datasets = [[DATASETS[i]]*n for i,n in enumerate(N_INFERENCES)]
 padded_datasets = [x for xs in padded_datasets for x in xs]
 
 
-
-
+DATASET = config["dataset"]
+DIALECT =config["dialect"]
 #exit()
 # Rule to collect all JSON files for processing
 scattergather:
-    split=4
+    split=config["n_splits"]
 SPLIT_TOTAL = workflow._scatter["split"]
-print(SPLIT_TOTAL)
 PADDED_BATCH = sorted(list(range(1,SPLIT_TOTAL+1))*len(DATASETS))
 PADDED_DATASETS = DATASETS*SPLIT_TOTAL
 PADDED_INPUTS = INPUTS*SPLIT_TOTAL
 PADDED_SPLITS = [SPLIT_TOTAL] * SPLIT_TOTAL *len(DATASETS)
-print(PADDED_BATCH,PADDED_DATASETS,PADDED_INPUTS,PADDED_SPLITS)
+#print(PADDED_BATCH,PADDED_DATASETS,PADDED_INPUTS,PADDED_SPLITS)
 rule all:
     input:
-        expand("{dataset}/af_output/done_flags/{i}_inference_job_list_{j}-of-{n}.done.txt",zip, i=PADDED_INPUTS,n=PADDED_SPLITS ,dataset=PADDED_DATASETS,j=PADDED_BATCH),
+        expand(DATASET + "/af_output/done_flags/{i}_inference_job_list_{j}-of-{n}.done.txt",zip, i=PADDED_INPUTS,n=PADDED_SPLITS ,j=PADDED_BATCH),
+#        expand("{dataset}/af_output/done_flags/{i}_inference_job_list_{j}-of-{n}.done.txt",zip, i=PADDED_INPUTS,n=PADDED_SPLITS ,dataset=PADDED_DATASETS,j=PADDED_BATCH),
 
 
 # Rule to create inference inputs and job list
 rule SPLIT_JSON_AND_CREATE_JOB_LIST:
     input:
-        "{dataset}/af_input/data_pipeline/{i}.json"
+        DATASET + "/af_input/data_pipeline/{i}.json"
+#        "{dataset}/af_input/data_pipeline/{i}.json"
     output:
-        "{dataset}/af_output/inference_job_lists/{i}_job_list.txt"
+        DATASET + "/af_output/inference_job_lists/{i}_job_list.txt"
+#        "{dataset}/af_output/inference_job_lists/{i}_job_list.txt"
+    params:
+        dialect=DIALECT,
     resources:
         slurm_account="cssb",
-        slurm_partition="topfgpu",
-        constraint="A100",
+        slurm_partition="allcpu",
         nodes=1,
-        runtime=0,
+        runtime=60,
     shell:
         """
-        python workflow/scripts/split_json_and_create_job_list.py {input} {output}
+        python workflow/scripts/split_json_and_create_job_list.py {input} {output} {params.dialect}
         """
+
 
 rule RUN_AF3_DATA:
     input:
-        "{dataset}/af_input/data_pipeline/{i}.json"
+        DATASET+ "/af_input/data_pipeline/{i}.json"
+#        "{dataset}/af_input/data_pipeline/{i}.json"
     output:
-        touch("{dataset}/af_output/done_flags/{i}_data_pipeline.json.done.txt")
+        touch(DATASET + "/af_output/done_flags/{i}_data_pipeline.json.done.txt")
+#        touch("{dataset}/af_output/done_flags/{i}_data_pipeline.json.done.txt")
     resources:
         slurm_account="cssb",
         slurm_partition="topfgpu",
-        constraint="A100",
         nodes=1,
-        runtime=0,
+        runtime=10000,
     container:
         config["af3_container"]
     shell:
@@ -78,36 +83,44 @@ rule RUN_AF3_DATA:
 
 rule SPLIT_INFERENCE_JOB_LIST:
     input:
-        inference_job_list="{dataset}/af_output/inference_job_lists/{i}_job_list.txt"
+        inference_job_list=DATASET + "/af_output/inference_job_lists/{i}_job_list.txt"
+#        inference_job_list="{dataset}/af_output/inference_job_lists/{i}_job_list.txt"
     params: 
         SPLIT_TOTAL = SPLIT_TOTAL
     output:
-        scatter.split("{{dataset}}/af_output/inference_job_lists/split/{{i}}_job_list_{scatteritem}.txt")
+        scatter.split(DATASET + "/af_output/inference_job_lists/split/{{i}}_job_list_{scatteritem}.txt")
+#        scatter.split("{{dataset}}/af_output/inference_job_lists/split/{{i}}_job_list_{scatteritem}.txt")
     resources:
         slurm_account="cssb",
         slurm_partition="topfgpu",
         constraint="A100",
         nodes=1,
-        runtime=0,
+        runtime=1000,
     run:
         import os
-        os.makedirs(os.path.join(wildcards.dataset,"af_output/inference_job_lists/split"),exist_ok=True)
+        os.makedirs(os.path.join(DATASET,"af_output/inference_job_lists/split"),exist_ok=True)
+#        os.makedirs(os.path.join(wildcards.dataset,"af_output/inference_job_lists/split"),exist_ok=True)
         lines = open(input.inference_job_list).readlines() 
-        [open(os.path.join(wildcards.dataset,f"af_output/inference_job_lists/split/{wildcards.i}_job_list_{i+1}-of-{params.SPLIT_TOTAL}.txt"), "w").writelines(lines[i*len(lines)//params.SPLIT_TOTAL:(i+1)*len(lines)//params.SPLIT_TOTAL + (1 if i == 3 else 0)]) for i in range(params.SPLIT_TOTAL)]
+        [open(os.path.join(DATASET,f"af_output/inference_job_lists/split/{wildcards.i}_job_list_{i+1}-of-{params.SPLIT_TOTAL}.txt"), "w").writelines(lines[i*len(lines)//params.SPLIT_TOTAL:(i+1)*len(lines)//params.SPLIT_TOTAL + (1 if i == 3 else 0)]) for i in range(params.SPLIT_TOTAL)]
+#        [open(os.path.join(wildcards.dataset,f"af_output/inference_job_lists/split/{wildcards.i}_job_list_{i+1}-of-{params.SPLIT_TOTAL}.txt"), "w").writelines(lines[i*len(lines)//params.SPLIT_TOTAL:(i+1)*len(lines)//params.SPLIT_TOTAL + (1 if i == 3 else 0)]) for i in range(params.SPLIT_TOTAL)]
 
 
 rule RUN_AF3_INFERENCE:
     input:
-        inference_job_list="{dataset}/af_output/inference_job_lists/split/{i}_job_list_{j}-of-{n}.txt",
-        data_pipeline_done_flag="{dataset}/af_output/done_flags/{i}_data_pipeline.json.done.txt"
+        inference_job_list= DATASET+ "/af_output/inference_job_lists/split/{i}_job_list_{j}-of-{n}.txt",
+        data_pipeline_done_flag= DATASET + "/af_output/done_flags/{i}_data_pipeline.json.done.txt"
+#        inference_job_list="{dataset}/af_output/inference_job_lists/split/{i}_job_list_{j}-of-{n}.txt",
+#        data_pipeline_done_flag="{dataset}/af_output/done_flags/{i}_data_pipeline.json.done.txt"
     output:
-        touch("{dataset}/af_output/done_flags/{i}_inference_job_list_{j}-of-{n}.done.txt")
+        touch(DATASET + "/af_output/done_flags/{i}_inference_job_list_{j}-of-{n}.done.txt")
+#        touch("{dataset}/af_output/done_flags/{i}_inference_job_list_{j}-of-{n}.done.txt")
     resources:
         slurm_account="cssb",
-        slurm_partition="topfgpu",
-        constraint="A100",
+        slurm_partition="cssbgpu",
+        constraint="A100-SXM4-80GB",
         nodes=1,
-        runtime=0,
+        runtime=10000,
+        memory="256G",
     container:
         config["af3_container"]
     shell:
