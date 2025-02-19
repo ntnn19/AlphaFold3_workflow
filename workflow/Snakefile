@@ -5,13 +5,6 @@ OUTPUT_DIR = config["output_dir"]
 
 INPUTS,  = glob_wildcards(os.path.join(DATASET,"{i}.json"))
 
-DIALECT =config["dialect"]
-scattergather:
-    split=config["n_splits"],
-    split2=160
-
-SPLIT_TOTAL = workflow._scatter["split"]
-SPLIT_TOTAL_2 = workflow._scatter["split2"]
 
 rule all:
     input:
