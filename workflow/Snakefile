@@ -15,17 +15,17 @@ rule RUN_AF3_DATA:
     input:
         os.path.join(DATASET,"{i}.json")
     output:
-        os.path.join(OUTPUT_DIR,"{i}/{i}_data_pipeline.done.txt")
+        touch(os.path.join(OUTPUT_DIR,"{i}/{i}_data_pipeline.done.txt"))
     resources:
-        slurm_account="cssb",
-        slurm_partition="topfgpu",
+        slurm_partition="vds",
         nodes=1,
         runtime=10000,
+        cpus_per_task=16,
     container:
         config["af3_container"]
     shell:
         """
-        python /app/alphafold/run_alphafold.py --json_path=/root/af_input/{input} \
+        python /app/alphafold/run_alphafold.py --json_path=/root/af_input/{wildcards.i}.json \
         --model_dir=/root/models \
         --output_dir=/root/af_output \
         --db_dir=/root/public_databases \
@@ -40,9 +40,8 @@ rule RUN_AF3_INFERENCE:
     output:
         touch(os.path.join(OUTPUT_DIR,"{i}/{i}/{i}_inference.done.txt")),
     resources:
-        slurm_account="cssb",
-        slurm_partition="cssbgpu",
-        constraint="A100-SXM4-80GB",
+        slurm_extra="'--gpus-per-node=1'",
+#        slurm_extra="'--gres=gpu:1,--gpus-per-node=1'",
         nodes=1,
         runtime=10000,
         memory="256G",
@@ -57,4 +56,3 @@ rule RUN_AF3_INFERENCE:
         --run_data_pipeline=false \
         --run_inference=true
         """
-
