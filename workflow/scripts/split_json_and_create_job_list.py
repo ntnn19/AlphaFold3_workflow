@@ -54,7 +54,7 @@ def split_json_and_create_job_list(input_json,output,dialect):
 #        with open(output_json_file, 'w') as f:
 #            json.dump([item], f, indent=2)  # Wrap item in a list
 
-            cmd=f"python /app/alphafold/run_alphafold.py --json_path={item_json_file} --model_dir=/root/models --output_dir=/root/af_output/{item['name'].lower()} --db_dir=/root/public_databases --run_data_pipeline=false --run_inference=true"
+            cmd=f"python /app/alphafold/run_alphafold.py --json_path={item_json_file} --model_dir=/root/models --output_dir=/root/af_output/{item['name'].lower()} --db_dir=/root/public_databases --run_data_pipeline=false --run_inference=true\n"
         else:
 #        if index==4: # DEBUG
 #            break
@@ -68,7 +68,7 @@ def split_json_and_create_job_list(input_json,output,dialect):
 #        with open(output_json_file, 'w') as f:
 #            json.dump([item], f, indent=2)  # Wrap item in a list
 
-            cmd=f"python /app/alphafold/run_alphafold.py --json_path={item_json_file} --model_dir=/root/models --output_dir=/root/af_output/{data[k].lower()} --db_dir=/root/public_databases --run_data_pipeline=false --run_inference=true"
+            cmd=f"python /app/alphafold/run_alphafold.py --json_path={item_json_file} --model_dir=/root/models --output_dir=/root/af_output/{data[k].lower()} --db_dir=/root/public_databases --run_data_pipeline=false --run_inference=true\n"
         lines.append(cmd)
 
     with open(output, 'w') as f:

@@ -1,0 +1,26 @@
+{
+    "name": "P16792_chopped_3_pac2",
+    "modelSeeds": [
+        1
+    ],
+    "sequences": [
+        {
+            "protein": {
+                "sequence": "MSWAKQRVPFLDDDDGEEENDVQDDVDSPVPTRPLVIDEDAEPAAGTSGGLEGGGGDDEDGEDGHALPDLDDDLLLQFEPMLPRVYDLLLPSLDARLNFVNAGQKYAAFLKYVHGDCATCSHGEILREKTQLLTAIVSKLMDINGILEGKDESAPGK",
+                "id": [
+                    "A",
+                    "B",
+                    "C"
+                ]
+            }
+        },
+        {
+            "ligand": {
+                "smiles": "COc1c(N2[C@H](c3c(N=C2N2CCN(CC2)c2cc(OC)ccc2)c(ccc3)F)CC(=O)O)cc(cc1)C(F)(F)F",
+                "id": "D"
+            }
+        }
+    ],
+    "dialect": "alphafold3",
+    "version": 1
+}
