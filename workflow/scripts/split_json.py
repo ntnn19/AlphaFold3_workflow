@@ -2,7 +2,7 @@ import click
 
 @click.command()
 @click.argument('input_file', type=click.Path(exists=True))
-@click.argument('output_dir', type=click.Path(exists=True, file_okay=False, writable=True))
+@click.argument('output_dir', type=click.Path())
 def split_json(input_file, output_dir):
     os.makedirs(output_dir, exist_ok=True)
     """Splits a JSON file containing a list of dictionaries into separate JSON files."""
