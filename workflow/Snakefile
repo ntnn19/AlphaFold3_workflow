@@ -1,14 +1,9 @@
-localrules: SPLIT_JSON_AND_CREATE_JOB_LIST, SPLIT_INFERENCE_JOB_LIST
 import subprocess
 import os
 DATASET = config["dataset"]
 OUTPUT_DIR = config["output_dir"]
-INPUTS,  = glob_wildcards(DATASET+"/{i}.json")
 
-
-
-N_INFERENCES= [int(subprocess.check_output(f"grep -c 'name' {j}",shell=True).decode()) for j in expand(DATASET+ "/{i}.json",zip, i=INPUTS)]
-print(N_INFERENCES)
+INPUTS,  = glob_wildcards(os.path.join(DATASET,"{i}.json"))
 
 DIALECT =config["dialect"]
 scattergather:
@@ -20,44 +15,14 @@ SPLIT_TOTAL_2 = workflow._scatter["split2"]
 
 rule all:
     input:
-        expand(OUTPUT_DIR +"/inference_job_lists/{i}_job_list.txt",i=INPUTS),
-        expand(OUTPUT_DIR +"/inference_job_lists/split/all_job_list_{j}-of-{n}.txt", zip, n = [SPLIT_TOTAL_2], j = range(1,SPLIT_TOTAL_2+1)),
+        expand(os.path.join(OUTPUT_DIR,"{i}/{i}/{i}_inference.done.txt"),i=INPUTS),
 
-
-rule SPLIT_JSON_AND_CREATE_JOB_LIST:
-    input:
-        DATASET + "/{i}.json"
-    output:
-        OUTPUT_DIR +"/inference_job_lists/{i}_job_list.txt"
-    params:
-        dialect=DIALECT,
-    resources:
-        slurm_account="cssb",
-        slurm_partition="allcpu",
-        nodes=1,
-        runtime=60,
-    shell:
-        """
-        python workflow/scripts/split_json_and_create_job_list.py {input} {output} {params.dialect}
-        """
-
-rule AGG_JOB_LIST:
-    input:
-        expand(OUTPUT_DIR +"/inference_job_lists/{i}_job_list.txt",i=INPUTS)
-
-    output:
-        OUTPUT_DIR +"/inference_job_lists/all_job_list.txt"
-    shell:
-        """
-        cat {input} > {output}
-        """
 
 rule RUN_AF3_DATA:
     input:
-        DATASET+ "/{i}.json"
+        os.path.join(DATASET,"{i}.json")
     output:
-        touch(OUTPUT_DIR +"/done_flags/{i}_data_pipeline.json.done.txt")
-    #/p16792_chopped_3_p16724_chopped_1_pac2/p16792_chopped_3_p16724_chopped_1_pac2_data.json
+        os.path.join(OUTPUT_DIR,"{i}/{i}_data_pipeline.done.txt")
     resources:
         slurm_account="cssb",
         slurm_partition="topfgpu",
@@ -67,7 +32,7 @@ rule RUN_AF3_DATA:
         config["af3_container"]
     shell:
         """
-        python /app/alphafold/run_alphafold.py --json_path={input} \
+        python /app/alphafold/run_alphafold.py --json_path=/root/af_input/{input} \
         --model_dir=/root/models \
         --output_dir=/root/af_output \
         --db_dir=/root/public_databases \
@@ -75,32 +40,12 @@ rule RUN_AF3_DATA:
         --run_inference=false
         """
 
-rule SPLIT_INFERENCE_JOB_LIST:
-    input:
-        inference_job_list=os.path.join(OUTPUT_DIR,"inference_job_lists/all_job_list.txt")
-    params: 
-        SPLIT_TOTAL = SPLIT_TOTAL_2
-    output:
-        scatter.split2(os.path.join(OUTPUT_DIR,"inference_job_lists/split/all_job_list_{scatteritem}.txt"))
-    resources:
-        slurm_account="cssb",
-        slurm_partition="topfgpu",
-        constraint="A100",
-        nodes=1,
-        runtime=1000,
-    run:
-        import os
-        os.makedirs(os.path.join(OUTPUT_DIR,"inference_job_lists/split"),exist_ok=True)
-        lines = open(input.inference_job_list).readlines()
-        [open(os.path.join(OUTPUT_DIR,f"inference_job_lists/split",f"all_job_list_{i+1}-of-{params.SPLIT_TOTAL}.txt"), "w").writelines(lines[i*len(lines)//params.SPLIT_TOTAL:(i+1)*len(lines)//params.SPLIT_TOTAL + (1 if i == 3 else 0)]) for i in range(params.SPLIT_TOTAL)]
-
 
 rule RUN_AF3_INFERENCE:
     input:
-        inference_job_list= DATASET+ "/af_output/inference_job_lists/split/all_job_list_{j}-of-{n}.txt",
-        data_pipeline_done_flag= OUTPUT_DIR +"/done_flags/{i}_data_pipeline.json.done.txt"
+        data_pipeline_done_flag= os.path.join(OUTPUT_DIR,"{i}/{i}_data_pipeline.done.txt")
     output:
-        touch(OUTPUT_DIR +"/done_flags/all_job_list_{j}-of-{n}.done.txt"),
+        touch(os.path.join(OUTPUT_DIR,"{i}/{i}/{i}_inference.done.txt")),
     resources:
         slurm_account="cssb",
         slurm_partition="cssbgpu",
@@ -112,5 +57,11 @@ rule RUN_AF3_INFERENCE:
         config["af3_container"]
     shell:
         """
-        bash workflow/scripts/parallel.sh {input.inference_job_list}
+        python /app/alphafold/run_alphafold.py --json_path=/root/af_output/{wildcards.i}/{wildcards.i}_data.json \
+        --model_dir=/root/models \
+        --output_dir=/root/af_output/{wildcards.i} \
+        --db_dir=/root/public_databases \
+        --run_data_pipeline=false \
+        --run_inference=true
         """
+

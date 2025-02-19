@@ -19,7 +19,8 @@ def split_json(input_file, output_dir):
         subdict["dialect"]= "alphafold3"
         subdict["version"]= 1
         subdict["sequences"][-1]["ligand"]["id"]=subdict["sequences"][-1]["ligand"]["id"][0]
-        output_path = f"{output_dir}/{subdict['name']}.json"
+        subdict['name'] = subdict["name"].lower()
+        output_path = f"{output_dir}/{subdict['name'].lower()}.json"
 #        output_path = f"{output_dir}/combination_{i}.json"
         with open(output_path, 'w') as out_f:
             json.dump(subdict, out_f, indent=4)
