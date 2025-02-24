@@ -25,7 +25,7 @@ JSON_FILES  = [os.path.splitext(os.path.basename(f))[0] for f in JSON_FILES]
 rule all:
     input:
 #        expand(os.path.join(OUTPUT_DIR,"{i}/{i}/{i}_inference.done.txt"),i=INPUTS_LOWERCASE),
-#        expand(os.path.join(OUTPUT_DIR,"AF3_INFERENCE","{i}/{i}/{i}_model.cif"),i=JSON_NAMES),
+        expand(os.path.join(OUTPUT_DIR,"AF3_INFERENCE","{i}/{i}/{i}_model.cif"),i=JSON_NAMES),
         expand(os.path.join(OUTPUT_DIR,"AF3_DATA","{i}/{i}_data.json"),i=JSON_NAMES),
 #        expand(os.path.join(OUTPUT_DIR,"{i}/{i}_data_pipeline.done.txt"),i=INPUTS_LOWERCASE)
 
