@@ -1,21 +1,48 @@
+#localrules:AF3_DATA
 import subprocess
 import os
+import shutil
+import shutil
+from scripts import split_json
 DATASET = config["dataset"]
 OUTPUT_DIR = config["output_dir"]
 
 INPUTS,  = glob_wildcards(os.path.join(DATASET,"{i}.json"))
+INPUTS_ORIGINAL = [f for f in os.listdir(DATASET) if f.endswith(".json")]
+INPUTS_LOWERCASE = [s.lower().split(".json")[0] for s in INPUTS_ORIGINAL]
 
-
+#INPUTS_LOWERCASE_FILES = [os.path.join(DATASET, f.lower()) for f in INPUTS_ORIGINAL]
+INPUTS_ORIGINAL_FILES = [os.path.join(DATASET, f) for f in INPUTS_ORIGINAL]
+print(INPUTS_ORIGINAL_FILES[:10])
+preprocessed_outputs = [split_json.split_json([f,OUTPUT_DIR+"/preprocessing"],standalone_mode=False) for f in INPUTS_ORIGINAL_FILES]
+JSON_FILES = [ json_name_pair[0] for json_name_pair in preprocessed_outputs]
+JSON_NAMES = [ json_name_pair[1] for json_name_pair in preprocessed_outputs]
+print(preprocessed_outputs[:10])
+JSON_FILES  = [os.path.splitext(os.path.basename(f))[0] for f in JSON_FILES]
+#D = {des:src for src, des in zip(INPUTS_ORIGINAL_FILES,INPUTS_LOWERCASE_FILES)}
+#for src, des in zip(INPUTS_ORIGINAL_FILES,INPUTS_LOWERCASE_FILES):
+#    shutil.copy(src, des])
 rule all:
     input:
-        expand(os.path.join(OUTPUT_DIR,"{i}/{i}/{i}_inference.done.txt"),i=INPUTS),
+#        expand(os.path.join(OUTPUT_DIR,"{i}/{i}/{i}_inference.done.txt"),i=INPUTS_LOWERCASE),
+#        expand(os.path.join(OUTPUT_DIR,"AF3_INFERENCE","{i}/{i}/{i}_model.cif"),i=JSON_NAMES),
+        expand(os.path.join(OUTPUT_DIR,"AF3_DATA","{i}/{i}_data.json"),i=JSON_NAMES),
+#        expand(os.path.join(OUTPUT_DIR,"{i}/{i}_data_pipeline.done.txt"),i=INPUTS_LOWERCASE)
 
+#rule CREATE_AF3_COMPATIBLE_FILENAMES:
+#    output:
+#        temp(os.path.join(DATASET,"{i}.json"))
+#    run:
+#        import shutil
+#        src= D[output[0]]
+#        shutil.copy(src, output[0])
 
-rule RUN_AF3_DATA:
+rule AF3_DATA:
     input:
-        os.path.join(DATASET,"{i}.json")
+        os.path.join(OUTPUT_DIR,"preprocessing","{i}.json")
     output:
-        touch(os.path.join(OUTPUT_DIR,"{i}/{i}_data_pipeline.done.txt"))
+#        data_pipeline_done_flag =touch(os.path.join(OUTPUT_DIR,"{i}/{i}_data_pipeline.done.txt")),
+        data_pipeline_msa = os.path.join(OUTPUT_DIR,"AF3_DATA","{i}/{i}_data.json"),
     resources:
         slurm_partition="vds",
         nodes=1,
@@ -25,20 +52,22 @@ rule RUN_AF3_DATA:
         config["af3_container"]
     shell:
         """
-        python /app/alphafold/run_alphafold.py --json_path=/root/af_input/{wildcards.i}.json \
+        python /app/alphafold/run_alphafold.py --json_path=/root/af_output/preprocessing/{wildcards.i}.json \
         --model_dir=/root/models \
-        --output_dir=/root/af_output \
+        --output_dir=/root/af_output/AF3_DATA \
         --db_dir=/root/public_databases \
         --run_data_pipeline=true \
         --run_inference=false
         """
 
 
-rule RUN_AF3_INFERENCE:
+rule AF3_INFERENCE:
     input:
-        data_pipeline_done_flag= os.path.join(OUTPUT_DIR,"{i}/{i}_data_pipeline.done.txt")
+        data_pipeline_msa= os.path.join(OUTPUT_DIR,"AF3_DATA","{i}/{i}_data.json"),
+#        data_pipeline_done_flag= os.path.join(OUTPUT_DIR,"{i}/{i}_data_pipeline.done.txt")
     output:
-        touch(os.path.join(OUTPUT_DIR,"{i}/{i}/{i}_inference.done.txt")),
+#        touch(os.path.join(OUTPUT_DIR,"{i}/{i}/{i}_inference.done.txt")),
+        os.path.join(OUTPUT_DIR,"AF3_INFERENCE","{i}/{i}/{i}_model.cif"),
     resources:
         slurm_extra="'--gpus-per-node=1'",
 #        slurm_extra="'--gres=gpu:1,--gpus-per-node=1'",
@@ -49,9 +78,9 @@ rule RUN_AF3_INFERENCE:
         config["af3_container"]
     shell:
         """
-        python /app/alphafold/run_alphafold.py --json_path=/root/af_output/{wildcards.i}/{wildcards.i}_data.json \
+        python /app/alphafold/run_alphafold.py --json_path=/root/af_output/AF3_DATA/{wildcards.i}/{wildcards.i}_data.json \
         --model_dir=/root/models \
-        --output_dir=/root/af_output/{wildcards.i} \
+        --output_dir=/root/af_output/AF3_INFERENCE/{wildcards.i} \
         --db_dir=/root/public_databases \
         --run_data_pipeline=false \
         --run_inference=true
