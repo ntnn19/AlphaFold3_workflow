@@ -14,3 +14,4 @@ dependencies:
   - gemmi=0.6.7
   - pymol-open-source=3.0.0
   - matplotlib=3.9
+  - loguru>=0.7.2
