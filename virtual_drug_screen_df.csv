@@ -1,0 +1,4 @@
+id,type,sequence,drug_or_target
+p1,protein,MASEQASDTTVCIK,target
+l1,ligand,CC(=O)Oc1ccccc1C(=O)O,drug
+l2,ligand,CN1C=NC2=C1C(=O)N(C(=O)N2C),drug

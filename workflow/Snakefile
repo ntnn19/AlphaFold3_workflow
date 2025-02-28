@@ -1,41 +1,36 @@
-#localrules:AF3_DATA
-import subprocess
+
 import os
-import shutil
-import shutil
 from scripts import create_tasks_from_dataframe
 INPUT_DF = config["input_csv"]
 OUTPUT_DIR = config["output_dir"]
+MODE = config.get("mode","defualt")
+MSA_OPTION = config.get("msa_option","auto")
 
+if MSA_OPTION == "auto":
+    MSA_OPTION_1 = "auto_template_free"
+    MSA_OPTION_2 = "auto_template_based"
+    TASKS_PATHS_AND_JOB_NAMES_1 = create_tasks_from_dataframe.create_tasks_from_dataframe([INPUT_DF,OUTPUT_DIR+"/PREPROCESSING","--mode",MODE,"--msa-option",MSA_OPTION_1],standalone_mode=False)
+    TASKS_PATHS_AND_JOB_NAMES_2 = create_tasks_from_dataframe.create_tasks_from_dataframe([INPUT_DF,OUTPUT_DIR+"/PREPROCESSING","--mode",MODE,"--msa-option",MSA_OPTION_2],standalone_mode=False)
+    TASKS_PATHS = TASKS_PATHS_AND_JOB_NAMES_1[0] + TASKS_PATHS_AND_JOB_NAMES_2[0]
+    JOB_NAMES = TASKS_PATHS_AND_JOB_NAMES_1[1] + TASKS_PATHS_AND_JOB_NAMES_2[1]
 
-TASKS_PATHS_AND_JOB_NAMES = create_tasks_from_dataframe.create_tasks_from_dataframe([INPUT_DF,OUTPUT_DIR+"/PREPROCESSING"],standalone_mode=False)
-TASKS_PATHS = TASKS_PATHS_AND_JOB_NAMES[0]
-JOB_NAMES = TASKS_PATHS_AND_JOB_NAMES[1]
+else:
+    TASKS_PATHS_AND_JOB_NAMES = create_tasks_from_dataframe.create_tasks_from_dataframe([INPUT_DF,
+                                                                                           OUTPUT_DIR + "/PREPROCESSING",
+                                                                                           "--mode", MODE,],standalone_mode=False)
+    TASKS_PATHS = TASKS_PATHS_AND_JOB_NAMES[0]
+    JOB_NAMES = TASKS_PATHS_AND_JOB_NAMES[1]
 
-#print(JOB_NAMES)
-#D = {des:src for src, des in zip(INPUTS_ORIGINAL_FILES,INPUTS_LOWERCASE_FILES)}
-#for src, des in zip(INPUTS_ORIGINAL_FILES,INPUTS_LOWERCASE_FILES):
-#    shutil.copy(src, des])
 rule all:
     input:
-#        expand(os.path.join(OUTPUT_DIR,"{i}/{i}/{i}_inference.done.txt"),i=INPUTS_LOWERCASE),
         expand(os.path.join(OUTPUT_DIR,"AF3_INFERENCE","{i}/{i}/{i}_model.cif"),i=JOB_NAMES),
         expand(os.path.join(OUTPUT_DIR,"AF3_DATA","{i}/{i}_data.json"),i=JOB_NAMES),
-#        expand(os.path.join(OUTPUT_DIR,"{i}/{i}_data_pipeline.done.txt"),i=INPUTS_LOWERCASE)
 
-#rule CREATE_AF3_COMPATIBLE_FILENAMES:
-#    output:
-#        temp(os.path.join(DATASET,"{i}.json"))
-#    run:
-#        import shutil
-#        src= D[output[0]]
-#        shutil.copy(src, output[0])
 
 rule AF3_DATA:
     input:
         os.path.join(OUTPUT_DIR,"PREPROCESSING","{i}.json")
     output:
-#        data_pipeline_done_flag =touch(os.path.join(OUTPUT_DIR,"{i}/{i}_data_pipeline.done.txt")),
         data_pipeline_msa = os.path.join(OUTPUT_DIR,"AF3_DATA","{i}/{i}_data.json"),
     resources:
         slurm_partition="vds",
@@ -58,13 +53,10 @@ rule AF3_DATA:
 rule AF3_INFERENCE:
     input:
         data_pipeline_msa= os.path.join(OUTPUT_DIR,"AF3_DATA","{i}/{i}_data.json"),
-#        data_pipeline_done_flag= os.path.join(OUTPUT_DIR,"{i}/{i}_data_pipeline.done.txt")
     output:
-#        touch(os.path.join(OUTPUT_DIR,"{i}/{i}/{i}_inference.done.txt")),
         os.path.join(OUTPUT_DIR,"AF3_INFERENCE","{i}/{i}/{i}_model.cif"),
     resources:
         slurm_extra="'--gpus-per-node=1'",
-#        slurm_extra="'--gres=gpu:1,--gpus-per-node=1'",
         nodes=1,
         runtime=10000,
         memory="256G",
