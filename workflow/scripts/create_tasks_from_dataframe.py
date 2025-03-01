@@ -9,11 +9,13 @@ import click
 import itertools
 import numpy as np
 
+
 def sanitised_name(name):
     """Returns sanitised version of the name that can be used as a filename."""
     lower_spaceless_name = name.lower().replace(' ', '_')
     allowed_chars = set(string.ascii_lowercase + string.digits + '_-.')
     return ''.join(l for l in lower_spaceless_name if l in allowed_chars)
+
 
 def create_batch_task(job_name, entities, model_seeds, bonded_atom_pairs=None, user_ccd=None):
     """
@@ -74,7 +76,9 @@ def create_batch_task(job_name, entities, model_seeds, bonded_atom_pairs=None, u
     logger.debug(f"Created task for job: {job_name}")
     return alphafold_input
 
-def create_protein_sequence_data(sequence, modifications=None, msa_option='auto_template_free', unpaired_msa=None, paired_msa=None, templates=None):
+
+def create_protein_sequence_data(sequence, modifications=None, msa_option='auto_template_free', unpaired_msa=None,
+                                 paired_msa=None, templates=None):
     """
     Creates sequence data for a protein entity.
 
@@ -137,7 +141,7 @@ def create_rna_sequence_data(sequence, modifications=None, msa_option='auto_temp
     }
     if modifications:
         rna_entry["modifications"] = modifications
-    if msa_option in ['auto_template_free','auto_template_based']:
+    if msa_option in ['auto_template_free', 'auto_template_based']:
         rna_entry["unpairedMsa"] = None
     elif msa_option == 'none':
         rna_entry["unpairedMsa"] = ""
@@ -215,6 +219,7 @@ def parse_json_field(value):
         logger.error(f"JSON decode error: {e}")
         return None
 
+
 def parse_list_field(value, data_type=str):
     """
     Parses a comma-separated string field into a list.
@@ -232,6 +237,7 @@ def parse_list_field(value, data_type=str):
         return None
     return [data_type(item.strip()) for item in value.split(',') if item.strip()]
 
+
 def check_for_empty_values(df):
     """
     Checks for empty values
@@ -239,24 +245,34 @@ def check_for_empty_values(df):
     if df.isna().any().any():
         raise ValueError(f"Missing values found in:\n{df.isna().stack()[lambda x: x].index.tolist()}")
 
-def check_for_mode_validity(df,mode):
+
+def check_for_mode_validity(df, mode):
     if mode == "pulldown":
-        allowed_columns = ["id","seq","bait_or_target"]
+        allowed_columns = ["id", "sequence", "type", "bait_or_target"]
         if not set(allowed_columns).issubset(df.columns):
-            raise ValueError(f"Dataframe must contain the following columns: {allowed_columns}. Got {df.columns} instead.")
-        if df[~df["bait_or_target"].isin(["bait","target"])].shape[0] > 0:
-            raise ValueError(f"Only 'bait' or 'target' are allowed as values for column 'bait_or_target'. Got {df[~df["bait_or_target"].isin(["bait","target"])]["bait_or_target"]} instead.")
+            raise ValueError(
+                f"Dataframe must contain the following columns: {allowed_columns}. Got {df.columns} instead.")
+        if df[~df["bait_or_target"].isin(["bait", "target"])].shape[0] > 0:
+            raise ValueError(
+                f"Only 'bait' or 'target' are allowed as values for column 'bait_or_target'. Got {df[~df["bait_or_target"].isin(["bait", "target"])]["bait_or_target"].values} instead.")
+    if mode == "virtual-drug-screen":
+        allowed_columns = ["id", "sequence", "type", "drug_or_target"]
+        if not set(allowed_columns).issubset(df.columns):
+            raise ValueError(
+                f"Dataframe must contain the following columns: {allowed_columns}. Got {df.columns} instead.")
+        if df[~df["drug_or_target"].isin(["drug", "target"])].shape[0] > 0:
+            raise ValueError(
+                f"Only 'drug' or 'target' are allowed as values for column 'drug_or_target'. Got {df[~df["drug_or_target"].isin(["drug", "target"])]["drug_or_target"].values} instead.")
 
-#    if df["mode"].unique().shape[0] > 1 and df["mode"].unique()[0] not in ["stoichio-screen"]:
-#        raise ValueError(f"Only one mode is allowed for all-vs-all and default, got {df['mode'].unique()} instead")
 
-def check_for_valid_columns(df,mode):
+def check_for_valid_columns(df, mode):
     # Get all columns in the DataFrame
     provided_columns = set(df.columns)
-    required_columns = ["id","sequence","type"]
+    required_columns = ["id", "sequence", "type"]
 
-    optional_columns = ["modifications","msa_option","unpaired_msa","paired_msa","templates","model_seeds","bonded_atom_pairs","user_ccd","smiles"]
-    if mode == "virtual_drug_screen":
+    optional_columns = ["modifications", "msa_option", "unpaired_msa", "paired_msa", "templates", "model_seeds",
+                        "bonded_atom_pairs", "user_ccd", "smiles"]
+    if mode == "virtual-drug-screen":
         optional_columns = optional_columns + ["drug_or_target"]
     if mode == "pulldown":
         optional_columns = optional_columns + ["bait_or_target"]
@@ -267,7 +283,7 @@ def check_for_valid_columns(df,mode):
         raise ValueError(f"Unexpected columns found: {unexpected_columns}. See --help for more info on allowed columns")
 
 
-def create_all_vs_all_df(df,msa_option=None):
+def create_all_vs_all_df(df, msa_option=None):
     """
     Given a DataFrame with columns 'id', 'sequence', and 'type', return a new DataFrame
     that contains the original rows along with all possible pairwise combinations.
@@ -277,12 +293,11 @@ def create_all_vs_all_df(df,msa_option=None):
     """
     all_vs_all = []
 
-    for (id1, seq1), (id2, seq2) in itertools.combinations_with_replacement(df[['id','sequence']].values, 2,):
-        type1 = df[df["id"]==id1]["type"].values[0]
-        type2 = df[df["id"]==id2]["type"].values[0]
-        all_vs_all.append({"id": f"{id1}_{id2}", "sequence": f"{seq1}","type": f"{type1}"})
-        all_vs_all.append({"id": f"{id1}_{id2}", "sequence": f"{seq2}","type": f"{type2}"})
-
+    for (id1, seq1), (id2, seq2) in itertools.combinations_with_replacement(df[['id', 'sequence']].values, 2, ):
+        type1 = df[df["id"] == id1]["type"].values[0]
+        type2 = df[df["id"] == id2]["type"].values[0]
+        all_vs_all.append({"id": f"{id1}_{id2}", "sequence": f"{seq1}", "type": f"{type1}"})
+        all_vs_all.append({"id": f"{id1}_{id2}", "sequence": f"{seq2}", "type": f"{type2}"})
 
     df_all_vs_all = pd.DataFrame(all_vs_all)
     df_all_vs_all_and_original = pd.concat([df, df_all_vs_all], ignore_index=True)
@@ -293,12 +308,14 @@ def create_all_vs_all_df(df,msa_option=None):
     df_all_vs_all_and_original['id'] = np.where(
         df_all_vs_all_and_original['job_name'].map(counts) == 1,  # If the group size is 1
         'A',
-        np.where(df_all_vs_all_and_original.groupby('job_name').cumcount() % 2 == 0, 'A', 'B')  # Alternate 'A' and 'B' in size-2 groups
+        np.where(df_all_vs_all_and_original.groupby('job_name').cumcount() % 2 == 0, 'A', 'B')
+        # Alternate 'A' and 'B' in size-2 groups
     )
 
-    df_all_vs_all_and_original.loc[df_all_vs_all_and_original["type"]=="ligand",'smiles'] = df_all_vs_all_and_original.loc[df_all_vs_all_and_original["type"]=="ligand",'sequence'].copy()
+    df_all_vs_all_and_original.loc[df_all_vs_all_and_original["type"] == "ligand", 'smiles'] = \
+    df_all_vs_all_and_original.loc[df_all_vs_all_and_original["type"] == "ligand", 'sequence'].copy()
     df_all_vs_all_and_original.loc[df_all_vs_all_and_original["type"] == "ligand", 'sequence'] = ""
-    if msa_option in ["auto_template_based","auto_template_free"]:
+    if msa_option in ["auto_template_based", "auto_template_free"]:
         df_all_vs_all_and_original["job_name"] = df_all_vs_all_and_original["job_name"] + "_" + msa_option
         return df_all_vs_all_and_original
 
@@ -311,6 +328,7 @@ def create_stoichio_screen_df(df):
 
 def create_pulldown_df(df):
     pass
+
 
 def create_virtual_drug_screen_df(df, msa_option=None):
     """
@@ -330,7 +348,15 @@ def create_virtual_drug_screen_df(df, msa_option=None):
         all_entries.append(
             {"job_name": target_id, "id": "A", "type": "protein", "sequence": target_seq, "smiles": ""})
 
-    # Add ligand-target pairs
+    # Add oligomeric targets
+    target_df_oligo = target_df.copy()
+    grouped_target_df_oligo = target_df_oligo.groupby('id')
+    letters = list(string.ascii_uppercase)
+    target_df_oligo['job_name'] = grouped_target_df_oligo['id'].transform(lambda x: '_'.join(x))
+    target_df_oligo["id"] = grouped_target_df_oligo.cumcount().map(lambda x: letters[x])
+    target_df_oligo["smiles"] = ""
+
+    # Add ligand/standalone-target pairs
     for _, (drug_id, drug_smiles) in drug_df[['id', 'sequence']].iterrows():
         for _, (target_id, target_seq) in target_df[['id', 'sequence']].iterrows():
             pair_name = f"{target_id}_{drug_id}"
@@ -339,14 +365,18 @@ def create_virtual_drug_screen_df(df, msa_option=None):
             all_entries.append(
                 {"job_name": pair_name, "id": "B", "type": "ligand", "sequence": "", "smiles": drug_smiles})
 
+    # Add Add ligand-oligomeric targets
+
     df_screen = pd.DataFrame(all_entries)
+    df_screen = pd.concat([pd.DataFrame(all_entries),target_df_oligo.drop(columns=["drug_or_target"])],ignore_index=True)
 
     if msa_option in ["auto_template_based", "auto_template_free"]:
         df_screen["job_name"] += "_" + msa_option
 
     return df_screen
 
-def create_df_for_run_mode(df,mode,msa_option):
+
+def create_df_for_run_mode(df, mode, msa_option):
     """
     Creates mode specific dataframe and writes it to a file.
 
@@ -372,21 +402,23 @@ def create_df_for_run_mode(df,mode,msa_option):
 
     """
 
-    check_for_valid_columns(df,mode)
+    check_for_valid_columns(df, mode)
 
     check_for_empty_values(df)
+
+    check_for_mode_validity(df, mode)
 
     df["id"] = df["id"].apply(lambda x: sanitised_name(x))
 
     if mode == "all-vs-all":
-        df=create_all_vs_all_df(df,msa_option)
+        df = create_all_vs_all_df(df, msa_option)
     if mode == "pulldown":
         df = create_pulldown_df(df)
         check_for_mode_validity(df, mode)
     if mode == "stoichio-screen":
         df = create_stoichio_screen_df(df)
-    if mode == "virtual_drug_screen":
-        df = create_virtual_drug_screen_df(df,msa_option)
+    if mode == "virtual-drug-screen":
+        df = create_virtual_drug_screen_df(df, msa_option)
 
     return df
 
@@ -394,9 +426,11 @@ def create_df_for_run_mode(df,mode,msa_option):
 @click.command()
 @click.argument('df_path', type=click.Path(exists=True))
 @click.argument('output_dir', type=click.Path())
-@click.option('--mode', type=str,default='default', help="Choose run mode: 'default', 'all-vs-all', 'pulldown','virtual_drug_screen', or 'stoichio-screen'")
-@click.option('--msa-option', type=str,default='auto_template_free',help="Run template free or template based structure prediction. Choose either 'auto_template_free' or 'auto_template_based'")
-def create_tasks_from_dataframe(df_path,output_dir,mode,msa_option):
+@click.option('--mode', type=str, default='default',
+              help="Choose run mode: 'default', 'all-vs-all', 'pulldown','virtual-drug-screen', or 'stoichio-screen'")
+@click.option('--msa-option', type=str, default='auto_template_free',
+              help="Run template free or template based structure prediction. Choose either 'auto_template_free' or 'auto_template_based'")
+def create_tasks_from_dataframe(df_path, output_dir, mode, msa_option):
     """
     Creates batch tasks from a DataFrame.
 
@@ -427,10 +461,10 @@ def create_tasks_from_dataframe(df_path,output_dir,mode,msa_option):
 
     tasks = []
     job_names = []
-    os.makedirs(output_dir,exist_ok=True)
-    df=pd.read_csv(df_path)
+    os.makedirs(output_dir, exist_ok=True)
+    df = pd.read_csv(df_path)
     if mode != "default":
-        df = create_df_for_run_mode(df,mode,msa_option)
+        df = create_df_for_run_mode(df, mode, msa_option)
     grouped = df.groupby('job_name')
     for job_name, group in grouped:
         entities = []
