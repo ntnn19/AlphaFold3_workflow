@@ -257,16 +257,8 @@ def parse_list_field(value, data_type=str):
     return [data_type(item.strip()) for item in value.split(',') if item.strip()]
 
 
-def check_for_empty_values(df):
-    """
-    Checks for empty values
-    """
-    if df.isna().any().any():
-        raise ValueError(f"Missing values found in:\n{df.isna().stack()[lambda x: x].index.tolist()}")
-
 
 def check_for_mode_validity(df, mode):
-    print(df)
     if mode == "pulldown":
         allowed_columns = ["id", "sequence", "type", "bait_or_target"]
         if not set(allowed_columns).issubset(df.columns):
@@ -543,8 +535,6 @@ def create_df_for_run_mode(df, mode, msa_option):
 
     check_for_valid_columns(df, mode)
 
-    #check_for_empty_values(df)
-    print(df)
     check_for_mode_validity(df, mode)
 
     df["id"] = df["id"].apply(lambda x: sanitised_name(x))
@@ -668,8 +658,8 @@ def create_tasks_from_dataframe(df_path, output_dir, mode, msa_option):
             if user_ccd is None and pd.notna(row.get('user_ccd')):
                 user_ccd = row.get('user_ccd')
 
-        if model_seeds is None:
-            model_seeds = [1]  # Default seed if not provided
+#        if model_seeds is None:
+#            model_seeds = [1]  # Default seed if not provided
 
         task = create_batch_task(
             job_name=job_name,
