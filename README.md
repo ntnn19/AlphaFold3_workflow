@@ -63,6 +63,73 @@ eval "$(micromamba shell hook --shell=bash)"
 micromamba activate $(pwd)/venv
 ```
 ### 4. Configure the workflow
+Open config/config.yaml with your favourite text editor.
+Edit the values to your needs.
+#### Mandatory flags:
+-   input_csv: <path_to_your_csv_table> # See the following examples: example/all_vs_all.csv # all-vs-all
+-   output_dir: <path_to_your_output_directory> # Stores the outputs of this workflow
+-   af3_flags:
+     -   af3_container: <path_to_your_alphafold3_container>
+     -   db_dir: <path_to_your_alphafold3_databases>
+     -   model_dir: <path_to_your_alphafold3_model_parameters>
+
+#### Optional AlphaFold3 flags:
+Include the optional flags withing the scope of the af3_flags. 
+The optional flags are:
+<details>
+--buckets
+
+--conformer_max_iterations
+
+--flash_attention_implementation
+
+--gpu_device
+
+--hmmalign_binary_path
+
+--hmmbuild_binary_path
+
+--hmmsearch_binary_path
+
+--jackhmmer_binary_path
+
+--jackhmmer_n_cpu
+
+--jax_compilation_cache_dir
+
+--max_template_date
+
+--mgnify_database_path
+
+--nhmmer_binary_path
+
+--nhmmer_n_cpu
+
+--ntrna_database_path
+
+--num_diffusion_samples
+
+--num_recycles
+
+--num_seeds
+
+--pdb_database_path
+
+--rfam_database_path
+
+--rna_central_database_path
+
+--save_embeddings
+
+--seqres_database_path
+
+--small_bfd_database_path
+
+--uniprot_cluster_annot_database_path
+
+--uniref90_database_path
+</details>
+
 
 ### 5. Run the workflow
 **Dry run (local)**

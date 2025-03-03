@@ -6,7 +6,7 @@ OUTPUT_DIR = config["output_dir"]
 DB_DIR = config["af3_flags"]['--db_dir']
 MODE = config.get("mode","default")
 MSA_OPTION = config.get("msa_option","auto")
-
+AF3_CONTAINER = config["af3_flags"]["af3_container"]
 def get_af3_flag_value(flag, default_value):
     return config.get('alphafold3_flags', {}).get(flag, default_value)
 
@@ -98,7 +98,7 @@ rule AF3_DATA:
         runtime=10000,
         cpus_per_task=16,
     container:
-        config["af3_container"]
+
     shell:
         """
         python /app/alphafold/run_alphafold.py --json_path=/root/af_output/preprocessing/{wildcards.i}.json \
