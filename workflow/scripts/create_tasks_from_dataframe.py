@@ -80,7 +80,7 @@ def create_batch_task(job_name, entities, model_seeds, bonded_atom_pairs=None, u
 
     alphafold_input = {
         "name": job_name,
-        #"modelSeeds": model_seeds,
+        "modelSeeds": model_seeds,
         "sequences": sequences,
         "dialect": "alphafold3",
         "version": 1
@@ -658,8 +658,8 @@ def create_tasks_from_dataframe(df_path, output_dir, mode, msa_option):
             if user_ccd is None and pd.notna(row.get('user_ccd')):
                 user_ccd = row.get('user_ccd')
 
-#        if model_seeds is None:
-#            model_seeds = [1]  # Default seed if not provided
+        if model_seeds is None:
+            model_seeds = [1]  # Default seed if not provided
 
         task = create_batch_task(
             job_name=job_name,
