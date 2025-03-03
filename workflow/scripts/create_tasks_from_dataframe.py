@@ -80,7 +80,7 @@ def create_batch_task(job_name, entities, model_seeds, bonded_atom_pairs=None, u
 
     alphafold_input = {
         "name": job_name,
-        "modelSeeds": model_seeds,
+        #"modelSeeds": model_seeds,
         "sequences": sequences,
         "dialect": "alphafold3",
         "version": 1
