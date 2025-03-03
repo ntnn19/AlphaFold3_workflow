@@ -6,7 +6,7 @@ OUTPUT_DIR = config["output_dir"]
 DB_DIR = config["af3_flags"]['--db_dir']
 MODE = config.get("mode","default")
 MSA_OPTION = config.get("msa_option","auto")
-AF3_CONTAINER = config["af3_flags"]["af3_container"]
+AF3_CONTAINER = config["af3_flags"]["--af3_container"]
 def get_af3_flag_value(flag, default_value):
     return config.get('alphafold3_flags', {}).get(flag, default_value)
 
