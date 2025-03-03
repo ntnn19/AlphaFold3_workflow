@@ -130,40 +130,47 @@ The optional flags are:
 --uniref90_database_path
 </details>
 
+### 5. Configure the profile (Optional)
+
+For running this workflow on HPC using slurm, you can modify profile/config.yaml to make it compatible with your HPC setting.
+More details can be found [here](https://snakemake.github.io/snakemake-plugin-catalog/plugins/executor/slurm.html#using-profiles).
 
 ### 5. Run the workflow
+Information on snakemake flags can be found [here](https://snakemake.readthedocs.io/en/stable/executing/cli.html#)
 **Dry run (local)**
 ```bash
-snakemake --use-singularity \
-    --config af3_container=<path_to_your_alphafold3_container> \
-    --singularity-args '--nv -B <alphafold3_weights_dir>:/root/models -B $(pwd)/<dataset_directory>/af_input:/root/af_input -B $(pwd)/<dataset_directory>/af_output:/root/af_output -B <path_to_alphafold3_db_directory>:/root/public_databases' \
-    -c all \
-    --set-scatter split=<number_of_inference_job_lists> -n
+snakemake -s workflow/Snakefile \
+--use-singularity --singularity-args  \
+'--nv -B <your_alphafold3_weights_dir>:/root/models -B <your_output_dir>/PREPROCESSING:/root/af_input -B <your_output_dir>:/root/af_output -B <your_alphafold3_databases_dir>:/root/public_databases -B <your_alphafold3_tmp_dir>/tmp:/tmp --env XLA_CLIENT_MEM_FRACTION=3.2' \
+-j unlimited -c all --executor slurm --groups \
+RUN_AF3_DATA=group0 --group-components group0=12 \
+-p -k -w 30 --rerun-triggers mtime -n
 ```
 **Dry run (slurm)**
 ```bash
-snakemake --use-singularity \
-    --config af3_container=<path_to_your_alphafold3_container> \
-    --singularity-args '--nv -B <alphafold3_weights_dir>:/root/models -B $(pwd)/<dataset_directory>/af_input:/root/af_input -B $(pwd)/<dataset_directory>/af_output:/root/af_output -B <path_to_alphafold3_db_directory>:/root/public_databases' \
-    -j 99 \
-    --executor slurm \
-    --set-scatter split=<number_of_inference_job_lists> -n
+snakemake -s workflow/Snakefile \
+--use-singularity --singularity-args  \
+'--nv -B <your_alphafold3_weights_dir>:/root/models -B <your_output_dir>/PREPROCESSING:/root/af_input -B <your_output_dir>:/root/af_output -B <your_alphafold3_databases_dir>:/root/public_databases -B <your_alphafold3_tmp_dir>/tmp:/tmp --env XLA_CLIENT_MEM_FRACTION=3.2' \
+-j unlimited -c all --executor slurm --groups \
+RUN_AF3_DATA=group0 --group-components group0=12 \
+-p -k -w 30 --rerun-triggers mtime --workflow-profile profile -n
 ```
 **Local run**
 ```bash
-snakemake --use-singularity \
-    --config af3_container=<path_to_your_alphafold3_container> \
-    --singularity-args '--nv -B <alphafold3_weights_dir>:/root/models -B $(pwd)/<dataset_directory>/af_input:/root/af_input -B $(pwd)/<dataset_directory>/af_output:/root/af_output -B <path_to_alphafold3_db_directory>:/root/public_databases' \
-    -c all \
-    --set-scatter split=<number_of_inference_job_lists>
+snakemake -s workflow/Snakefile \
+--use-singularity --singularity-args  \
+'--nv -B <your_alphafold3_weights_dir>:/root/models -B <your_output_dir>/PREPROCESSING:/root/af_input -B <your_output_dir>:/root/af_output -B <your_alphafold3_databases_dir>:/root/public_databases -B <your_alphafold3_tmp_dir>/tmp:/tmp --env XLA_CLIENT_MEM_FRACTION=3.2' \
+-j unlimited -c all --executor slurm --groups \
+RUN_AF3_DATA=group0 --group-components group0=12 \
+-p -k -w 30 --rerun-triggers mtime
 ```
 
 **slurm run**
 ```bash
-snakemake --use-singularity \
-    --config af3_container=<path_to_your_alphafold3_container> \
-    --singularity-args '--nv -B <alphafold3_weights_dir>:/root/models -B $(pwd)/<dataset_directory>/af_input:/root/af_input -B $(pwd)/<dataset_directory>/af_output:/root/af_output -B <path_to_alphafold3_db_directory>:/root/public_databases' \
-    -j 99 \
-    --executor slurm \
-    --set-scatter split=<number_of_inference_job_lists> -n
+snakemake -s workflow/Snakefile \
+--use-singularity --singularity-args  \
+'--nv -B <your_alphafold3_weights_dir>:/root/models -B <your_output_dir>/PREPROCESSING:/root/af_input -B <your_output_dir>:/root/af_output -B <your_alphafold3_databases_dir>:/root/public_databases -B <your_alphafold3_tmp_dir>/tmp:/tmp --env XLA_CLIENT_MEM_FRACTION=3.2' \
+-j unlimited -c all --executor slurm --groups \
+RUN_AF3_DATA=group0 --group-components group0=12 \
+-p -k -w 30 --rerun-triggers mtime --workflow-profile profile -n
 ```
