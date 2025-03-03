@@ -1,0 +1,6 @@
+input_csv: virtual_drug_screen_df.csv
+output_dir: output
+mode: virtual-drug-screen
+af3_container: sif
+af3_flags:
+  --db_dir: db_dir

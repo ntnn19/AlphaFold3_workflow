@@ -1,10 +1,43 @@
-
+configfile: "config/config.yaml"
 import os
 from scripts import create_tasks_from_dataframe
 INPUT_DF = config["input_csv"]
 OUTPUT_DIR = config["output_dir"]
-MODE = config.get("mode","defualt")
+DB_DIR = config["af3_flags"]['--db_dir']
+MODE = config.get("mode","default")
 MSA_OPTION = config.get("msa_option","auto")
+
+def get_af3_flag_value(flag, default_value):
+    return config.get('alphafold3_flags', {}).get(flag, default_value)
+
+# Example usage: Getting flag values from YAML with fallbacks
+
+BUCKETS = get_af3_flag_value('--buckets', '256,512,768,1024,1280,1536,2048,2560,3072,3584,4096,4608,5120')
+CONFORMER_MAX_ITERATIONS = get_af3_flag_value('--conformer_max_iterations', 100)
+FLASH_ATTENTION_IMPLEMENTATION = get_af3_flag_value('--flash_attention_implementation', 'triton')
+GPU_DEVICE = get_af3_flag_value('--gpu_device', 0)
+HMMALIGN_BINARY_PATH = get_af3_flag_value('--hmmalign_binary_path', '/hmmer/bin/hmmalign')
+HMMBUILD_BINARY_PATH = get_af3_flag_value('--hmmbuild_binary_path', '/hmmer/bin/hmmbuild')
+HMMSEARCH_BINARY_PATH = get_af3_flag_value('--hmmsearch_binary_path', '/hmmer/bin/hmmsearch')
+JACKHMMER_BINARY_PATH = get_af3_flag_value('--jackhmmer_binary_path', '/hmmer/bin/jackhmmer')
+JACKHMMER_N_CPU = get_af3_flag_value('--jackhmmer_n_cpu', 8)
+JAX_COMPILATION_CACHE_DIR = get_af3_flag_value('--jax_compilation_cache_dir', '/path/to/cache')
+MAX_TEMPLATE_DATE = get_af3_flag_value('--max_template_date', '2021-09-30')
+MGNIFY_DATABASE_PATH = get_af3_flag_value('--mgnify_database_path', os.path.join(DB_DIR,'mgy_clusters_2022_05.fa'))
+NHMMER_BINARY_PATH = get_af3_flag_value('--nhmmer_binary_path', '/hmmer/bin/nhmmer')
+NHMMER_N_CPU = get_af3_flag_value('--nhmmer_n_cpu', 8)
+NTRNA_DATABASE_PATH = get_af3_flag_value('--ntrna_database_path', os.path.join(DB_DIR,'nt_rna_2023_02_23_clust_seq_id_90_cov_80_rep_seq.fasta'))
+NUM_DIFFUSION_SAMPLES = get_af3_flag_value('--num_diffusion_samples', 5)
+NUM_RECYCLES = get_af3_flag_value('--num_recycles', 10)
+NUM_SEEDS = get_af3_flag_value('--num_seeds', 1)
+PDB_DATABASE_PATH = get_af3_flag_value('--pdb_database_path', os.path.join(DB_DIR,'mmcif_files'))
+RFAM_DATABASE_PATH = get_af3_flag_value('--rfam_database_path', os.path.join(DB_DIR,'rfam_14_9_Clust_Seq_90_cov_80_rep_seq.fasta'))
+RNA_CENTRAL_DATABASE_PATH = get_af3_flag_value('--rna_central_database_path', os.path.join(DB_DIR,'rnacentral_active_seq_id_90_cov_80_linclust.fasta'))
+SAVE_EMBEDDINGS = get_af3_flag_value('--save_embeddings', False)
+SEQRES_DATABASE_PATH = get_af3_flag_value('--seqres_database_path', os.path.join(DB_DIR,'pdb_seqres_2022_09_28.fasta'))
+SMALL_BFD_DATABASE_PATH = get_af3_flag_value('--small_bfd_database_path', os.path.join(DB_DIR,'bfd-first_non_consensus_sequences.fasta'))
+UNIPROT_CLUSTER_ANNOT_DATABASE_PATH = get_af3_flag_value('--uniprot_cluster_annot_database_path', os.path.join(DB_DIR,'uniprot_all_2021_04.fa'))
+UNIREF90_DATABASE_PATH = get_af3_flag_value('--uniref90_database_path', os.path.join(DB_DIR,'uniref90_2022_05.fa'))
 
 if MSA_OPTION == "auto":
     MSA_OPTION_1 = "auto_template_free"
@@ -30,6 +63,33 @@ rule all:
 rule AF3_DATA:
     input:
         os.path.join(OUTPUT_DIR,"PREPROCESSING","{i}.json")
+    params:
+        buckets = BUCKETS,
+        conformer_max_iterations = CONFORMER_MAX_ITERATIONS,
+        flash_attention_implementation = FLASH_ATTENTION_IMPLEMENTATION,
+        gpu_device = GPU_DEVICE,
+        hmmalign_binary_path = HMMALIGN_BINARY_PATH,
+        hmmbuild_binary_path = HMMBUILD_BINARY_PATH,
+        hmmsearch_binary_path = HMMSEARCH_BINARY_PATH,
+        jackhmmer_binary_path = JACKHMMER_BINARY_PATH,
+        jackhmmer_n_cpu = JACKHMMER_N_CPU,
+        jax_compilation_cache_dir = JAX_COMPILATION_CACHE_DIR,
+        max_template_date = MAX_TEMPLATE_DATE,
+        mgnify_database_path = MGNIFY_DATABASE_PATH,
+        nhmmer_binary_path = NHMMER_BINARY_PATH,
+        nhmmer_n_cpu = NHMMER_N_CPU,
+        ntrna_database_path = NTRNA_DATABASE_PATH,
+        num_diffusion_samples = NUM_DIFFUSION_SAMPLES,
+        num_recycles = NUM_RECYCLES,
+        num_seeds = NUM_SEEDS,
+        pdb_database_path = PDB_DATABASE_PATH,
+        rfam_database_path = RFAM_DATABASE_PATH,
+        rna_central_database_path = RNA_CENTRAL_DATABASE_PATH,
+        save_embeddings = SAVE_EMBEDDINGS,
+        seqres_database_path = SEQRES_DATABASE_PATH,
+        small_bfd_database_path = SMALL_BFD_DATABASE_PATH,
+        uniprot_cluster_annot_database_path = UNIPROT_CLUSTER_ANNOT_DATABASE_PATH,
+        uniref90_database_path = UNIREF90_DATABASE_PATH
     output:
         data_pipeline_msa = os.path.join(OUTPUT_DIR,"AF3_DATA","{i}/{i}_data.json"),
     resources:
@@ -46,13 +106,66 @@ rule AF3_DATA:
         --output_dir=/root/af_output/AF3_DATA \
         --db_dir=/root/public_databases \
         --run_data_pipeline=true \
-        --run_inference=false
+        --run_inference=false \
+        --buckets= {params.buckets} \
+        --conformer_max_iterations= {params.conformer_max_iterations} \
+        --flash_attention_implementation= {params.flash_attention_implementation} \
+        --gpu_device= {params.gpu_device} \
+        --hmmalign_binary_path= {params.hmmalign_binary_path} \
+        --hmmbuild_binary_path= {params.hmmbuild_binary_path} \
+        --hmmsearch_binary_path= {params.hmmsearch_binary_path} \
+        --jackhmmer_binary_path= {params.jackhmmer_binary_path} \
+        --jackhmmer_n_cpu= {params.jackhmmer_n_cpu} \
+        --jax_compilation_cache_dir= {params.jax_compilation_cache_dir} \
+        --max_template_date= {params.max_template_date} \
+        --mgnify_database_path= {params.mgnify_database_path} \
+        --nhmmer_binary_path= {params.nhmmer_binary_path} \
+        --nhmmer_n_cpu= {params.nhmmer_n_cpu} \
+        --ntrna_database_path= {params.ntrna_database_path} \
+        --num_diffusion_samples= {params.num_diffusion_samples} \
+        --num_recycles= {params.num_recycles} \
+        --num_seeds= {params.num_seeds} \
+        --pdb_database_path= {params.pdb_database_path} \
+        --rfam_database_path= {params.rfam_database_path} \
+        --rna_central_database_path= {params.rna_central_database_path} \
+        --save_embeddings= {params.save_embeddings} \
+        --seqres_database_path= {params.seqres_database_path} \
+        --small_bfd_database_path= {params.small_bfd_database_path} \
+        --uniprot_cluster_annot_database_path= {params.uniprot_cluster_annot_database_path} \
+        --uniref90_database_path= {params.uniref90_database_path}
         """
 
 
 rule AF3_INFERENCE:
     input:
         data_pipeline_msa= os.path.join(OUTPUT_DIR,"AF3_DATA","{i}/{i}_data.json"),
+    params:
+        buckets = BUCKETS,
+        conformer_max_iterations = CONFORMER_MAX_ITERATIONS,
+        flash_attention_implementation = FLASH_ATTENTION_IMPLEMENTATION,
+        gpu_device = GPU_DEVICE,
+        hmmalign_binary_path = HMMALIGN_BINARY_PATH,
+        hmmbuild_binary_path = HMMBUILD_BINARY_PATH,
+        hmmsearch_binary_path = HMMSEARCH_BINARY_PATH,
+        jackhmmer_binary_path = JACKHMMER_BINARY_PATH,
+        jackhmmer_n_cpu = JACKHMMER_N_CPU,
+        jax_compilation_cache_dir = JAX_COMPILATION_CACHE_DIR,
+        max_template_date = MAX_TEMPLATE_DATE,
+        mgnify_database_path = MGNIFY_DATABASE_PATH,
+        nhmmer_binary_path = NHMMER_BINARY_PATH,
+        nhmmer_n_cpu = NHMMER_N_CPU,
+        ntrna_database_path = NTRNA_DATABASE_PATH,
+        num_diffusion_samples = NUM_DIFFUSION_SAMPLES,
+        num_recycles = NUM_RECYCLES,
+        num_seeds = NUM_SEEDS,
+        pdb_database_path = PDB_DATABASE_PATH,
+        rfam_database_path = RFAM_DATABASE_PATH,
+        rna_central_database_path = RNA_CENTRAL_DATABASE_PATH,
+        save_embeddings = SAVE_EMBEDDINGS,
+        seqres_database_path = SEQRES_DATABASE_PATH,
+        small_bfd_database_path = SMALL_BFD_DATABASE_PATH,
+        uniprot_cluster_annot_database_path = UNIPROT_CLUSTER_ANNOT_DATABASE_PATH,
+        uniref90_database_path = UNIREF90_DATABASE_PATH
     output:
         os.path.join(OUTPUT_DIR,"AF3_INFERENCE","{i}/{i}/{i}_model.cif"),
     resources:
@@ -69,5 +182,31 @@ rule AF3_INFERENCE:
         --output_dir=/root/af_output/AF3_INFERENCE/{wildcards.i} \
         --db_dir=/root/public_databases \
         --run_data_pipeline=false \
-        --run_inference=true
+        --run_inference=true \
+        --buckets= {params.buckets} \
+        --conformer_max_iterations= {params.conformer_max_iterations} \
+        --flash_attention_implementation= {params.flash_attention_implementation} \
+        --gpu_device= {params.gpu_device} \
+        --hmmalign_binary_path= {params.hmmalign_binary_path} \
+        --hmmbuild_binary_path= {params.hmmbuild_binary_path} \
+        --hmmsearch_binary_path= {params.hmmsearch_binary_path} \
+        --jackhmmer_binary_path= {params.jackhmmer_binary_path} \
+        --jackhmmer_n_cpu= {params.jackhmmer_n_cpu} \
+        --jax_compilation_cache_dir= {params.jax_compilation_cache_dir} \
+        --max_template_date= {params.max_template_date} \
+        --mgnify_database_path= {params.mgnify_database_path} \
+        --nhmmer_binary_path= {params.nhmmer_binary_path} \
+        --nhmmer_n_cpu= {params.nhmmer_n_cpu} \
+        --ntrna_database_path= {params.ntrna_database_path} \
+        --num_diffusion_samples= {params.num_diffusion_samples} \
+        --num_recycles= {params.num_recycles} \
+        --num_seeds= {params.num_seeds} \
+        --pdb_database_path= {params.pdb_database_path} \
+        --rfam_database_path= {params.rfam_database_path} \
+        --rna_central_database_path= {params.rna_central_database_path} \
+        --save_embeddings= {params.save_embeddings} \
+        --seqres_database_path= {params.seqres_database_path} \
+        --small_bfd_database_path= {params.small_bfd_database_path} \
+        --uniprot_cluster_annot_database_path= {params.uniprot_cluster_annot_database_path} \
+        --uniref90_database_path= {params.uniref90_database_path}
         """

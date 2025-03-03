@@ -9,6 +9,24 @@ import click
 import itertools
 import numpy as np
 
+import base64
+
+def encode(s):
+    """Encode a string using Base64 URL-safe encoding."""
+    return base64.urlsafe_b64encode(s.encode()).decode()
+
+def decode(s):
+    """Decode a Base64 URL-safe encoded string."""
+    return base64.urlsafe_b64decode(s).decode()
+
+def safe_join(parts, separator="-"):
+    """Safely joins encoded strings with a separator."""
+    encoded_parts = [encode(p) for p in parts]
+    return separator.join(encoded_parts)
+
+def safe_split(joined_string, separator="-"):
+    """Splits and decodes the encoded strings."""
+    return [decode(s) for s in joined_string.split(separator)]
 
 def sanitised_name(name):
     """Returns sanitised version of the name that can be used as a filename."""
@@ -273,7 +291,7 @@ def check_for_valid_columns(df, mode):
     optional_columns = ["modifications", "msa_option", "unpaired_msa", "paired_msa", "templates", "model_seeds",
                         "bonded_atom_pairs", "user_ccd", "smiles"]
     if mode == "virtual-drug-screen":
-        optional_columns = optional_columns + ["drug_or_target"]
+        optional_columns = optional_columns + ["drug_or_target","drug_id","target_id"]
     if mode == "pulldown":
         optional_columns = optional_columns + ["bait_or_target"]
     # Identify unexpected columns
@@ -336,8 +354,13 @@ def create_virtual_drug_screen_df(df, msa_option=None):
     Also includes standalone targets.
 
     :param df: Input DataFrame with 'id', 'sequence', 'type', and 'drug_or_target' columns.
+               - Other optional columns. Use to screen with multiple drugs vs a single target, or oligomeric targets:
+                    - drug_id: str
+                    - target_id: str
+
     :return: DataFrame with ligand-target pairs and standalone targets.
     """
+    #df = df.drop(columns=["drug_id","target_id"])
     drug_df = df[df["drug_or_target"] == "drug"].copy()
     target_df = df[df["drug_or_target"] == "target"].copy()
 
@@ -347,14 +370,45 @@ def create_virtual_drug_screen_df(df, msa_option=None):
     for _, (target_id, target_seq) in target_df[['id', 'sequence']].iterrows():
         all_entries.append(
             {"job_name": target_id, "id": "A", "type": "protein", "sequence": target_seq, "smiles": ""})
-
+    target_df_oligo = pd.DataFrame()
+    oligo_pairs_df_expanded = pd.DataFrame()
     # Add oligomeric targets
-    target_df_oligo = target_df.copy()
-    grouped_target_df_oligo = target_df_oligo.groupby('id')
-    letters = list(string.ascii_uppercase)
-    target_df_oligo['job_name'] = grouped_target_df_oligo['id'].transform(lambda x: '_'.join(x))
-    target_df_oligo["id"] = grouped_target_df_oligo.cumcount().map(lambda x: letters[x])
-    target_df_oligo["smiles"] = ""
+    if "target_id" in df.columns or "drug_id" in df.columns:
+        if "target_id" in df.columns and "drug_id" not in df.columns:
+            drug_df["drug_id"] = pd.Series(dtype='str')
+        if "target_id" not in df.columns and "drug_id" in df.columns:
+            target_df["target_id"] = pd.Series(dtype='str')
+        target_df_oligo = target_df.copy()
+        drug_df_oligo = drug_df.copy()
+        grouped_target_df_oligo = target_df_oligo.groupby('target_id')
+        grouped_drug_df_oligo = drug_df_oligo.groupby('drug_id')
+        letters = list(string.ascii_uppercase)
+        target_df_oligo['job_name'] =  grouped_target_df_oligo['id'].transform(lambda x: '_'.join(x))
+        drug_df_oligo['job_name'] =  grouped_drug_df_oligo['id'].transform(lambda x: '_'.join(x))
+        oligo_df = pd.concat([target_df_oligo, drug_df_oligo], ignore_index=True)
+
+        # generate pairwise oligomeric combinations
+        oligo_pairs_df = pd.DataFrame([
+            {"job_name": f"{p}_{l}", "type": "protein-ligand"}
+            for p, l in itertools.product(oligo_df[oligo_df["type"]=="protein"].job_name.unique(),
+                                          oligo_df[oligo_df["type"]=="ligand"].job_name.unique())
+        ])
+
+        oligo_pairs_df_expanded = (oligo_pairs_df.assign(id=oligo_pairs_df["job_name"].str.split("_"))
+                       .explode("id")
+                       .reset_index(drop=True))
+
+        oligo_pairs_df_expanded = oligo_pairs_df_expanded[["id", "job_name"]]
+        oligo_pairs_df_expanded = oligo_pairs_df_expanded.merge(oligo_df[["id","type","sequence"]])
+        oligo_pairs_df_expanded["id"] = oligo_pairs_df_expanded.groupby("job_name").cumcount().map(lambda x: letters[x])
+        oligo_pairs_df_expanded.loc[oligo_pairs_df_expanded["type"]=="protein","smiles"] = ""
+        oligo_pairs_df_expanded.loc[oligo_pairs_df_expanded["type"]=="ligand","smiles"] = oligo_pairs_df_expanded.loc[oligo_pairs_df_expanded["type"]=="ligand","sequence"]
+        oligo_pairs_df_expanded.loc[oligo_pairs_df_expanded["type"] == "ligand", "sequence"] = ""
+
+        # Below is ok for oligo-targets w/o ligands
+        target_df_oligo["id"] = grouped_target_df_oligo.cumcount().map(lambda x: letters[x])
+        target_df_oligo["smiles"] = ""
+        target_df_oligo = target_df_oligo.drop(columns=["drug_or_target","drug_id","target_id"])
 
     # Add ligand/standalone-target pairs
     for _, (drug_id, drug_smiles) in drug_df[['id', 'sequence']].iterrows():
@@ -365,10 +419,10 @@ def create_virtual_drug_screen_df(df, msa_option=None):
             all_entries.append(
                 {"job_name": pair_name, "id": "B", "type": "ligand", "sequence": "", "smiles": drug_smiles})
 
-    # Add Add ligand-oligomeric targets
+    # Add ligand-oligomeric targets
 
     df_screen = pd.DataFrame(all_entries)
-    df_screen = pd.concat([pd.DataFrame(all_entries),target_df_oligo.drop(columns=["drug_or_target"])],ignore_index=True)
+    df_screen = pd.concat([df_screen,target_df_oligo,oligo_pairs_df_expanded],ignore_index=True)
 
     if msa_option in ["auto_template_based", "auto_template_free"]:
         df_screen["job_name"] += "_" + msa_option
@@ -404,7 +458,7 @@ def create_df_for_run_mode(df, mode, msa_option):
 
     check_for_valid_columns(df, mode)
 
-    check_for_empty_values(df)
+    #check_for_empty_values(df)
 
     check_for_mode_validity(df, mode)
 
