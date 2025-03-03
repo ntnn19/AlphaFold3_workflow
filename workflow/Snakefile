@@ -98,7 +98,7 @@ rule AF3_DATA:
         runtime=10000,
         cpus_per_task=16,
     container:
-
+        AF3_CONTAINER
     shell:
         """
         python /app/alphafold/run_alphafold.py --json_path=/root/af_output/preprocessing/{wildcards.i}.json \
@@ -174,7 +174,7 @@ rule AF3_INFERENCE:
         runtime=10000,
         memory="256G",
     container:
-        config["af3_container"]
+        AF3_CONTAINER
     shell:
         """
         python /app/alphafold/run_alphafold.py --json_path=/root/af_output/AF3_DATA/{wildcards.i}/{wildcards.i}_data.json \
