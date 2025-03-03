@@ -95,11 +95,6 @@ rule AF3_DATA:
         uniref90_database_path = UNIREF90_DATABASE_PATH
     output:
         data_pipeline_msa = os.path.join(OUTPUT_DIR,"AF3_DATA","{i}/{i}_data.json"),
-    resources:
-        slurm_partition="vds",
-        nodes=1,
-        runtime=10000,
-        cpus_per_task=16,
     container:
         AF3_CONTAINER
     shell:
@@ -171,11 +166,6 @@ rule AF3_INFERENCE:
         uniref90_database_path = UNIREF90_DATABASE_PATH
     output:
         os.path.join(OUTPUT_DIR,"AF3_INFERENCE","{i}/{i}/{i}_model.cif"),
-    resources:
-        slurm_extra="'--gpus-per-node=1'",
-        nodes=1,
-        runtime=10000,
-        memory="256G",
     container:
         AF3_CONTAINER
     shell:
