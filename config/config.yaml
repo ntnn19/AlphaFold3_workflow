@@ -4,6 +4,7 @@ input_csv: example/gabriel_virtual_drug_screen/virtual_drug_screen_df.csv # virt
 output_dir: output
 #mode: pulldown # pulldown
 mode: virtual-drug-screen # virtual drug screen
+n_splits: 4
 #mode: all-vs-all # all-vs-all
 af3_flags:
   --af3_container: sif

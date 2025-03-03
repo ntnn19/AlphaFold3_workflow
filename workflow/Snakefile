@@ -1,5 +1,9 @@
-configfile: "config/config.yaml"
 import os
+configfile: "config/config.yaml"
+scattergather:
+    split=config["n_splits"]
+SPLIT_TOTAL = workflow._scatter["split"]
+
 from scripts import create_tasks_from_dataframe
 INPUT_DF = config["input_csv"]
 OUTPUT_DIR = config["output_dir"]
@@ -59,7 +63,8 @@ else:
 
 rule all:
     input:
-        expand(os.path.join(OUTPUT_DIR,"AF3_INFERENCE","{i}/{i}/{i}_model.cif"),i=JOB_NAMES),
+        expand(os.path.join(OUTPUT_DIR,"AF3_INFERENCE_PARALLEL",f"af3_inference_jobs_{{s}}-of-{SPLIT_TOTAL}.done.txt"),s=list(range(1,SPLIT_TOTAL+1))),
+#        expand(os.path.join(OUTPUT_DIR,"AF3_INFERENCE","{i}/{i}/{i}_model.cif"),i=JOB_NAMES),
         expand(os.path.join(OUTPUT_DIR,"AF3_DATA","{i}/{i}_data.json"),i=JOB_NAMES),
 
 
@@ -134,9 +139,9 @@ rule AF3_DATA:
         """
 
 
-rule AF3_INFERENCE:
+rule CREATE_AF3_INFERENCE_JOBS:
     input:
-        data_pipeline_msa= os.path.join(OUTPUT_DIR,"AF3_DATA","{i}/{i}_data.json"),
+        os.path.join(OUTPUT_DIR,"PREPROCESSING","{i}.json")
     params:
         buckets = BUCKETS,
         conformer_max_iterations = CONFORMER_MAX_ITERATIONS,
@@ -165,12 +170,10 @@ rule AF3_INFERENCE:
         uniprot_cluster_annot_database_path = UNIPROT_CLUSTER_ANNOT_DATABASE_PATH,
         uniref90_database_path = UNIREF90_DATABASE_PATH
     output:
-        os.path.join(OUTPUT_DIR,"AF3_INFERENCE","{i}/{i}/{i}_model.cif"),
-    container:
-        AF3_CONTAINER
+        os.path.join(OUTPUT_DIR,"CREATE_AF3_INFERENCE_JOBS","{i}_af3_inference_job.txt"),
     shell:
         """
-        python /app/alphafold/run_alphafold.py --json_path=/root/af_output/AF3_DATA/{wildcards.i}/{wildcards.i}_data.json \
+        echo 'python /app/alphafold/run_alphafold.py --json_path=/root/af_output/AF3_DATA/{wildcards.i}/{wildcards.i}_data.json \
         --model_dir=/root/models \
         --output_dir=/root/af_output/AF3_INFERENCE/{wildcards.i} \
         --db_dir=/root/public_databases \
@@ -201,5 +204,41 @@ rule AF3_INFERENCE:
         --seqres_database_path={params.seqres_database_path} \
         --small_bfd_database_path={params.small_bfd_database_path} \
         --uniprot_cluster_annot_database_path={params.uniprot_cluster_annot_database_path} \
-        --uniref90_database_path={params.uniref90_database_path}
+        --uniref90_database_path={params.uniref90_database_path}' > {output}
+        """
+
+rule AGG_AF3_INFERENCE_JOBS:
+    input:
+        data_pipeline_msa= expand(os.path.join(OUTPUT_DIR,"CREATE_AF3_INFERENCE_JOBS","{i}_af3_inference_job.txt"),i=JOB_NAMES)
+    output:
+        job_list = os.path.join(OUTPUT_DIR,"AGG_AF3_INFERENCE_JOBS","af3_inference_jobs.txt")
+    shell:
+        """
+        cat {input.data_pipeline_msa} > {output}
+        """
+
+rule SPLIT_INFERENCE_JOB_LIST:
+    input:
+        job_list = os.path.join(OUTPUT_DIR,"AGG_AF3_INFERENCE_JOBS","af3_inference_jobs.txt")
+    params:
+        split_total = SPLIT_TOTAL
+    output:
+        job_list = os.path.join(OUTPUT_DIR,"SPLIT_INFERENCE_JOB_LIST","af3_inference_jobs_{scatteritem}.txt")
+    shell:
+        """
+        split -l {params.split_total} {input.job_list}
+        """
+
+
+rule AF3_INFERENCE_PARALLEL:
+    input:
+        job_list = os.path.join(OUTPUT_DIR,"SPLIT_INFERENCE_JOB_LIST","af3_inference_jobs_{scatteritem}.txt"),
+        data_pipeline_msa= expand(os.path.join(OUTPUT_DIR,"AF3_DATA","{i}/{i}_data.json"),i=JOB_NAMES)
+    output:
+        os.path.join(OUTPUT_DIR,"AF3_INFERENCE_PARALLEL","af3_inference_jobs_{scatteritem}.done.txt"),
+    container:
+        AF3_CONTAINER
+    shell:
+        """
+        bash scripts/parallel.sh {input.job_list}
         """
