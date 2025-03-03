@@ -265,6 +265,7 @@ def check_for_empty_values(df):
 
 
 def check_for_mode_validity(df, mode):
+    print(df)
     if mode == "pulldown":
         allowed_columns = ["id", "sequence", "type", "bait_or_target"]
         if not set(allowed_columns).issubset(df.columns):
@@ -293,7 +294,7 @@ def check_for_valid_columns(df, mode):
     if mode == "virtual-drug-screen":
         optional_columns = optional_columns + ["drug_or_target","drug_id","target_id"]
     if mode == "pulldown":
-        optional_columns = optional_columns + ["bait_or_target"]
+        optional_columns = optional_columns + ["bait_or_target","bait_id","target_id"]
     # Identify unexpected columns
     unexpected_columns = provided_columns - (set(required_columns) | set(optional_columns))
 
@@ -344,13 +345,97 @@ def create_stoichio_screen_df(df):
     pass
 
 
-def create_pulldown_df(df):
-    pass
+def create_pulldown_df(df,msa_option = None):
+    """
+    Generates input for a virtual pulldown assay by pairing baits (protein / dna / rna) and targets (protein / dna / rna).
+    Also includes standalone targets and baits.
+
+    :param df: Input DataFrame with 'id', 'sequence', 'type', and 'drug_or_target' columns.
+               - Other optional columns. Use to pulldown with monomeric baits/oligomeric targets, oligomeric baits/monomeric targets, or oligomeric baits/oligomeric targets:
+                    - bait_id: str
+                    - target_id: str
+
+    :return: DataFrame with ligand-target pairs and standalone targets.
+    """
+    bait_df = df[df["bait_or_target"] == "bait"].copy()
+    target_df = df[df["bait_or_target"] == "target"].copy()
+
+    all_entries = []
+
+    # Add standalone targets
+    for _, (target_id, target_seq,target_type) in target_df[['id', 'sequence','type']].iterrows():
+        all_entries.append(
+            {"job_name": target_id, "id": "A", "type": target_type, "sequence": target_seq})
+    # Add standalone baits
+    for _, (bait_id, bait_seq,bait_type) in bait_df[['id', 'sequence','type']].iterrows():
+        all_entries.append(
+            {"job_name": bait_id, "id": "A", "type": bait_type, "sequence": bait_seq})
+
+
+    target_df_oligo = pd.DataFrame()
+    bait_df_oligo = pd.DataFrame()
+    oligo_bait_target_pairs_df_expanded = pd.DataFrame()
+    # Add oligomeric targets
+    if "target_id" in df.columns or "bait_id" in df.columns:
+        if "target_id" in df.columns and "bait_id" not in df.columns:
+            bait_df["bait_id"] = pd.Series(dtype='str')
+        if "target_id" not in df.columns and "bait_id" in df.columns:
+            target_df["target_id"] = pd.Series(dtype='str')
+        target_df_oligo = target_df.copy()
+        bait_df_oligo = bait_df.copy()
+        grouped_target_df_oligo = target_df_oligo.groupby('target_id')
+        grouped_bait_df_oligo = bait_df_oligo.groupby('bait_id')
+        letters = list(string.ascii_uppercase)
+        target_df_oligo['job_name'] =  grouped_target_df_oligo['id'].transform(lambda x: '_'.join(x))
+        bait_df_oligo['job_name'] =  grouped_bait_df_oligo['id'].transform(lambda x: '_'.join(x))
+        oligo_df = pd.concat([target_df_oligo, bait_df_oligo], ignore_index=True)
+
+        # generate pairwise oligomeric combinations
+        oligo_bait_target_pairs_df = pd.DataFrame([
+            {"job_name": f"{target}_{bait}", "type": "protein-bait"}
+            for target, bait  in itertools.product(oligo_df[oligo_df["bait_or_target"]=="target"].job_name.unique(),
+                                          oligo_df[oligo_df["bait_or_target"]=="bait"].job_name.unique())
+        ])
+
+        oligo_bait_target_pairs_df_expanded = (oligo_bait_target_pairs_df.assign(id=oligo_bait_target_pairs_df["job_name"].str.split("_"))
+                       .explode("id")
+                       .reset_index(drop=True))
+
+        oligo_bait_target_pairs_df_expanded = oligo_bait_target_pairs_df_expanded[["id", "job_name"]]
+        oligo_bait_target_pairs_df_expanded = oligo_bait_target_pairs_df_expanded.merge(oligo_df[["id","type","sequence"]])
+        oligo_bait_target_pairs_df_expanded["id"] = oligo_bait_target_pairs_df_expanded.groupby("job_name").cumcount().map(lambda x: letters[x])
+
+        # Below is ok for oligo-targets w/o baits
+        target_df_oligo["id"] = grouped_target_df_oligo.cumcount().map(lambda x: letters[x])
+        target_df_oligo = target_df_oligo.drop(columns=["bait_or_target","bait_id","target_id"])
+
+        # Add bait-oligomeric targets
+        bait_df_oligo["id"] = grouped_bait_df_oligo.cumcount().map(lambda x: letters[x])
+        bait_df_oligo = bait_df_oligo.drop(columns=["bait_or_target","bait_id","target_id"])
+
+    # Add bait/standalone-target pairs
+    for _, (bait_id, bait_seq,bait_type) in bait_df[['id', 'sequence','type']].iterrows():
+        for _, (target_id, target_seq,target_type) in target_df[['id', 'sequence','type']].iterrows():
+            pair_name = f"{target_id}_{bait_id}"
+            all_entries.append(
+                {"job_name": pair_name, "id": "A", "type": target_type, "sequence": target_seq})
+            all_entries.append(
+                {"job_name": pair_name, "id": "B", "type": bait_type, "sequence": bait_seq})
+
+
+    pulldown_df = pd.DataFrame(all_entries)
+    pulldown_df = pd.concat([pulldown_df,target_df_oligo,bait_df_oligo,oligo_bait_target_pairs_df_expanded],ignore_index=True)
+
+    if msa_option in ["auto_template_based", "auto_template_free"]:
+        pulldown_df["job_name"] += "_" + msa_option
+
+    return pulldown_df
+
 
 
 def create_virtual_drug_screen_df(df, msa_option=None):
     """
-    Simulate a virtual drug screening by pairing ligands (drugs) with protein targets.
+    Generates input for a  virtual drug screening by pairing ligands (drug) and targets (protein / dna / rna).
     Also includes standalone targets.
 
     :param df: Input DataFrame with 'id', 'sequence', 'type', and 'drug_or_target' columns.
@@ -360,18 +445,17 @@ def create_virtual_drug_screen_df(df, msa_option=None):
 
     :return: DataFrame with ligand-target pairs and standalone targets.
     """
-    #df = df.drop(columns=["drug_id","target_id"])
     drug_df = df[df["drug_or_target"] == "drug"].copy()
     target_df = df[df["drug_or_target"] == "target"].copy()
 
     all_entries = []
 
     # Add standalone targets
-    for _, (target_id, target_seq) in target_df[['id', 'sequence']].iterrows():
+    for _, (target_id, target_seq,target_type) in target_df[['id', 'sequence','type']].iterrows():
         all_entries.append(
-            {"job_name": target_id, "id": "A", "type": "protein", "sequence": target_seq, "smiles": ""})
+            {"job_name": target_id, "id": "A", "type": target_type, "sequence": target_seq, "smiles": ""})
     target_df_oligo = pd.DataFrame()
-    oligo_pairs_df_expanded = pd.DataFrame()
+    oligo_ligand_target_pairs_df_expanded = pd.DataFrame()
     # Add oligomeric targets
     if "target_id" in df.columns or "drug_id" in df.columns:
         if "target_id" in df.columns and "drug_id" not in df.columns:
@@ -388,22 +472,22 @@ def create_virtual_drug_screen_df(df, msa_option=None):
         oligo_df = pd.concat([target_df_oligo, drug_df_oligo], ignore_index=True)
 
         # generate pairwise oligomeric combinations
-        oligo_pairs_df = pd.DataFrame([
-            {"job_name": f"{p}_{l}", "type": "protein-ligand"}
-            for p, l in itertools.product(oligo_df[oligo_df["type"]=="protein"].job_name.unique(),
-                                          oligo_df[oligo_df["type"]=="ligand"].job_name.unique())
+        oligo_ligand_target_pairs_df = pd.DataFrame([
+            {"job_name": f"{target}_{drug}", "type": "target-ligand"}
+            for target, drug in itertools.product(oligo_df[oligo_df["drug_or_target"]=="target"].job_name.unique(),
+                                          oligo_df[oligo_df["drug_or_target"]=="drug"].job_name.unique())
         ])
 
-        oligo_pairs_df_expanded = (oligo_pairs_df.assign(id=oligo_pairs_df["job_name"].str.split("_"))
+        oligo_ligand_target_pairs_df_expanded = (oligo_ligand_target_pairs_df.assign(id=oligo_ligand_target_pairs_df["job_name"].str.split("_"))
                        .explode("id")
                        .reset_index(drop=True))
 
-        oligo_pairs_df_expanded = oligo_pairs_df_expanded[["id", "job_name"]]
-        oligo_pairs_df_expanded = oligo_pairs_df_expanded.merge(oligo_df[["id","type","sequence"]])
-        oligo_pairs_df_expanded["id"] = oligo_pairs_df_expanded.groupby("job_name").cumcount().map(lambda x: letters[x])
-        oligo_pairs_df_expanded.loc[oligo_pairs_df_expanded["type"]=="protein","smiles"] = ""
-        oligo_pairs_df_expanded.loc[oligo_pairs_df_expanded["type"]=="ligand","smiles"] = oligo_pairs_df_expanded.loc[oligo_pairs_df_expanded["type"]=="ligand","sequence"]
-        oligo_pairs_df_expanded.loc[oligo_pairs_df_expanded["type"] == "ligand", "sequence"] = ""
+        oligo_ligand_target_pairs_df_expanded = oligo_ligand_target_pairs_df_expanded[["id", "job_name"]]
+        oligo_ligand_target_pairs_df_expanded = oligo_ligand_target_pairs_df_expanded.merge(oligo_df[["id","type","sequence"]])
+        oligo_ligand_target_pairs_df_expanded["id"] = oligo_ligand_target_pairs_df_expanded.groupby("job_name").cumcount().map(lambda x: letters[x])
+        oligo_ligand_target_pairs_df_expanded.loc[oligo_ligand_target_pairs_df_expanded["type"]!="ligand","smiles"] = ""
+        oligo_ligand_target_pairs_df_expanded.loc[oligo_ligand_target_pairs_df_expanded["type"]=="ligand","smiles"] = oligo_ligand_target_pairs_df_expanded.loc[oligo_ligand_target_pairs_df_expanded["type"]=="ligand","sequence"]
+        oligo_ligand_target_pairs_df_expanded.loc[oligo_ligand_target_pairs_df_expanded["type"] == "ligand", "sequence"] = ""
 
         # Below is ok for oligo-targets w/o ligands
         target_df_oligo["id"] = grouped_target_df_oligo.cumcount().map(lambda x: letters[x])
@@ -412,22 +496,22 @@ def create_virtual_drug_screen_df(df, msa_option=None):
 
     # Add ligand/standalone-target pairs
     for _, (drug_id, drug_smiles) in drug_df[['id', 'sequence']].iterrows():
-        for _, (target_id, target_seq) in target_df[['id', 'sequence']].iterrows():
+        for _, (target_id, target_seq,target_type) in target_df[['id', 'sequence','type']].iterrows():
             pair_name = f"{target_id}_{drug_id}"
             all_entries.append(
-                {"job_name": pair_name, "id": "A", "type": "protein", "sequence": target_seq, "smiles": ""})
+                {"job_name": pair_name, "id": "A", "type": target_type, "sequence": target_seq, "smiles": ""})
             all_entries.append(
                 {"job_name": pair_name, "id": "B", "type": "ligand", "sequence": "", "smiles": drug_smiles})
 
     # Add ligand-oligomeric targets
 
-    df_screen = pd.DataFrame(all_entries)
-    df_screen = pd.concat([df_screen,target_df_oligo,oligo_pairs_df_expanded],ignore_index=True)
+    screen_df = pd.DataFrame(all_entries)
+    screen_df = pd.concat([screen_df,target_df_oligo,oligo_ligand_target_pairs_df_expanded],ignore_index=True)
 
     if msa_option in ["auto_template_based", "auto_template_free"]:
-        df_screen["job_name"] += "_" + msa_option
+        screen_df["job_name"] += "_" + msa_option
 
-    return df_screen
+    return screen_df
 
 
 def create_df_for_run_mode(df, mode, msa_option):
@@ -459,7 +543,7 @@ def create_df_for_run_mode(df, mode, msa_option):
     check_for_valid_columns(df, mode)
 
     #check_for_empty_values(df)
-
+    print(df)
     check_for_mode_validity(df, mode)
 
     df["id"] = df["id"].apply(lambda x: sanitised_name(x))
@@ -468,7 +552,6 @@ def create_df_for_run_mode(df, mode, msa_option):
         df = create_all_vs_all_df(df, msa_option)
     if mode == "pulldown":
         df = create_pulldown_df(df)
-        check_for_mode_validity(df, mode)
     if mode == "stoichio-screen":
         df = create_stoichio_screen_df(df)
     if mode == "virtual-drug-screen":

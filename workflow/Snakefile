@@ -50,7 +50,7 @@ if MSA_OPTION == "auto":
 else:
     TASKS_PATHS_AND_JOB_NAMES = create_tasks_from_dataframe.create_tasks_from_dataframe([INPUT_DF,
                                                                                            OUTPUT_DIR + "/PREPROCESSING",
-                                                                                           "--mode", MODE,],standalone_mode=False)
+                                                                                           "--mode", MODE],standalone_mode=False)
     TASKS_PATHS = TASKS_PATHS_AND_JOB_NAMES[0]
     JOB_NAMES = TASKS_PATHS_AND_JOB_NAMES[1]
 

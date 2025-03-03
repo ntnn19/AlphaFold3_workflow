@@ -1,6 +1,10 @@
-input_csv: virtual_drug_screen_df.csv
+#input_csv: example/pulldown.csv # pulldown
+input_csv: example/virtual_drug_screen.csv # virtual drug screen
+# input_csv: example/all_vs_all.csv # all-vs-all
 output_dir: output
-mode: virtual-drug-screen
+#mode: pulldown # pulldown
+mode: virtual-drug-screen # virtual drug screen
+#mode: all-vs-all # all-vs-all
 af3_container: sif
 af3_flags:
   --db_dir: db_dir

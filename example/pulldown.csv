@@ -1,0 +1,7 @@
+id,type,sequence,bait_or_target,target_id,bait_id
+p2,protein,MASEQASDTTVCIK,target,t2,
+b1,protein,MASEQASDTTVCIK,bait,,b1
+b2,protein,MASEQASDTTVCIK,bait,,b2
+p1,protein,MHIKPEERF,target,t1,
+p3,protein,ANHIREQDS,target,t2,
+b3,protein,ANHIREQDS,bait,,b1
