@@ -28,7 +28,11 @@ NHMMER_N_CPU = get_af3_flag_value('--nhmmer_n_cpu', 8)
 NTRNA_DATABASE_PATH = get_af3_flag_value('--ntrna_database_path', os.path.join('/root/public_databases','nt_rna_2023_02_23_clust_seq_id_90_cov_80_rep_seq.fasta'))
 NUM_DIFFUSION_SAMPLES = get_af3_flag_value('--num_diffusion_samples', 5)
 NUM_RECYCLES = get_af3_flag_value('--num_recycles', 10)
-NUM_SEEDS = get_af3_flag_value('--num_seeds', None)
+if "--num_seeds" in config["af3_flags"]:
+    NUM_SEEDS_ARG = f"--num_seeds={config['af3_flags']['--num_seeds']}"
+else:
+    NUM_SEEDS_ARG = f""
+
 PDB_DATABASE_PATH = get_af3_flag_value('--pdb_database_path', os.path.join('/root/public_databases','mmcif_files'))
 RFAM_DATABASE_PATH = get_af3_flag_value('--rfam_database_path', os.path.join('/root/public_databases','rfam_14_9_clust_seq_id_90_cov_80_rep_seq.fasta'))
 RNA_CENTRAL_DATABASE_PATH = get_af3_flag_value('--rna_central_database_path', os.path.join('/root/public_databases','rnacentral_active_seq_id_90_cov_80_linclust.fasta'))
@@ -80,7 +84,7 @@ rule AF3_DATA:
         ntrna_database_path = NTRNA_DATABASE_PATH,
         num_diffusion_samples = NUM_DIFFUSION_SAMPLES,
         num_recycles = NUM_RECYCLES,
-        num_seeds = NUM_SEEDS,
+        num_seeds_arg = NUM_SEEDS_ARG,
         pdb_database_path = PDB_DATABASE_PATH,
         rfam_database_path = RFAM_DATABASE_PATH,
         rna_central_database_path = RNA_CENTRAL_DATABASE_PATH,
@@ -123,7 +127,7 @@ rule AF3_DATA:
         --ntrna_database_path={params.ntrna_database_path} \
         --num_diffusion_samples={params.num_diffusion_samples} \
         --num_recycles={params.num_recycles} \
-        --num_seeds={params.num_seeds} \
+        {params.num_seeds_arg} \
         --pdb_database_path={params.pdb_database_path} \
         --rfam_database_path={params.rfam_database_path} \
         --rna_central_database_path={params.rna_central_database_path} \
@@ -156,7 +160,7 @@ rule AF3_INFERENCE:
         ntrna_database_path = NTRNA_DATABASE_PATH,
         num_diffusion_samples = NUM_DIFFUSION_SAMPLES,
         num_recycles = NUM_RECYCLES,
-        num_seeds = NUM_SEEDS,
+        num_seeds = NUM_SEEDS_ARG,
         pdb_database_path = PDB_DATABASE_PATH,
         rfam_database_path = RFAM_DATABASE_PATH,
         rna_central_database_path = RNA_CENTRAL_DATABASE_PATH,
@@ -199,7 +203,7 @@ rule AF3_INFERENCE:
         --ntrna_database_path={params.ntrna_database_path} \
         --num_diffusion_samples={params.num_diffusion_samples} \
         --num_recycles={params.num_recycles} \
-        --num_seeds={params.num_seeds} \
+        {params.num_seeds_arg} \
         --pdb_database_path={params.pdb_database_path} \
         --rfam_database_path={params.rfam_database_path} \
         --rna_central_database_path={params.rna_central_database_path} \
