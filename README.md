@@ -135,7 +135,7 @@ The optional flags are:
 For running this workflow on HPC using slurm, you can modify profile/config.yaml to make it compatible with your HPC setting.
 More details can be found [here](https://snakemake.github.io/snakemake-plugin-catalog/plugins/executor/slurm.html#using-profiles).
 
-### 5. Run the workflow
+### 6. Run the workflow
 Information on snakemake flags can be found [here](https://snakemake.readthedocs.io/en/stable/executing/cli.html#)
 **Dry run (local)**
 ```bash

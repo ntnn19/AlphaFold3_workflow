@@ -160,7 +160,7 @@ rule AF3_INFERENCE:
         ntrna_database_path = NTRNA_DATABASE_PATH,
         num_diffusion_samples = NUM_DIFFUSION_SAMPLES,
         num_recycles = NUM_RECYCLES,
-        num_seeds = NUM_SEEDS_ARG,
+        num_seeds_arg = NUM_SEEDS_ARG,
         pdb_database_path = PDB_DATABASE_PATH,
         rfam_database_path = RFAM_DATABASE_PATH,
         rna_central_database_path = RNA_CENTRAL_DATABASE_PATH,
