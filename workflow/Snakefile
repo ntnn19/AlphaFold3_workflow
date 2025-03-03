@@ -100,7 +100,7 @@ rule AF3_DATA:
         AF3_CONTAINER
     shell:
         """
-        python /app/alphafold/run_alphafold.py --json_path=/root/af_output/preprocessing/{wildcards.i}.json \
+        python /app/alphafold/run_alphafold.py --json_path=/root/af_output/PREPROCESSING/{wildcards.i}.json \
         --model_dir=/root/models \
         --output_dir=/root/af_output/AF3_DATA \
         --db_dir=/root/public_databases \
