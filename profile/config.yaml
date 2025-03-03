@@ -1,17 +1,17 @@
 executor: slurm
 
 default-resources:
-    slurm_partition: "vds"
-    slurm_account: "vds"
+    slurm_partition: "allcpu"
+    slurm_account: "cssb"
 
 set-resources:
     AF3_DATA:
-        slurm_partition: "vds"
+        slurm_partition: "allcpu"
         nodes: 1
         runtime: 10000
         cpus_per_task: 16
     AF3_INFERENCE:
-        slurm_partition: "vds"
+        slurm_partition: "topfgpu"
         slurm_extra: "'--gpus-per-node=1'"
         nodes: 1
         runtime: 10000
