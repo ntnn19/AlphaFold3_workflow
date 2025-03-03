@@ -3,7 +3,6 @@ import os
 from scripts import create_tasks_from_dataframe
 INPUT_DF = config["input_csv"]
 OUTPUT_DIR = config["output_dir"]
-DB_DIR = config["af3_flags"]['--db_dir']
 MODE = config.get("mode","default")
 MSA_OPTION = config.get("msa_option","auto")
 AF3_CONTAINER = config["af3_flags"]["--af3_container"]
@@ -23,21 +22,21 @@ JACKHMMER_BINARY_PATH = get_af3_flag_value('--jackhmmer_binary_path', '/hmmer/bi
 JACKHMMER_N_CPU = get_af3_flag_value('--jackhmmer_n_cpu', 8)
 JAX_COMPILATION_CACHE_DIR = get_af3_flag_value('--jax_compilation_cache_dir', '/path/to/cache')
 MAX_TEMPLATE_DATE = get_af3_flag_value('--max_template_date', '2021-09-30')
-MGNIFY_DATABASE_PATH = get_af3_flag_value('--mgnify_database_path', os.path.join(DB_DIR,'mgy_clusters_2022_05.fa'))
+MGNIFY_DATABASE_PATH = get_af3_flag_value('--mgnify_database_path', os.path.join('/root/public_databases','mgy_clusters_2022_05.fa'))
 NHMMER_BINARY_PATH = get_af3_flag_value('--nhmmer_binary_path', '/hmmer/bin/nhmmer')
 NHMMER_N_CPU = get_af3_flag_value('--nhmmer_n_cpu', 8)
-NTRNA_DATABASE_PATH = get_af3_flag_value('--ntrna_database_path', os.path.join(DB_DIR,'nt_rna_2023_02_23_clust_seq_id_90_cov_80_rep_seq.fasta'))
+NTRNA_DATABASE_PATH = get_af3_flag_value('--ntrna_database_path', os.path.join('/root/public_databases','nt_rna_2023_02_23_clust_seq_id_90_cov_80_rep_seq.fasta'))
 NUM_DIFFUSION_SAMPLES = get_af3_flag_value('--num_diffusion_samples', 5)
 NUM_RECYCLES = get_af3_flag_value('--num_recycles', 10)
 NUM_SEEDS = get_af3_flag_value('--num_seeds', 1)
-PDB_DATABASE_PATH = get_af3_flag_value('--pdb_database_path', os.path.join(DB_DIR,'mmcif_files'))
-RFAM_DATABASE_PATH = get_af3_flag_value('--rfam_database_path', os.path.join(DB_DIR,'rfam_14_9_Clust_Seq_90_cov_80_rep_seq.fasta'))
-RNA_CENTRAL_DATABASE_PATH = get_af3_flag_value('--rna_central_database_path', os.path.join(DB_DIR,'rnacentral_active_seq_id_90_cov_80_linclust.fasta'))
+PDB_DATABASE_PATH = get_af3_flag_value('--pdb_database_path', os.path.join('/root/public_databases','mmcif_files'))
+RFAM_DATABASE_PATH = get_af3_flag_value('--rfam_database_path', os.path.join('/root/public_databases','rfam_14_9_clust_seq_90_cov_80_rep_seq.fasta'))
+RNA_CENTRAL_DATABASE_PATH = get_af3_flag_value('--rna_central_database_path', os.path.join('/root/public_databases','rnacentral_active_seq_id_90_cov_80_linclust.fasta'))
 SAVE_EMBEDDINGS = get_af3_flag_value('--save_embeddings', False)
-SEQRES_DATABASE_PATH = get_af3_flag_value('--seqres_database_path', os.path.join(DB_DIR,'pdb_seqres_2022_09_28.fasta'))
-SMALL_BFD_DATABASE_PATH = get_af3_flag_value('--small_bfd_database_path', os.path.join(DB_DIR,'bfd-first_non_consensus_sequences.fasta'))
-UNIPROT_CLUSTER_ANNOT_DATABASE_PATH = get_af3_flag_value('--uniprot_cluster_annot_database_path', os.path.join(DB_DIR,'uniprot_all_2021_04.fa'))
-UNIREF90_DATABASE_PATH = get_af3_flag_value('--uniref90_database_path', os.path.join(DB_DIR,'uniref90_2022_05.fa'))
+SEQRES_DATABASE_PATH = get_af3_flag_value('--seqres_database_path', os.path.join('/root/public_databases','pdb_seqres_2022_09_28.fasta'))
+SMALL_BFD_DATABASE_PATH = get_af3_flag_value('--small_bfd_database_path', os.path.join('/root/public_databases','bfd-first_non_consensus_sequences.fasta'))
+UNIPROT_CLUSTER_ANNOT_DATABASE_PATH = get_af3_flag_value('--uniprot_cluster_annot_database_path', os.path.join('/root/public_databases','uniprot_all_2021_04.fa'))
+UNIREF90_DATABASE_PATH = get_af3_flag_value('--uniref90_database_path', os.path.join('/root/public_databases','uniref90_2022_05.fa'))
 
 if MSA_OPTION == "auto":
     MSA_OPTION_1 = "auto_template_free"
