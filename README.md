@@ -27,38 +27,44 @@ singularity build alphafold3_parallel.sif docker://ntnn19/alphafold3:latest_para
 
 ### 2. Clone This repository
 
-Clone this repository into your project directory. After cloning, your project structure should look like this:
+Clone this repository this repository.
 
 ```bash
-.  <-- This represents your current location
-├── dataset_1
-│   ├── af_input
-│   ├── data_pipeline
-│       └── <your_input_json_file>
-├── example
-│   └── example.json
-├── README.md
-└── workflow
-    ├── scripts
-    │   ├── create_job_list.py
-    │   ├── parallel.sh
-    │   └── split_json_and_create_job_list.py
-    ├── Snakefile
+git clone https://github.com/ntnn19/alphafold3_workflow.git
 ```
-An example JSON file is available in the example/ directory:
+
+Go to the repository location
+```bash
+cd alphafold3_workflow
+```
+
+An example JSON and CSV files is available in the example directory:
 example/example.json
+example/all_vs_all.csv
+example/pulldown.csv
+example/virtual_drug_screen.csv
 
 ### 3. Create & activate the Snakemake environment
 
-Install mamba or micromamba if not already installed. Then, set up and activate the environment using the following commands:
-```bash 
-mamba create -p $(pwd)/env -f environment.yml
-```
+Install [mamba](https://github.com/conda-forge/miniforge) or [micromamba](https://mamba.readthedocs.io/en/latest/installation/micromamba-installation.html) if not already installed.
+
+Then, set up and activate the environment using the following commands:
+
 ```bash
-mamba activate $(pwd)/env
+mamba env create -p $(pwd)/venv -f environment.yml
+mamba activate $(pwd)/venv
 ```
 
-### 4. Run the workflow
+Or if using micromamba
+
+```bash
+micromamba env create -p $(pwd)/venv -f environment.yml
+eval "$(micromamba shell hook --shell=bash)"
+micromamba activate $(pwd)/venv
+```
+### 4. Configure the workflow
+
+### 5. Run the workflow
 **Dry run (local)**
 ```bash
 snakemake --use-singularity \

@@ -1,4 +1,5 @@
-# afusion/api.py
+# adapted from https://github.com/Hanziwww/AlphaFold3-GUI/blob/main/afusion/api.py
+
 
 import os
 import json
