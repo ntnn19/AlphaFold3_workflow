@@ -1,4 +1,6 @@
-# AlphaFold3 workflow
+# AlphaFold 3 workflow
+
+A Snakemake workflow for high-throughput AlphaFold 3 predictions
 
 You are currently in branch **'parallel'**.
 
