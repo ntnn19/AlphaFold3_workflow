@@ -244,5 +244,5 @@ rule AF3_INFERENCE_PARALLEL:
         AF3_CONTAINER
     shell:
         """
-        bash workflow/scripts/parallel.sh {input.job_list} /root/af_output/SPLIT_INFERENCE_JOB_LIST/af3_inference_jobs_{wildcards.scatteritem}.txt
+        bash workflow/scripts/parallel.sh /root/af_output/SPLIT_INFERENCE_JOB_LIST/af3_inference_jobs_{wildcards.scatteritem}.txt
         """
