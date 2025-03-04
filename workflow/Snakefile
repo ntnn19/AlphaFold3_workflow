@@ -226,8 +226,6 @@ rule SPLIT_INFERENCE_JOB_LIST:
         sub_job_list = scatter.split(os.path.join(OUTPUT_DIR,"SPLIT_INFERENCE_JOB_LIST","af3_inference_jobs_{scatteritem}.txt"))
     run:
         import os
-        #os.makedirs(os.path.join(DATASET,"af_output/inference_job_lists/split"),exist_ok=True)
-#        os.makedirs(os.path.join(wildcards.dataset,"af_output/inference_job_lists/split"),exist_ok=True)
         lines = open(input.inference_job_list).readlines()
         [open(output.sub_job_list, "w").writelines(lines[i*len(lines)//params.split_total:(i+1)*len(lines)//params.split_total + (1 if i == 3 else 0)]) for i in range(params.split_total)]
 
