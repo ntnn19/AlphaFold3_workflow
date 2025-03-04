@@ -3,7 +3,7 @@ import os
 localrules: CREATE_AF3_INFERENCE_JOBS, AGG_AF3_INFERENCE_JOBS, SPLIT_INFERENCE_JOB_LIST
 configfile: "config/config.yaml"
 scattergather:
-    split=config["n_splits"]
+    split=config.get("n_splits",1)
 SPLIT_TOTAL = workflow._scatter["split"]
 
 from scripts import create_tasks_from_dataframe
