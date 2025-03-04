@@ -229,7 +229,8 @@ rule SPLIT_INFERENCE_JOB_LIST:
     run:
         import os
         lines = open(input.inference_job_list).readlines()
-        [open(output.sub_job_list, "w").writelines(lines[i*len(lines)//params.split_total:(i+1)*len(lines)//params.split_total + (1 if i == 3 else 0)]) for i in range(params.split_total)]
+        [open(output.sub_job_list[i], "w").writelines(lines[i*len(lines)//params.split_total:(i+1)*len(lines)//params.split_total + (1 if i == 3 else 0)])
+         for i in range(params.split_total)]
 
 
 
