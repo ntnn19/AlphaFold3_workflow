@@ -33,7 +33,7 @@ Make sure to download the required [AlphaFold3 databases](https://github.com/goo
 Clone this repository.
 
 ```bash
-git clone https://github.com/ntnn19/AlphaFlow.git
+git clone --branch parallel --single-branch https://github.com/ntnn19/AlphaFlow.git
 ```
 
 Go to the repository location
