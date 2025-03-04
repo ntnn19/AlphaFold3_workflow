@@ -1,11 +1,15 @@
 # AlphaFold3 Workflow
 
-This workflow supports separate execution of the **CPU** and **GPU** steps. It also distributes inference runs across multiple GPU devices using **GNU parallel**.
+You are currently in branch **'parallel'**.
+
+The workflow implemented in this branch is slightly different than the one in branch **'master'**.
+
+Similar to the workflow in branch **'master'**, this workflow supports separate execution of the **CPU** and **GPU** steps. 
+On top of that, it also distributes inference runs across multiple GPU devices using **GNU parallel**.
+This is particularly useful when your HPC setup has multi-GPU nodes, but does not support "consumable resources".   
 
 
 ### TO DO
-- Add a config file to allow running using different alphafold3 configurations & encode the configuration in the output file/directory names.
-- Add a json preparation step for different analyses such as all-vs-all (e.g. for binary PPI) , baits-vs-targets (e.g. for drug screens), assembly, etc.
 - Add steps for downstream analyses such as relaxation, assembly, binding site prediction, scoring etc. 
 - Add a reporting step to the workflow in a form of a table that describe each predicted structure.
 
@@ -250,10 +254,9 @@ Information on snakemake flags can be found [here](https://snakemake.readthedocs
 **Dry run**
 ```bash
 snakemake -s workflow/Snakefile \
---use-singularity --singularity-args  \
+--use-singularity --singularity-args \
 '--nv -B <your_alphafold3_weights_dir>:/root/models -B <your_output_dir>/PREPROCESSING:/root/af_input -B <your_output_dir>:/root/af_output -B <your_alphafold3_databases_dir>:/root/public_databases -B <your_alphafold3_tmp_dir>/tmp:/tmp --env XLA_CLIENT_MEM_FRACTION=3.2' \
--j unlimited -c all --executor slurm --groups \
-RUN_AF3_DATA=group0 --group-components group0=12 \
+-j unlimited -c all --executor slurm \
 -p -k -w 30 --rerun-triggers mtime -n
 ```
 **Local run**
@@ -261,8 +264,7 @@ RUN_AF3_DATA=group0 --group-components group0=12 \
 snakemake -s workflow/Snakefile \
 --use-singularity --singularity-args  \
 '--nv -B <your_alphafold3_weights_dir>:/root/models -B <your_output_dir>/PREPROCESSING:/root/af_input -B <your_output_dir>:/root/af_output -B <your_alphafold3_databases_dir>:/root/public_databases -B <your_alphafold3_tmp_dir>/tmp:/tmp --env XLA_CLIENT_MEM_FRACTION=3.2' \
--j unlimited -c all --executor slurm --groups \
-RUN_AF3_DATA=group0 --group-components group0=12 \
+-j unlimited -c all --executor slurm \
 -p -k -w 30 --rerun-triggers mtime
 ```
 
@@ -271,7 +273,6 @@ RUN_AF3_DATA=group0 --group-components group0=12 \
 snakemake -s workflow/Snakefile \
 --use-singularity --singularity-args  \
 '--nv -B <your_alphafold3_weights_dir>:/root/models -B <your_output_dir>/PREPROCESSING:/root/af_input -B <your_output_dir>:/root/af_output -B <your_alphafold3_databases_dir>:/root/public_databases -B <your_alphafold3_tmp_dir>/tmp:/tmp --env XLA_CLIENT_MEM_FRACTION=3.2' \
--j unlimited -c all --executor slurm --groups \
-RUN_AF3_DATA=group0 --group-components group0=12 \
+-j unlimited -c all --executor slurm \
 -p -k -w 30 --rerun-triggers mtime --workflow-profile profile
 ```
