@@ -20,10 +20,9 @@ Run the following command to build the Singularity container that supports paral
 singularity build alphafold3_parallel.sif docker://ntnn19/alphafold3:latest_parallel_a100_40gb
 ```
 
-**Notes**
-- Set <number_of_inference_job_lists> to 1 for local runs.
-- For SLURM runs, set <number_of_inference_job_lists> to n, where n is the number of nodes with GPUs.
-- Make sure to download the required [AlphaFold3 databases](https://github.com/google-deepmind/alphafold3/blob/main/docs/installation.md#obtaining-genetic-databases) and [weights](https://forms.gle/svvpY4u2jsHEwWYS6) before proceeding.
+### Notes
+
+Make sure to download the required [AlphaFold3 databases](https://github.com/google-deepmind/alphafold3/blob/main/docs/installation.md#obtaining-genetic-databases) and [weights](https://forms.gle/svvpY4u2jsHEwWYS6) before proceeding.
 
 ### 2. Clone This repository
 
@@ -131,7 +130,7 @@ By default the workflow will run in a default mode, to which a csv table such as
 
 
 #### Optional AlphaFold3 flags:
-Include the optional flags withing the scope of the af3_flags. 
+Include the optional flags within the scope of the af3_flags. 
 The optional flags are:
 <details>
 
