@@ -26,7 +26,7 @@ Make sure to download the required [AlphaFold3 databases](https://github.com/goo
 
 ### 2. Clone This repository
 
-Clone this repository this repository.
+Clone this repository.
 
 ```bash
 git clone https://github.com/ntnn19/alphafold3_workflow.git
@@ -37,7 +37,7 @@ Go to the repository location
 cd alphafold3_workflow
 ```
 
-An example JSON and CSV files is available in the example directory:
+An example JSON and CSV files are available in the example directory:
 example/example.json
 example/all_vs_all.csv
 example/pulldown.csv
@@ -62,7 +62,7 @@ eval "$(micromamba shell hook --shell=bash)"
 micromamba activate $(pwd)/venv
 ```
 ### 4. Configure the workflow
-Open config/config.yaml with your favourite text editor.
+Open config/config.yaml with your favorite text editor.
 Edit the values to your needs.
 #### Mandatory workflow flags:
 ##### This workflow adapts the input preparation logic from [AlphaFold3-GUI](https://github.com/Hanziwww/AlphaFold3-GUI).
@@ -115,7 +115,30 @@ af3_flags:
 - **sequence**: The nucleotide or amino acid sequence.
 
 
-virtual drug screen: example/virtual_drug_screen.csv
+##### virtual drug screen: example/virtual_drug_screen.csv
+
+| id  | type    | sequence                        | drug_or_target | target_id | drug_id |
+|-----|--------|---------------------------------|----------------|-----------|---------|
+| p2  | protein | MASEQASDTTVCIK                  | target         | t1        |         |
+| l1  | ligand  | CC(=O)Oc1ccccc1C(=O)O           | drug           |           | d1      |
+| l2  | ligand  | CN1C=NC2=C1C(=O)N(C(=O)N2C)     | drug           |           | d1      |
+| p1  | protein | MHIKPEERF                       | target         | t1        |         |
+| p3  | protein | ANHIREQDS                       | target         | t2        |         |
+| l3  | ligand  | CN1C=NC2                        | drug           |           | d2      |
+
+##### Explanation:
+- **id**: A unique identifier for each entry.
+- **type**: The type of compound (protein, ligand, etc.).
+- **sequence**: The amino acid sequence for proteins or the chemical structure for ligands.
+- **drug_or_target**: Indicates whether the compound is a "drug" or "target".
+- **Optional columns**: 
+  - **target_id**: The identifier for the target.
+  - **drug_id**: The identifier for the drug.
+
+
+**The optional columns can be used to screen single drugs against monomeric targets,
+single drugs against multimeric targets, multiple drugs against monomeric targets, or multiple drugs against multimeric targets.**
+
 
 ##### pulldown: example/pulldown.csv
 
@@ -137,12 +160,19 @@ virtual drug screen: example/virtual_drug_screen.csv
   - **target_id**: The identifier for the target.
   - **bait_id**: The identifier for the bait.
 
-**The optional columns can be used to pulldown oligomeric targets with monomeric baits, oligomeric targets with oligomeric baits, or monomeric targets with oligomeric baits.**
+**The optional columns can be used to pulldown multimeric targets with monomeric baits, multimeric targets with multimeric baits, or monomeric targets with multimeric baits.**
 
 
 
 #### Optional AlphaFold3 flags:
-Include the optional flags within the scope of the af3_flags. 
+Include the optional flags within the scope of the af3_flags.
+
+For flags explanations, run the following command:
+```bash
+singularity run <path_to_your_alphafold3_singularity_container> \
+python /app/alphafold/run_alphafold.py --help
+```
+
 The optional flags are:
 <details>
 
@@ -199,6 +229,16 @@ The optional flags are:
 --uniref90_database_path
 </details>
 
+##### Example for a config/config.yaml file with optional AlphaFold 3 flags: 
+```bash
+input_csv: example/virtual_drug_screen_df.csv
+output_dir: output
+mode: virtual-drug-screen 
+# n_splits: 4  # Optional, for running using the 'parallel' branch of this repo
+af3_flags:
+  --af3_container: <path_to_your_alphafold_3_container>
+  --num_diffusion_samples: 5
+```
 ### 5. Configure the profile (Optional)
 
 For running this workflow on HPC using slurm, you can modify profile/config.yaml to make it compatible with your HPC setting.
@@ -207,7 +247,7 @@ More details can be found [here](https://snakemake.github.io/snakemake-plugin-ca
 ### 6. Run the workflow
 Information on snakemake flags can be found [here](https://snakemake.readthedocs.io/en/stable/executing/cli.html#)
 
-**Dry run (local)**
+**Dry run**
 ```bash
 snakemake -s workflow/Snakefile \
 --use-singularity --singularity-args  \
@@ -215,15 +255,6 @@ snakemake -s workflow/Snakefile \
 -j unlimited -c all --executor slurm --groups \
 RUN_AF3_DATA=group0 --group-components group0=12 \
 -p -k -w 30 --rerun-triggers mtime -n
-```
-**Dry run (slurm)**
-```bash
-snakemake -s workflow/Snakefile \
---use-singularity --singularity-args  \
-'--nv -B <your_alphafold3_weights_dir>:/root/models -B <your_output_dir>/PREPROCESSING:/root/af_input -B <your_output_dir>:/root/af_output -B <your_alphafold3_databases_dir>:/root/public_databases -B <your_alphafold3_tmp_dir>/tmp:/tmp --env XLA_CLIENT_MEM_FRACTION=3.2' \
--j unlimited -c all --executor slurm --groups \
-RUN_AF3_DATA=group0 --group-components group0=12 \
--p -k -w 30 --rerun-triggers mtime --workflow-profile profile -n
 ```
 **Local run**
 ```bash
