@@ -1,4 +1,4 @@
-# AlphaFold3_workflow
+# AlphaFold3 workflow
 
 You are currently in branch **'parallel'**.
 
