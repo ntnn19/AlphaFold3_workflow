@@ -65,8 +65,7 @@ else:
 
 rule all:
     input:
-        expand(os.path.join(OUTPUT_DIR,"AF3_INFERENCE_PARALLEL",f"af3_inference_jobs_{{s}}-of-{SPLIT_TOTAL}.done.txt"),s=list(range(1,SPLIT_TOTAL+1))),
-#        expand(os.path.join(OUTPUT_DIR,"AF3_INFERENCE","{i}/{i}/{i}_model.cif"),i=JOB_NAMES),
+        expand(os.path.join(OUTPUT_DIR,"AF3_INFERENCE",f"af3_inference_jobs_{{s}}-of-{SPLIT_TOTAL}.done.txt"),s=list(range(1,SPLIT_TOTAL+1))),
         expand(os.path.join(OUTPUT_DIR,"AF3_DATA_PIPELINE","{i}/{i}_data.json"),i=JOB_NAMES),
 
 
