@@ -1,4 +1,4 @@
-# AlphaFlow
+# AlphaFold3_workflow
 
 You are currently in branch **'parallel'**.
 
@@ -33,12 +33,12 @@ Make sure to download the required [AlphaFold3 databases](https://github.com/goo
 Clone this repository.
 
 ```bash
-git clone --branch parallel --single-branch https://github.com/ntnn19/AlphaFlow.git
+git clone --branch parallel --single-branch https://github.com/ntnn19/AlphaFold3_workflow.git
 ```
 
 Go to the repository location
 ```bash
-cd AlphaFlow
+cd AlphaFold3_workflow
 ```
 
 An example JSON and CSV files are available in the example directory:
