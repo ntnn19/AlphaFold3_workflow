@@ -66,41 +66,64 @@ micromamba activate $(pwd)/venv
 Open config/config.yaml with your favourite text editor.
 Edit the values to your needs.
 #### Mandatory workflow flags:
--   **input_csv:** <path_to_your_csv_table> 
+##### This workflow adapts the input preparation logic from [AlphaFold3-GUI](https://github.com/Hanziwww/AlphaFold3-GUI).
 
 See the following input examples: 
+-   **output_dir:** <path_to_your_output_directory> # Stores the outputs of this workflow
+-   **af3_flags:** # configures AlphaFold 3
+     -   **af3_container:** <path_to_your_alphafold3_container> 
+- **input_csv:** <path_to_your_csv_table> 
 
-default: example/default.csv
+**Examples for supported input_csv files:**
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
-<script>
-fetch('example/default.csv')
-  .then(response => response.text())
-  .then(csv => {
-    let data = Papa.parse(csv, { header: true }).data;
-    let table = '<table border="1"><tr>';
-    Object.keys(data[0]).forEach(key => table += `<th>${key}</th>`);
-    table += '</tr>';
-    data.forEach(row => {
-      table += '<tr>';
-      Object.values(row).forEach(value => table += `<td>${value}</td>`);
-      table += '</tr>';
-    });
-    table += '</table>';
-    document.getElementById('csv-table').innerHTML = table;
-  });
-</script>
-<div id="csv-table"></div>
+**default:** example/default.csv
 
-all-vs-all: example/all_vs_all.csv 
+| job_name  | type    | id | sequence        |
+|-----------|--------|----|----------------|
+| TestJob1  | protein | A  | MVLSPADKTNVKAAW |
+| TestJob1  | protein | B  | MVLSPADKTNVKAAW |
+| TestJob2  | protein | C  | MVLSPADKTNVKAAW |
+
+##### Explanation:
+For explanation and full list of optional columns, see  [AlphaFold3-GUI api tutorial](https://alphafold3-gui.readthedocs.io/en/latest/tutorial.html)
+
+##### all-vs-all: example/all_vs_all.csv 
+
+| id  | type    | sequence          |
+|-----|--------|------------------|
+| p1  | rna    | AUGGCA           |
+| p2  | protein | MKPSFDR          |
+| p3  | protein | MVLSPADKTNVKAAW  |
+
+##### Explanation:
+- **id**: A unique identifier for each entry.
+- **type**: The biological macromolecule type (protein, dna, or rna).
+- **sequence**: The nucleotide or amino acid sequence.
+
 
 virtual drug screen: example/virtual_drug_screen.csv
 
-pulldown: example/pulldown.csv 
+##### pulldown: example/pulldown.csv
 
--   **output_dir:** <path_to_your_output_directory> # Stores the outputs of this workflow
--   **af3_flags:** # configures AlphaFold 3
-     -   **af3_container:** <path_to_your_alphafold3_container>
+| id  | type    | sequence          | bait_or_target | target_id | bait_id |
+|-----|--------|------------------|----------------|-----------|---------|
+| p2  | protein | MASEQASDTTVCIK   | target         | t2        |         |
+| b1  | protein | MASEQASDTTVCIK   | bait           |           | b1      |
+| b2  | protein | MASEQASDTTVCIK   | bait           |           | b2      |
+| p1  | protein | MHIKPEERF        | target         | t1        |         |
+| p3  | protein | ANHIREQDS        | target         | t2        |         |
+| b3  | protein | ANHIREQDS        | bait           |           | b1      |
+
+##### Explanation:
+- **id**: A unique identifier for each entry.
+- **type**: The biological macromolecule type (protein, dna, or rna).
+- **sequence**: The nucleotide or amino acid sequence.
+- **bait_or_target**: Indicates whether the protein is a "bait" or "target" in the experiment.
+- **Optional columns: 
+  - **target_id**: The identifier for the target.
+  - **bait_id**: The identifier for the bait.
+
+**The optional columns can be used to pulldown oligomeric targets with monomeric baits, oligomeric targets with oligomeric baits, or monomeric targets with oligomeric baits.**
 
 #### Optional workflow flags:
 
