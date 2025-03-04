@@ -65,18 +65,53 @@ micromamba activate $(pwd)/venv
 ### 4. Configure the workflow
 Open config/config.yaml with your favourite text editor.
 Edit the values to your needs.
-#### Mandatory flags:
--   input_csv: <path_to_your_csv_table> # See the following examples: example/all_vs_all.csv # all-vs-all
--   output_dir: <path_to_your_output_directory> # Stores the outputs of this workflow
--   af3_flags:
-     -   af3_container: <path_to_your_alphafold3_container>
-     -   db_dir: <path_to_your_alphafold3_databases>
-     -   model_dir: <path_to_your_alphafold3_model_parameters>
+#### Mandatory workflow flags:
+-   **input_csv:** <path_to_your_csv_table> 
+
+See the following input examples: 
+
+default: example/default.csv
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+<script>
+fetch('example/default.csv')
+  .then(response => response.text())
+  .then(csv => {
+    let data = Papa.parse(csv, { header: true }).data;
+    let table = '<table border="1"><tr>';
+    Object.keys(data[0]).forEach(key => table += `<th>${key}</th>`);
+    table += '</tr>';
+    data.forEach(row => {
+      table += '<tr>';
+      Object.values(row).forEach(value => table += `<td>${value}</td>`);
+      table += '</tr>';
+    });
+    table += '</table>';
+    document.getElementById('csv-table').innerHTML = table;
+  });
+</script>
+<div id="csv-table"></div>
+
+all-vs-all: example/all_vs_all.csv 
+
+virtual drug screen: example/virtual_drug_screen.csv
+
+pulldown: example/pulldown.csv 
+
+-   **output_dir:** <path_to_your_output_directory> # Stores the outputs of this workflow
+-   **af3_flags:** # configures AlphaFold 3
+     -   **af3_container:** <path_to_your_alphafold3_container>
+
+#### Optional workflow flags:
+
+By default the workflow will run in a default mode, to which a csv table such as the following is required:
+
 
 #### Optional AlphaFold3 flags:
 Include the optional flags withing the scope of the af3_flags. 
 The optional flags are:
 <details>
+
 --buckets
 
 --conformer_max_iterations
@@ -137,6 +172,7 @@ More details can be found [here](https://snakemake.github.io/snakemake-plugin-ca
 
 ### 6. Run the workflow
 Information on snakemake flags can be found [here](https://snakemake.readthedocs.io/en/stable/executing/cli.html#)
+
 **Dry run (local)**
 ```bash
 snakemake -s workflow/Snakefile \
@@ -172,5 +208,5 @@ snakemake -s workflow/Snakefile \
 '--nv -B <your_alphafold3_weights_dir>:/root/models -B <your_output_dir>/PREPROCESSING:/root/af_input -B <your_output_dir>:/root/af_output -B <your_alphafold3_databases_dir>:/root/public_databases -B <your_alphafold3_tmp_dir>/tmp:/tmp --env XLA_CLIENT_MEM_FRACTION=3.2' \
 -j unlimited -c all --executor slurm --groups \
 RUN_AF3_DATA=group0 --group-components group0=12 \
--p -k -w 30 --rerun-triggers mtime --workflow-profile profile -n
+-p -k -w 30 --rerun-triggers mtime --workflow-profile profile
 ```

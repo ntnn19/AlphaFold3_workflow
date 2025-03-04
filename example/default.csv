@@ -1,0 +1,4 @@
+job_name,type,id,sequence
+TestJob1,protein,A,MVLSPADKTNVKAAW
+TestJob1,protein,B,MVLSPADKTNVKAAW
+TestJob2,protein,C,MVLSPADKTNVKAAW
