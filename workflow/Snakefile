@@ -234,12 +234,12 @@ rule SPLIT_INFERENCE_JOB_LIST:
 
 
 
-rule AF3_INFERENCE_PARALLEL:
+rule AF3_INFERENCE:
     input:
         job_list = os.path.join(OUTPUT_DIR,"SPLIT_INFERENCE_JOB_LIST","af3_inference_jobs_{scatteritem}.txt"),
         data_pipeline_msa= expand(os.path.join(OUTPUT_DIR,"AF3_DATA_PIPELINE","{i}/{i}_data.json"),i=JOB_NAMES)
     output:
-        os.path.join(OUTPUT_DIR,"AF3_INFERENCE_PARALLEL","af3_inference_jobs_{scatteritem}.done.txt"),
+        touch(os.path.join(OUTPUT_DIR,"AF3_INFERENCE","af3_inference_jobs_{scatteritem}.done.txt")),
     container:
         AF3_CONTAINER
     shell:

@@ -66,16 +66,15 @@ Open config/config.yaml with your favourite text editor.
 Edit the values to your needs.
 #### Mandatory workflow flags:
 ##### This workflow adapts the input preparation logic from [AlphaFold3-GUI](https://github.com/Hanziwww/AlphaFold3-GUI).
+ 
+-   **output_dir**: <path_to_your_output_directory> # Stores the outputs of this workflow
+-   **af3_flags**: # configures AlphaFold 3
+     -   **af3_container**: <path_to_your_alphafold3_container> 
+- **input_csv**: <path_to_your_csv_table> 
 
-See the following input examples: 
--   **output_dir:** <path_to_your_output_directory> # Stores the outputs of this workflow
--   **af3_flags:** # configures AlphaFold 3
-     -   **af3_container:** <path_to_your_alphafold3_container> 
-- **input_csv:** <path_to_your_csv_table> 
+For running the default workflow, the user must provide a csv table such as the following:
 
-**Examples for supported input_csv files:**
-
-**default:** example/default.csv
+**default**: example/default.csv
 
 | job_name  | type    | id | sequence        |
 |-----------|--------|----|----------------|
@@ -86,6 +85,22 @@ See the following input examples:
 ##### Explanation:
 For explanation and full list of optional columns, see  [AlphaFold3-GUI api tutorial](https://alphafold3-gui.readthedocs.io/en/latest/tutorial.html)
 
+#### Optional workflow flags:
+The workflow supports running AlphaFold 3 in different modes:
+all-vs-all, pulldown, virtual-drug-screen, or stoichio-screen (TBD)
+
+To run the workflow in a specific mode the user must provide the flag 'mode' in the config/config.yaml file.
+For example:
+```bash
+input_csv: example/virtual_drug_screen_df.csv
+output_dir: output
+mode: virtual-drug-screen 
+# n_splits: 4  # Optional, for running using the 'parallel' branch of this repo
+af3_flags:
+  --af3_container: <path_to_your_alphafold_3_container>
+```
+
+**Examples for supported input_csv files for each mode**:
 ##### all-vs-all: example/all_vs_all.csv 
 
 | id  | type    | sequence          |
@@ -118,15 +133,12 @@ virtual drug screen: example/virtual_drug_screen.csv
 - **type**: The biological macromolecule type (protein, dna, or rna).
 - **sequence**: The nucleotide or amino acid sequence.
 - **bait_or_target**: Indicates whether the protein is a "bait" or "target" in the experiment.
-- **Optional columns: 
+- **Optional columns**: 
   - **target_id**: The identifier for the target.
   - **bait_id**: The identifier for the bait.
 
 **The optional columns can be used to pulldown oligomeric targets with monomeric baits, oligomeric targets with oligomeric baits, or monomeric targets with oligomeric baits.**
 
-#### Optional workflow flags:
-
-By default the workflow will run in a default mode, to which a csv table such as the following is required:
 
 
 #### Optional AlphaFold3 flags:
