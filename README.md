@@ -57,6 +57,14 @@ Then, set up and activate the environment using the following commands:
 mamba env create -p $(pwd)/venv -f environment.yml
 mamba activate $(pwd)/venv
 ```
+For Maxwell users
+
+```bash
+module load maxwell mamba
+. mamba-init
+mamba env create -p $(pwd)/venv -f environment.yml
+mamba activate $(pwd)/venv
+```
 
 Or if using micromamba
 
