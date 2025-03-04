@@ -244,5 +244,5 @@ rule AF3_INFERENCE_PARALLEL:
         AF3_CONTAINER
     shell:
         """
-        bash scripts/parallel.sh {input.job_list}
+        bash workflow/scripts/parallel.sh {input.job_list}
         """
