@@ -91,7 +91,9 @@ Edit the values to your needs.
 -   **output_dir**: <path_to_your_output_directory> # Stores the outputs of this workflow
 -   **af3_flags**: # configures AlphaFold 3
      -   **af3_container**: <path_to_your_alphafold3_container> 
-- **input_csv**: <path_to_your_csv_table> 
+- **input_csv**: <path_to_your_csv_table>
+-   **tmp_dir**: <path_to_your_tmp_dir> 
+
 
 For running the default workflow, the user must provide a csv table such as the following:
 
@@ -115,10 +117,11 @@ For example:
 ```bash
 input_csv: example/virtual_drug_screen_df.csv
 output_dir: output
+tmp_dir: tmp
 mode: virtual-drug-screen 
-# n_splits: 4  # Optional, for running using the 'parallel' branch of this repo
+# n_splits: 4  # Optional, for running using the 'parallel' branch of this repo. To maximize resources utilization, the value of this flag should correspond to min(number_of_predictions, number_of_multi-GPU_nodes). 
 af3_flags:
-  --af3_container: <path_to_your_alphafold_3_container>
+  --af3_container: alphafold3_parallel.sif
 ```
 
 **Examples for supported input_csv files for each mode**:
@@ -272,7 +275,7 @@ Information on snakemake flags can be found [here](https://snakemake.readthedocs
 snakemake -s workflow/Snakefile \
 --use-singularity --singularity-args \
 '--nv -B <your_alphafold3_weights_dir>:/root/models -B <your_output_dir>/PREPROCESSING:/root/af_input -B <your_output_dir>:/root/af_output -B <your_alphafold3_databases_dir>:/root/public_databases -B <your_alphafold3_tmp_dir>/tmp:/tmp --env XLA_CLIENT_MEM_FRACTION=3.2' \
--j unlimited -c all --executor slurm \
+-j unlimited -c all \
 -p -k -w 30 --rerun-triggers mtime -n
 ```
 **Local run**
@@ -280,7 +283,7 @@ snakemake -s workflow/Snakefile \
 snakemake -s workflow/Snakefile \
 --use-singularity --singularity-args  \
 '--nv -B <your_alphafold3_weights_dir>:/root/models -B <your_output_dir>/PREPROCESSING:/root/af_input -B <your_output_dir>:/root/af_output -B <your_alphafold3_databases_dir>:/root/public_databases -B <your_alphafold3_tmp_dir>/tmp:/tmp --env XLA_CLIENT_MEM_FRACTION=3.2' \
--j unlimited -c all --executor slurm \
+-j unlimited -c all \
 -p -k -w 30 --rerun-triggers mtime
 ```
 
@@ -289,6 +292,6 @@ snakemake -s workflow/Snakefile \
 snakemake -s workflow/Snakefile \
 --use-singularity --singularity-args  \
 '--nv -B <your_alphafold3_weights_dir>:/root/models -B <your_output_dir>/PREPROCESSING:/root/af_input -B <your_output_dir>:/root/af_output -B <your_alphafold3_databases_dir>:/root/public_databases -B <your_alphafold3_tmp_dir>/tmp:/tmp --env XLA_CLIENT_MEM_FRACTION=3.2' \
--j unlimited -c all --executor slurm \
+-j unlimited -c all \
 -p -k -w 30 --rerun-triggers mtime --workflow-profile profile
 ```
