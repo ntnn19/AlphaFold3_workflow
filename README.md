@@ -2,6 +2,8 @@
 
 A Snakemake workflow for high-throughput AlphaFold 3 predictions
 
+![Workflow DAG](dag.png)
+
 You are currently in branch **'parallel'**.
 
 The workflow implemented in this branch is slightly different than the one in branch **'master'**.
