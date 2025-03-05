@@ -6,6 +6,8 @@ A Snakemake workflow for high-throughput AlphaFold 3 predictions
 
 You are currently in branch **'parallel'**.
 
+Switch to the 'master' branch of this repository if you plan to execute this workflow in an HPC environment that supports 'consumable resources'.
+
 The workflow implemented in this branch is slightly different than the one in branch **'master'**.
 
 Similar to the workflow in branch **'master'**, this workflow supports separate execution of the **CPU** and **GPU** steps. 
