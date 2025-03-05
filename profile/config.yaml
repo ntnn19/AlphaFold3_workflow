@@ -5,7 +5,7 @@ default-resources:
     slurm_account: "cssb"
 
 set-resources:
-    AF3_DATA:
+    AF3_DATA_PIPELINE:
         slurm_partition: "allcpu"
         nodes: 1
         runtime: 10000
