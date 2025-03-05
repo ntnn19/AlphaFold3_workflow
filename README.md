@@ -115,16 +115,20 @@ The workflow supports running AlphaFold 3 in different modes:
 all-vs-all, pulldown, virtual-drug-screen, or stoichio-screen (TBD)
 
 To run the workflow in a specific mode the user must provide the flag 'mode' in the config/config.yaml file.
+
 For example:
 ```bash
 input_csv: example/virtual_drug_screen_df.csv
 output_dir: output
 tmp_dir: tmp
-mode: virtual-drug-screen 
+mode: virtual-drug-screen
 # n_splits: 4  # Optional, for running using the 'parallel' branch of this repo. To maximize resources utilization, the value of this flag should correspond to min(number_of_predictions, number_of_multi-GPU_nodes). 
 af3_flags:
   --af3_container: alphafold3_parallel.sif
 ```
+
+
+To run the workflow using a custom msa the user must provide the flag 'msa_option' in the config/config.yaml file and set it to 'custom', i.e. msa_option: custom. Setting 'msa_option' to 'custom' would require adding more columns to the input csv tables described below. For more information about this option, see [here](https://alphafold3-gui.readthedocs.io/en/latest/api.html).  
 
 **Examples for supported input_csv files for each mode**:
 ##### all-vs-all: example/all_vs_all.csv 
