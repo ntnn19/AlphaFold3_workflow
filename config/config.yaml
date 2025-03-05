@@ -1,10 +1,11 @@
 #input_csv: example/pulldown.csv # pulldown
-input_csv: example/gabriel_virtual_drug_screen/virtual_drug_screen_df.csv # virtual drug screen
+input_csv: example/virtual_drug_screen_df.csv # virtual drug screen
 #input_csv: example/all_vs_all.csv # all-vs-all
 output_dir: output
 #mode: pulldown # pulldown
+#mode: all-vs-all # all-vs-all
 mode: virtual-drug-screen # virtual drug screen
-n_splits: 4
+n_splits: 4 # To maximize resources utilization, the value of this flag should correspond to min(number_of_predictions, number_of_multi-GPU_nodes). 
 #mode: all-vs-all # all-vs-all
 af3_flags:
   --af3_container: sif
