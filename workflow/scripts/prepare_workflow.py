@@ -19,10 +19,8 @@ def setup_directories(config):
         click.echo("Error: 'output_dir' or 'tmp_dir' is missing in the config file.", err=True)
         return
 
-    # Create directories
-    preprocessing_dir = os.path.join(output_dir, "PREPROCESSING")
 
-    for directory in [output_dir, tmp_dir, preprocessing_dir]:
+    for directory in [output_dir, tmp_dir]:
         os.makedirs(directory, exist_ok=True)
         click.echo(f"Created or verified: {directory}")
 

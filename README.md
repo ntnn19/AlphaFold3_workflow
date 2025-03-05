@@ -276,8 +276,6 @@ Information on snakemake flags can be found [here](https://snakemake.readthedocs
 ```bash
 python workflow/scripts/prepare_workflow.py config/config.yaml
 snakemake -s workflow/Snakefile \
---use-singularity --singularity-args \
-'--nv -B <your_alphafold3_weights_dir>:/root/models -B <your_output_dir>/PREPROCESSING:/root/af_input -B <your_output_dir>:/root/af_output -B <your_alphafold3_databases_dir>:/root/public_databases -B <your_alphafold3_tmp_dir>/tmp:/tmp --env XLA_CLIENT_MEM_FRACTION=3.2' \
 -j unlimited -c all \
 -p -k -w 30 --rerun-triggers mtime -n
 ```
@@ -286,7 +284,7 @@ snakemake -s workflow/Snakefile \
 python workflow/scripts/prepare_workflow.py config/config.yaml
 snakemake -s workflow/Snakefile \
 --use-singularity --singularity-args  \
-'--nv -B <your_alphafold3_weights_dir>:/root/models -B <your_output_dir>/PREPROCESSING:/root/af_input -B <your_output_dir>:/root/af_output -B <your_alphafold3_databases_dir>:/root/public_databases -B <your_alphafold3_tmp_dir>/tmp:/tmp --env XLA_CLIENT_MEM_FRACTION=3.2' \
+'--nv -B <your_alphafold3_weights_dir>:/root/models -B <your_output_dir>:/root/af_output -B <your_alphafold3_databases_dir>:/root/public_databases -B <your_alphafold3_tmp_dir>:/tmp --env XLA_CLIENT_MEM_FRACTION=3.2' \
 -j unlimited -c all \
 -p -k -w 30 --rerun-triggers mtime
 ```
@@ -296,7 +294,7 @@ snakemake -s workflow/Snakefile \
 python workflow/scripts/prepare_workflow.py config/config.yaml
 snakemake -s workflow/Snakefile \
 --use-singularity --singularity-args  \
-'--nv -B <your_alphafold3_weights_dir>:/root/models -B <your_output_dir>/PREPROCESSING:/root/af_input -B <your_output_dir>:/root/af_output -B <your_alphafold3_databases_dir>:/root/public_databases -B <your_alphafold3_tmp_dir>/tmp:/tmp --env XLA_CLIENT_MEM_FRACTION=3.2' \
+'--nv -B <your_alphafold3_weights_dir>:/root/models -B <your_output_dir>:/root/af_output -B <your_alphafold3_databases_dir>:/root/public_databases -B <your_alphafold3_tmp_dir>:/tmp --env XLA_CLIENT_MEM_FRACTION=3.2' \
 -j unlimited -c all \
 -p -k -w 30 --rerun-triggers mtime --workflow-profile profile
 ```
