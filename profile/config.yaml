@@ -12,7 +12,6 @@ set-resources:
         cpus_per_task: 16
     AF3_INFERENCE:
         slurm_partition: "topfgpu"
-        slurm_extra: "'--gpus-per-node=1'"
         nodes: 1
         runtime: 10000
         mem_mb: 256000
