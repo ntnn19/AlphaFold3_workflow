@@ -254,9 +254,9 @@ The optional flags are:
 input_csv: example/virtual_drug_screen_df.csv
 output_dir: output
 mode: virtual-drug-screen 
-# n_splits: 4  # Optional, for running using the 'parallel' branch of this repo
+# n_splits: 4  # Optional, for running using the 'parallel' branch of this repo. To maximize resources utilization, the value of this flag should correspond to min(number_of_predictions, number_of_multi-GPU_nodes). 
 af3_flags:
-  --af3_container: <path_to_your_alphafold_3_container>
+  --af3_container: alphafold3_parallel.sif
   --num_diffusion_samples: 5
 ```
 ### 5. Configure the profile (Optional)
