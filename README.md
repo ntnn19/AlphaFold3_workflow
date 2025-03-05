@@ -18,12 +18,19 @@ This is particularly useful when your HPC setup has multi-GPU nodes, but does no
 
 ## Steps to setup & execute
 
-### 1. Build the Singularity container
 
+### 1. Build the Singularity container
+Install singularity. See [here](https://github.com/google-deepmind/alphafold3/blob/main/docs/installation.md#install-singularity) or [here](https://docs.sylabs.io/guides/3.3/user-guide/installation.html) for instructions.
 Run the following command to build the Singularity container that supports parallel inference runs:
 
 ```bash
 singularity build alphafold3_parallel.sif docker://ntnn19/alphafold3:latest_parallel_a100_40gb
+```
+
+Or
+
+```bash
+singularity build alphafold3_parallel.sif docker://ntnn19/alphafold3:latest_parallel_a100_80gb
 ```
 
 ### Notes
