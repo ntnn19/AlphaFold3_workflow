@@ -1,13 +1,13 @@
 #input_csv: example/pulldown.csv # pulldown
 input_csv: example/virtual_drug_screen_df.csv # virtual drug screen
 #input_csv: example/all_vs_all.csv # all-vs-all
-output_dir: output
+output_dir: output # stores the outputs of this workflow. The output of each rule is stored at <output_dir>/<RULE_NAME>
 #mode: pulldown # pulldown
 #mode: all-vs-all # all-vs-all
 mode: virtual-drug-screen # virtual drug screen
 n_splits: 4 # To maximize resources utilization, the value of this flag should correspond to min(number_of_predictions, number_of_multi-GPU_nodes). 
 #mode: all-vs-all # all-vs-all
 af3_flags:
-  --af3_container: sif
-  --db_dir: db_dir
-  --model_dir: params
+  --af3_container: <path_to_your_alphafold3_container>
+  --db_dir: <path_to_your_alphafold3_databases>
+  --model_dir: <path_to_your_model_parameters>
