@@ -10,5 +10,3 @@ n_splits: 4 # Optional, for running using the 'parallel' branch of this repo. To
 #mode: all-vs-all # all-vs-all
 af3_flags:
   --af3_container: <path_to_your_alphafold3_container>
-  --db_dir: <path_to_your_alphafold3_databases>
-  --model_dir: <path_to_your_model_parameters>
