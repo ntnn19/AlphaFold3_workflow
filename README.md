@@ -150,8 +150,7 @@ af3_flags:
   - **drug_id**: The identifier for the drug.
 
 
-**The optional columns can be used to screen single drugs against monomeric targets,
-single drugs against multimeric targets, multiple drugs against monomeric targets, or multiple drugs against multimeric targets.**
+**The optional columns can be used to screen single drugs against multimeric targets, multiple drugs against monomeric targets, or multiple drugs against multimeric targets.**
 
 
 ##### pulldown: example/pulldown.csv
