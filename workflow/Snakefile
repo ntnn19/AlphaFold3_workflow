@@ -48,14 +48,26 @@ SMALL_BFD_DATABASE_PATH = get_af3_flag_value('--small_bfd_database_path', os.pat
 UNIPROT_CLUSTER_ANNOT_DATABASE_PATH = get_af3_flag_value('--uniprot_cluster_annot_database_path', os.path.join('/root/public_databases','uniprot_all_2021_04.fa'))
 UNIREF90_DATABASE_PATH = get_af3_flag_value('--uniref90_database_path', os.path.join('/root/public_databases','uniref90_2022_05.fa'))
 
-def get_file_names(wildcards):
+def get_preprocessing_outputs(wildcards):
     PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
     JOB_NAMES, = glob_wildcards(os.path.join(PREPROCESSING_DIR, "{i}.json"))
-    return list(expand(os.path.join(PREPROCESSING_DIR,"{i}.json"),i=JOB_NAMES)) + list(expand(os.path.join(OUTPUT_DIR,"CREATE_AF3_INFERENCE_JOBS","{i}_af3_inference_job.txt"),i=JOB_NAMES)) + list(expand(os.path.join(OUTPUT_DIR,"AF3_DATA_PIPELINE","{i}/{i}_data.json"),i=JOB_NAMES))
+    return list(expand(os.path.join(PREPROCESSING_DIR,"{i}.json"),i=JOB_NAMES))
+    #return [list(expand(os.path.join(PREPROCESSING_DIR,"{i}.json"),i=JOB_NAMES)),list(expand(os.path.join(OUTPUT_DIR,"CREATE_AF3_INFERENCE_JOBS","{i}_af3_inference_job.txt"),i=JOB_NAMES)),list(expand(os.path.join(OUTPUT_DIR,"AF3_DATA_PIPELINE","{i}/{i}_data.json"),i=JOB_NAMES))]
+
+def get_individual_jobs(wildcards):
+    PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
+    JOB_NAMES, = glob_wildcards(os.path.join(PREPROCESSING_DIR, "{i}.json"))
+    return list(expand(os.path.join(OUTPUT_DIR,"CREATE_AF3_INFERENCE_JOBS","{i}_af3_inference_job.txt"),i=JOB_NAMES))
+
+def get_data_pipeline_outputs(wildcards):
+    PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
+    JOB_NAMES, = glob_wildcards(os.path.join(PREPROCESSING_DIR,"{i}.json"))
+    return list(expand(os.path.join(OUTPUT_DIR,"AF3_DATA_PIPELINE","{i}/{i}_data.json"),i=JOB_NAMES))
+
 
 rule all:
     input:
-        get_file_names,
+        get_preprocessing_outputs,
         expand(os.path.join(OUTPUT_DIR,"AF3_INFERENCE",f"af3_inference_jobs_{{s}}-of-{SPLIT_TOTAL}.done.txt"),s=list(range(1,SPLIT_TOTAL+1))),
 
 checkpoint PREPROCESSING:
@@ -217,12 +229,12 @@ rule CREATE_AF3_INFERENCE_JOBS:
 
 rule AGG_AF3_INFERENCE_JOBS:
     input:
-        data_pipeline_msa = get_file_names
+        individual_jobs = get_individual_jobs
     output:
         job_list = os.path.join(OUTPUT_DIR,"AGG_AF3_INFERENCE_JOBS","af3_inference_jobs.txt")
     shell:
         """
-        cat {input.data_pipeline_msa} > {output}
+        cat {input.individual_jobs} > {output}
         """
 
 rule SPLIT_INFERENCE_JOB_LIST:
@@ -243,7 +255,7 @@ rule SPLIT_INFERENCE_JOB_LIST:
 rule AF3_INFERENCE:
     input:
         job_list = os.path.join(OUTPUT_DIR,"SPLIT_INFERENCE_JOB_LIST","af3_inference_jobs_{scatteritem}.txt"),
-        data_pipeline_msa= get_file_names
+        data_pipeline_msa= get_data_pipeline_outputs
     output:
         touch(os.path.join(OUTPUT_DIR,"AF3_INFERENCE","af3_inference_jobs_{scatteritem}.done.txt")),
     container:
