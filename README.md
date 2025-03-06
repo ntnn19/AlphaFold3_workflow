@@ -15,10 +15,17 @@ On top of that, it also distributes inference runs across multiple GPU devices u
 This is particularly useful when your HPC setup has multi-GPU nodes, but does not support "consumable resources".   
 
 
+### 🚀 What’s new?
+
+    📖 Better documentation to make setup & usage smoother
+    🔄 Support for different running modes, including:
+        🧲 Pulldown
+        💊 Virtual drug screening
+        🔬 All-vs-all pairwise interactions
+    🛠️ Future plans: Adding stoichiometry screening support
+    
 ### TO DO
 - Add steps for downstream analyses such as relaxation, assembly, binding site prediction, scoring etc. 
-- Add a reporting step to the workflow in a form of a table that describe each predicted structure.
-
 
 ## Steps to setup & execute
 
