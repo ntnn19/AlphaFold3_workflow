@@ -311,3 +311,5 @@ snakemake -s workflow/Snakefile \
 -j unlimited -c all \
 -p -k -w 30 --rerun-triggers mtime --workflow-profile profile
 ```
+
+If you find this useful, please consider giving it a star! ⭐
