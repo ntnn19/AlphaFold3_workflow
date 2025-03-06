@@ -1,7 +1,6 @@
 # AlphaFold 3 workflow
 
-A Snakemake workflow for high-throughput AlphaFold 3 predictions
-
+A Snakemake workflow for high-throughput AlphaFold 3 structure predictions
 ![Workflow DAG](dag.png)
 
 You are currently in branch **'parallel'**.
