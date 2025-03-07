@@ -593,6 +593,7 @@ def create_tasks_from_dataframe(df_path, output_dir, mode, msa_option):
     df = pd.read_csv(df_path)
     if mode != "default":
         df = create_df_for_run_mode(df, mode, msa_option)
+    df["job_name"] = df["job_name"].apply(lambda x: sanitised_name(x))
     grouped = df.groupby('job_name')
     for job_name, group in grouped:
         entities = []
