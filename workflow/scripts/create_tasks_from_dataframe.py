@@ -12,6 +12,9 @@ import numpy as np
 
 import base64
 
+from datetime import datetime
+
+
 def encode(s):
     """Encode a string using Base64 URL-safe encoding."""
     return base64.urlsafe_b64encode(s.encode()).decode()
@@ -397,10 +400,12 @@ def create_pulldown_df(df,msa_option = None):
         oligo_bait_target_pairs_df_expanded = oligo_bait_target_pairs_df_expanded[["id", "job_name"]]
         oligo_bait_target_pairs_df_expanded = oligo_bait_target_pairs_df_expanded.merge(oligo_df[["id","type","sequence"]])
         oligo_bait_target_pairs_df_expanded["id"] = oligo_bait_target_pairs_df_expanded.groupby("job_name").cumcount().map(lambda x: letters[x])
+        oligo_bait_target_pairs_df_expanded = oligo_bait_target_pairs_df_expanded.groupby("job_name").filter(lambda x: len(x) > 2)
 
         # Below is ok for oligo-targets w/o baits
         target_df_oligo["id"] = grouped_target_df_oligo.cumcount().map(lambda x: letters[x])
         target_df_oligo = target_df_oligo.drop(columns=["bait_or_target","bait_id","target_id"])
+        target_df_oligo = target_df_oligo.groupby("job_name").filter(lambda x: len(x) > 1)
 
         # Add bait-oligomeric targets
         bait_df_oligo["id"] = grouped_bait_df_oligo.cumcount().map(lambda x: letters[x])
@@ -481,11 +486,13 @@ def create_virtual_drug_screen_df(df, msa_option=None):
         oligo_ligand_target_pairs_df_expanded.loc[oligo_ligand_target_pairs_df_expanded["type"]!="ligand","smiles"] = ""
         oligo_ligand_target_pairs_df_expanded.loc[oligo_ligand_target_pairs_df_expanded["type"]=="ligand","smiles"] = oligo_ligand_target_pairs_df_expanded.loc[oligo_ligand_target_pairs_df_expanded["type"]=="ligand","sequence"]
         oligo_ligand_target_pairs_df_expanded.loc[oligo_ligand_target_pairs_df_expanded["type"] == "ligand", "sequence"] = ""
+        oligo_ligand_target_pairs_df_expanded = oligo_ligand_target_pairs_df_expanded.groupby("job_name").filter(lambda x: len(x) > 2)
 
         # Below is ok for oligo-targets w/o ligands
         target_df_oligo["id"] = grouped_target_df_oligo.cumcount().map(lambda x: letters[x])
         target_df_oligo["smiles"] = ""
         target_df_oligo = target_df_oligo.drop(columns=["drug_or_target","drug_id","target_id"])
+        target_df_oligo = target_df_oligo.groupby("job_name").filter(lambda x: len(x) > 1)
 
     # Add ligand/standalone-target pairs
     for _, (drug_id, drug_smiles) in drug_df[['id', 'sequence']].iterrows():
@@ -594,6 +601,7 @@ def create_tasks_from_dataframe(df_path, output_dir, mode, msa_option):
     if mode != "default":
         df = create_df_for_run_mode(df, mode, msa_option)
     df["job_name"] = df["job_name"].apply(lambda x: sanitised_name(x))
+    df.to_csv(os.path.join(output_dir,f"task_table_{msa_option}.csv"),index=False)
     grouped = df.groupby('job_name')
     for job_name, group in grouped:
         entities = []
