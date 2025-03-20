@@ -1,12 +1,12 @@
-
 import os
 localrules: CREATE_AF3_INFERENCE_JOBS, AGG_AF3_INFERENCE_JOBS, SPLIT_INFERENCE_JOB_LIST
-configfile: "config/config.yaml"
 scattergather:
     split=config.get("n_splits",1)
 SPLIT_TOTAL = workflow._scatter["split"]
 
 from scripts import create_tasks_from_dataframe
+
+WORKFLOW_DIR = workflow.basedir
 INPUT_DF = config["input_csv"]
 OUTPUT_DIR = config["output_dir"]
 MODE = config.get("mode","default")
@@ -81,10 +81,10 @@ checkpoint PREPROCESSING:
     shell:
         """
         if [[ "{params.msa_option}" == "auto" ]]; then
-            python workflow/scripts/create_tasks_from_dataframe.py {input} {output} --msa-option auto_template_free --mode {params.mode}
-            python workflow/scripts/create_tasks_from_dataframe.py {input} {output} --msa-option auto_template_based --mode {params.mode}
+            python {WORKFLOW_DIR}/scripts/create_tasks_from_dataframe.py {input} {output} --msa-option auto_template_free --mode {params.mode}
+            python {WORKFLOW_DIR}/scripts/create_tasks_from_dataframe.py {input} {output} --msa-option auto_template_based --mode {params.mode}
         else
-            python workflow/scripts/create_tasks_from_dataframe.py {input} {output} --mode {params.mode}
+            python {WORKFLOW_DIR}/scripts/create_tasks_from_dataframe.py {input} {output} --mode {params.mode}
         fi
         """
 
