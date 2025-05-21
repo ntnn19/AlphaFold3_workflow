@@ -1,3 +1,4 @@
+localrules: PREPROCESSING
 configfile: "config/config.yaml"
 import os
 from scripts import create_tasks_from_dataframe
