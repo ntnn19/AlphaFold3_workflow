@@ -280,7 +280,7 @@ Information on snakemake flags can be found [here](https://snakemake.readthedocs
 python workflow/scripts/prepare_workflow.py config/config.yaml
 snakemake -s workflow/Snakefile \
 -j unlimited -c all \
--p -k -w 30 --rerun-triggers mtime -n
+-p -k -w 30 --rerun-triggers mtime -n --configfile config/config.yaml
 ```
 **Local run**
 ```bash
@@ -289,7 +289,7 @@ snakemake -s workflow/Snakefile \
 --use-singularity --singularity-args  \
 '--nv -B <your_alphafold3_weights_dir>:/root/models -B <your_output_dir>:/root/af_output -B <your_alphafold3_databases_dir>:/root/public_databases -B <your_alphafold3_tmp_dir>:/tmp --env XLA_CLIENT_MEM_FRACTION=3.2' \
 -j unlimited -c all \
--p -k -w 30 --rerun-triggers mtime
+-p -k -w 30 --rerun-triggers mtime --configfile config/config.yaml
 ```
 
 **slurm run**
@@ -299,7 +299,7 @@ snakemake -s workflow/Snakefile \
 --use-singularity --singularity-args  \
 '--nv -B <your_alphafold3_weights_dir>:/root/models -B <your_output_dir>:/root/af_output -B <your_alphafold3_databases_dir>:/root/public_databases -B <your_alphafold3_tmp_dir>:/tmp --env XLA_CLIENT_MEM_FRACTION=3.2' \
 -j unlimited -c all \
--p -k -w 30 --rerun-triggers mtime --workflow-profile profile
+-p -k -w 30 --rerun-triggers mtime --workflow-profile profile --configfile config/config.yaml
 ```
 
 If you find this useful, please consider giving it a star! ⭐
