@@ -298,7 +298,7 @@ def check_for_valid_columns(df, mode):
         raise ValueError(f"Unexpected columns found: {unexpected_columns}. See --help for more info on allowed columns")
 
 
-def create_all_vs_all_df(df, msa_option=None):
+def create_all_vs_all_df(df, output_dir="output/PREPROCESSING",msa_option=None):
     """
     Given a DataFrame with columns 'id', 'sequence', and 'type', return a new DataFrame
     that contains the original rows along with all possible pairwise combinations.
@@ -341,7 +341,7 @@ def create_stoichio_screen_df(df):
     pass
 
 
-def create_pulldown_df(df,msa_option = None):
+def create_pulldown_df(df,output_dir="output/PREPROCESSING",msa_option = None):
     """
     Generates input for a virtual pulldown assay by pairing baits (protein / dna / rna) and targets (protein / dna / rna).
     Also includes standalone targets and baits.
@@ -361,11 +361,11 @@ def create_pulldown_df(df,msa_option = None):
     # Add standalone targets
     for _, (target_id, target_seq,target_type) in target_df[['id', 'sequence','type']].iterrows():
         all_entries.append(
-            {"job_name": target_id, "id": "A", "type": target_type, "sequence": target_seq})
+            {"job_name": target_id, "id": "A", "type": target_type, "sequence": target_seq,"output_dir":os.path.join(output_dir,"monomers")})
     # Add standalone baits
     for _, (bait_id, bait_seq,bait_type) in bait_df[['id', 'sequence','type']].iterrows():
         all_entries.append(
-            {"job_name": bait_id, "id": "A", "type": bait_type, "sequence": bait_seq})
+            {"job_name": bait_id, "id": "A", "type": bait_type, "sequence": bait_seq,"output_dir":os.path.join(output_dir,"monomers")})
 
 
     target_df_oligo = pd.DataFrame()
@@ -416,12 +416,21 @@ def create_pulldown_df(df,msa_option = None):
         for _, (target_id, target_seq,target_type) in target_df[['id', 'sequence','type']].iterrows():
             pair_name = f"{target_id}_{bait_id}"
             all_entries.append(
-                {"job_name": pair_name, "id": "A", "type": target_type, "sequence": target_seq})
+                {"job_name": pair_name, "id": "A", "type": target_type, "sequence": target_seq,"output_dir":os.path.join(output_dir,"multimers")})
             all_entries.append(
-                {"job_name": pair_name, "id": "B", "type": bait_type, "sequence": bait_seq})
+                {"job_name": pair_name, "id": "B", "type": bait_type, "sequence": bait_seq,"output_dir":os.path.join(output_dir,"multimers")})
 
 
     pulldown_df = pd.DataFrame(all_entries)
+    target_df_oligo["output_dir"]=os.path.join(output_dir,"multimers")
+    bait_df_oligo["output_dir"]=os.path.join(output_dir,"multimers")
+    job_names_with_1_id = pd.concat([bait_df_oligo.groupby("job_name")["id"].apply(lambda x: len(x)),
+                                    bait_df_oligo.groupby("job_name")["id"].apply(lambda x: len(x))])
+    job_names_with_1_id = job_names_with_1_id[job_names_with_1_id == 1]
+    bait_df_oligo = bait_df_oligo[~bait_df_oligo["job_name"].isin(job_names_with_1_id.index.tolist())]
+    target_df_oligo = target_df_oligo[~target_df_oligo["job_name"].isin(job_names_with_1_id.index.tolist())]
+
+    oligo_bait_target_pairs_df_expanded["output_dir"]= os.path.join(output_dir,"multimers")
     pulldown_df = pd.concat([pulldown_df,target_df_oligo,bait_df_oligo,oligo_bait_target_pairs_df_expanded],ignore_index=True)
 
     if msa_option in ["auto_template_based", "auto_template_free"]:
@@ -431,7 +440,7 @@ def create_pulldown_df(df,msa_option = None):
 
 
 
-def create_virtual_drug_screen_df(df, msa_option=None):
+def create_virtual_drug_screen_df(df, output_dir="output/PREPROCESSING",msa_option=None):
     """
     Generates input for a  virtual drug screening by pairing ligands (drug) and targets (protein / dna / rna).
     Also includes standalone targets.
@@ -514,7 +523,7 @@ def create_virtual_drug_screen_df(df, msa_option=None):
     return screen_df
 
 
-def create_df_for_run_mode(df, mode, msa_option):
+def create_df_for_run_mode(df, mode, msa_option=None,output_dir="output/PREPROCESSING"):
     """
     Creates mode specific dataframe and writes it to a file.
 
@@ -547,13 +556,13 @@ def create_df_for_run_mode(df, mode, msa_option):
     df["id"] = df["id"].apply(lambda x: sanitised_name(x))
 
     if mode == "all-vs-all":
-        df = create_all_vs_all_df(df, msa_option)
+        df = create_all_vs_all_df(df,output_dir,msa_option)
     if mode == "pulldown":
-        df = create_pulldown_df(df)
+        df = create_pulldown_df(df,output_dir,msa_option)
     if mode == "stoichio-screen":
-        df = create_stoichio_screen_df(df)
+        df = create_stoichio_screen_df(df,output_dir,msa_option)
     if mode == "virtual-drug-screen":
-        df = create_virtual_drug_screen_df(df, msa_option)
+        df = create_virtual_drug_screen_df(df, output_dir, msa_option)
 
     return df
 
@@ -599,7 +608,7 @@ def create_tasks_from_dataframe(df_path, output_dir, mode, msa_option):
     os.makedirs(output_dir, exist_ok=True)
     df = pd.read_csv(df_path)
     if mode != "default":
-        df = create_df_for_run_mode(df, mode, msa_option)
+        df = create_df_for_run_mode(df, mode, msa_option,output_dir)
     df["job_name"] = df["job_name"].apply(lambda x: sanitised_name(x))
     df.to_csv(os.path.join(output_dir,f"task_table_{msa_option}.csv"),index=False)
     grouped = df.groupby('job_name')
@@ -612,6 +621,8 @@ def create_tasks_from_dataframe(df_path, output_dir, mode, msa_option):
             entity_type = row['type']
             entity_id = row['id']
             sequence = row.get('sequence', '')
+            outdir = row["output_dir"]
+            os.makedirs(outdir, exist_ok=True)
 
             # Parse optional fields
             modifications = parse_json_field(row.get('modifications'))
@@ -677,7 +688,7 @@ def create_tasks_from_dataframe(df_path, output_dir, mode, msa_option):
             bonded_atom_pairs=bonded_atom_pairs,
             user_ccd=user_ccd
         )
-        input_json_path = os.path.join(output_dir, f"{job_name}.json")
+        input_json_path = os.path.join(outdir, f"{job_name}.json")
         with open(input_json_path, "w") as outfile:
             json.dump(task, outfile)
         tasks.append(input_json_path)
