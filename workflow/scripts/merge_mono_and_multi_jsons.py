@@ -1,3 +1,4 @@
+import glob
 import json
 import os
 from pathlib import Path
@@ -37,12 +38,19 @@ def merge_jsons(multimer_data, monomer_data_list):
     return multimer_data
 
 @click.command()
-@click.argument("paths", nargs=-1, type=click.Path())
-def main(paths):
-    *json_files, output_dir = paths
+@click.argument("monomers_dir", type=click.Path())
+@click.argument("multimers_dir", type=click.Path())
+@click.argument("output_dir",  type=click.Path())
+def main(monomers_dir,multimers_dir,output_dir):
     # Separate monomeric and multimeric files
-    monomer_files = [p for p in json_files if "/monomers/" in p]
-    multimer_files = [p for p in json_files if "/multimers/" in p]
+    monomer_patterns =  os.path.join(monomers_dir, "*_data.json")
+    multimer_patterns =  os.path.join(multimers_dir, "*.json")
+    monomer_files = list(glob.glob(monomer_patterns))[:1000]
+    print("monomer_files=",monomer_files)
+    multimer_files = list(glob.glob(multimer_patterns))[:1000]
+    print("multimer_files=",multimer_files)
+#    monomer_files = [p for p in json_files if "/monomers/" in p]
+#    multimer_files = [p for p in json_files if "/multimers/" in p]
 
     # Create map from monomer key to JSON content
     monomer_data = {}
@@ -67,11 +75,16 @@ def main(paths):
             for suffix in ["_auto_template_free", "_auto_template_based"]:
                 if suffix in multimer_name and key.split(suffix)[0] in multimer_name:
                     matched_monomers.append(data)
+        click.echo(f"matched_monomers= {[m['name'] for m in matched_monomers]}")
+        click.echo(f"multimer_json= {multimer_json}")
         if not matched_monomers:
-            click.echo(f"Warning: No matching monomers found for {multimer_name}")
+            click.echo(f"Warning: No matching monomers found for {multimer_name}. Skipping...")
+            continue
+        if len(matched_monomers)==1:
+            click.echo(f"Warning: Only one monomer found for {multimer_name}. Skipping...")
+            continue
         merged = merge_jsons(multimer_json, matched_monomers)
         sub_output_dir = os.path.join(output_dir,multimer_name)
-        print("output_dir=",sub_output_dir)
         os.makedirs(sub_output_dir, exist_ok=True)
         out_path = os.path.join(sub_output_dir,multimer_base.replace(".json","_data.json"))
 

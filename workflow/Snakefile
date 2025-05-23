@@ -317,12 +317,14 @@ checkpoint MERGE_MONO_AND_MULTI_JSON:
         data_pipeline_monomers = get_monomeric_json_outputs if MODE in ["all-vs-all","pulldown"] else[],
         preprocessed_multimers = get_multimeric_json_outputs if MODE in ["all-vs-all","pulldown"] else[],
     params:
-        mode=MODE,
+        monomers_dir = os.path.join(OUTPUT_DIR,"AF3_DATA_PIPELINE","monomers"),
+        multimers_dir = os.path.join(OUTPUT_DIR,"PREPROCESSING","multimers")
     output:
         data_pipeline_msa = directory(os.path.join(OUTPUT_DIR,"MERGE_MONO_AND_MULTI_JSON")) if MODE in ["all-vs-all","pulldown"] else [],
     shell:
         """
-        python {WORKFLOW_DIR}/scripts/merge_mono_and_multi_jsons.py {input.data_pipeline_monomers} {input.preprocessed_multimers} {output}
+        python {WORKFLOW_DIR}/scripts/merge_mono_and_multi_jsons.py {params.monomers_dir} {params.multimers_dir} {output}
+#        python {WORKFLOW_DIR}/scripts/merge_mono_and_multi_jsons.py {input.data_pipeline_monomers} {input.preprocessed_multimers} {output}
         """
 
 
