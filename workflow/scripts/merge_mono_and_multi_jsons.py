@@ -69,7 +69,6 @@ def main(paths):
                     matched_monomers.append(data)
         if not matched_monomers:
             click.echo(f"Warning: No matching monomers found for {multimer_name}")
-
         merged = merge_jsons(multimer_json, matched_monomers)
         sub_output_dir = os.path.join(output_dir,multimer_name)
         print("output_dir=",sub_output_dir)
