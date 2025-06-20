@@ -1,5 +1,7 @@
 import os
-localrules: CREATE_AF3_INFERENCE_JOBS, AGG_AF3_INFERENCE_JOBS, SPLIT_INFERENCE_JOB_LIST
+localrules: SPLIT_INFERENCE_JOB_LIST
+#localrules: CREATE_AF3_INFERENCE_JOBS_SPEEDY_AF3_PIPELINE,  MERGE_MONO_AND_MULTI_JSON, AGG_AF3_INFERENCE_JOBS
+#localrules: CREATE_AF3_INFERENCE_JOBS_SPEEDY_AF3_PIPELINE,  MERGE_MONO_AND_MULTI_JSON, AGG_AF3_INFERENCE_JOBS
 scattergather:
     split=config.get("n_splits",1)
 SPLIT_TOTAL = workflow._scatter["split"]
@@ -47,6 +49,7 @@ SEQRES_DATABASE_PATH = get_af3_flag_value('--seqres_database_path', os.path.join
 SMALL_BFD_DATABASE_PATH = get_af3_flag_value('--small_bfd_database_path', os.path.join('/root/public_databases','bfd-first_non_consensus_sequences.fasta'))
 UNIPROT_CLUSTER_ANNOT_DATABASE_PATH = get_af3_flag_value('--uniprot_cluster_annot_database_path', os.path.join('/root/public_databases','uniprot_all_2021_04.fa'))
 UNIREF90_DATABASE_PATH = get_af3_flag_value('--uniref90_database_path', os.path.join('/root/public_databases','uniref90_2022_05.fa'))
+#JOB_NAMES_MULTIMERS = None
 
 def get_preprocessing_outputs(wildcards):
     PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
@@ -67,37 +70,29 @@ def get_multimeric_json_outputs(wildcards):
     PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
 #    JOB_NAMES_MONOMERS, = glob_wildcards(os.path.join(PREPROCESSING_DIR,"monomers","{i}.json"))
     JOB_NAMES_MULTIMERS, = glob_wildcards(os.path.join(PREPROCESSING_DIR,"multimers","{multi}.json"))
-    print("JOB_NAMES=",JOB_NAMES_MULTIMERS[:10])
-    return list(expand(os.path.join(PREPROCESSING_DIR,"multimers","{multi}.json"),multi=JOB_NAMES_MULTIMERS))
+    print("get_multimeric_json_outputs","JOB_NAMES=",JOB_NAMES_MULTIMERS[:10])
+    return list(expand(os.path.join(PREPROCESSING_DIR,"multimers","{multi}.json"),multi=JOB_NAMES_MULTIMERS)) + list(expand(os.path.join(OUTPUT_DIR,"MERGE_MONO_AND_MULTI_JSON","{multi}","{multi}_data.json"), multi=JOB_NAMES_MULTIMERS))
 
 def get_monomeric_json_outputs(wildcards):
     PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
     JOB_NAMES_MONOMERS, = glob_wildcards(os.path.join(PREPROCESSING_DIR,"monomers","{mono}.json"))
-    print("JOB_NAMES=",JOB_NAMES_MONOMERS[:10])
+    print("get_monomeric_json_outputs","JOB_NAMES=",JOB_NAMES_MONOMERS[:10])
     return list(expand(os.path.join(OUTPUT_DIR,"AF3_DATA_PIPELINE","monomers","{mono}/{mono}_data.json"),mono=JOB_NAMES_MONOMERS))
 
 def get_multimeric_json_with_msas(wildcards):
-    MULTIMERIC_JSON_DIR = checkpoints.MERGE_MONO_AND_MULTI_JSON.get(**wildcards).output[0]
-    JOB_NAMES_MULTIMERS_WITH_MSAS, = glob_wildcards(os.path.join(MULTIMERIC_JSON_DIR,"{multi_with_msa}","{multi_with_msa}.json"))
-    print("JOB_NAMES=",JOB_NAMES_MULTIMERS_WITH_MSAS[:10])
-    return list(expand(os.path.join(OUTPUT_DIR,"MERGE_MONO_AND_MULTI_JSON","{multi_with_msa}/{multi_with_msa}_data.json"),
-        multi_with_msa=JOB_NAMES_MULTIMERS_WITH_MSAS))
-
-def get_multimeric_inference_jobs(wildcards):
-    MULTIMERIC_JSON_DIR = checkpoints.MERGE_MONO_AND_MULTI_JSON.get(**wildcards).output[0]
-    JOB_NAMES_MULTIMERS_WITH_MSAS, = glob_wildcards(os.path.join(MULTIMERIC_JSON_DIR,"{multi}","{multi}_data.json"))
-    print("JOB_NAMES=",MULTIMERIC_JSON_DIR)
-    print("JOB_NAMES=",JOB_NAMES_MULTIMERS_WITH_MSAS[:10])
-    return list(expand(os.path.join(OUTPUT_DIR,"CREATE_AF3_INFERENCE_JOBS","{multi}_af3_inference_job.txt"),  multi=JOB_NAMES_MULTIMERS_WITH_MSAS))
+    PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
+#    global JOB_NAMES_MULTIMERS    
+    JOB_NAMES_MULTIMERS, = glob_wildcards(os.path.join(PREPROCESSING_DIR,"multimers","{multi}.json"))
+    print("get_multimeric_json_with_msas","JOB_NAMES=",JOB_NAMES_MULTIMERS[:10])
+    return list(expand(os.path.join(OUTPUT_DIR,"MERGE_MONO_AND_MULTI_JSON","{multi}","{multi}_data.json"), multi=JOB_NAMES_MULTIMERS))
 
 
 rule all:
     input:
-        "output/AGG_AF3_INFERENCE_JOBS/af3_inference_jobs.txt",
-        get_individual_jobs if MODE == "default" else[],
-        get_multimeric_json_with_msas if MODE in ["all-vs-all", "pulldown"] else [],
-        get_preprocessing_outputs,
         expand(os.path.join(OUTPUT_DIR,"AF3_INFERENCE",f"af3_inference_jobs_{{s}}-of-{SPLIT_TOTAL}.done.txt"),s=list(range(1,SPLIT_TOTAL+1))),
+#        "output/AGG_AF3_INFERENCE_JOBS/af3_inference_jobs.txt"
+#        get_individual_jobs if MODE == "default" else[],
+#        get_preprocessing_outputs,
 
 checkpoint PREPROCESSING:
     input:
@@ -311,21 +306,30 @@ rule AF3_DATA_SPEEDY_PIPELINE:
     #     --uniref90_database_path={params.uniref90_database_path}
     #     """
 
-checkpoint MERGE_MONO_AND_MULTI_JSON:
+rule MERGE_MONO_AND_MULTI_JSON:
     input:
         data_pipeline = get_data_pipeline_outputs if MODE == "default" else [],
-        data_pipeline_monomers = get_monomeric_json_outputs if MODE in ["all-vs-all","pulldown"] else[],
-        preprocessed_multimers = get_multimeric_json_outputs if MODE in ["all-vs-all","pulldown"] else[],
+        data_pipeline_monomers=lambda wildcards: [
+            os.path.join(OUTPUT_DIR, "AF3_DATA_PIPELINE", "monomers",  f"{mono}_{MSA_OPTION}", f"{mono}_{MSA_OPTION}_data.json")
+            for mono in wildcards.multi.split(f"_{MSA_OPTION}")[0].split("_")
+        ] if MODE in ["all-vs-all", "pulldown"] else [],
+#        data_pipeline_monomers_1 = os.path.join(OUTPUT_DIR,"AF3_DATA_PIPELINE","monomers","{multi}","{multi}.json") if MODE in ["all-vs-all","pulldown"]  else [],
+#        data_pipeline_monomers_2 = os.path.join(OUTPUT_DIR,"AF3_DATA_PIPELINE","monomers","{multi}","{multi}.json") if MODE in ["all-vs-all","pulldown"]  else [],
+#        data_pipeline_monomers = get_monomeric_json_outputs if MODE in ["all-vs-all","pulldown"] else[],
+        #monomers = os.path.join(OUTPUT_DIR,"PREPROCESSING","monomers","{mono}.json") if MODE in ["all-vs-all","pulldown"]  else [],
+        preprocessed_multimers = os.path.join(OUTPUT_DIR,"PREPROCESSING","multimers","{multi}.json") if MODE in ["all-vs-all","pulldown"]  else [],
+#        preprocessed_multimers = get_multimeric_json_outputs if MODE in ["all-vs-all","pulldown"] else[],
     params:
         monomers_dir = os.path.join(OUTPUT_DIR,"AF3_DATA_PIPELINE","monomers"),
-        multimers_dir = os.path.join(OUTPUT_DIR,"PREPROCESSING","multimers")
+#        multimers_dir = os.path.join(OUTPUT_DIR,"PREPROCESSING","multimers")
     output:
-        data_pipeline_msa = directory(os.path.join(OUTPUT_DIR,"MERGE_MONO_AND_MULTI_JSON")) if MODE in ["all-vs-all","pulldown"] else [],
+        data_pipeline_msa = os.path.join(OUTPUT_DIR,"MERGE_MONO_AND_MULTI_JSON","{multi}","{multi}_data.json") if MODE in ["all-vs-all","pulldown"] else [],
+#        data_pipeline_msa = directory(os.path.join(OUTPUT_DIR,"MERGE_MONO_AND_MULTI_JSON")) if MODE in ["all-vs-all","pulldown"] else [],
     shell:
         """
-        python {WORKFLOW_DIR}/scripts/merge_mono_and_multi_jsons.py {params.monomers_dir} {params.multimers_dir} {output}
-#        python {WORKFLOW_DIR}/scripts/merge_mono_and_multi_jsons.py {input.data_pipeline_monomers} {input.preprocessed_multimers} {output}
+        python {WORKFLOW_DIR}/scripts/merge_mono_and_multi_jsons_speedy.py {params.monomers_dir} {input.preprocessed_multimers} {OUTPUT_DIR}/MERGE_MONO_AND_MULTI_JSON
         """
+#        python {WORKFLOW_DIR}/scripts/merge_mono_and_multi_jsons.py {params.monomers_dir} {params.multimers_dir} {output}
 
 
 rule CREATE_AF3_INFERENCE_JOBS_DEFAULT_AF3_PIPELINE:
@@ -471,7 +475,11 @@ rule CREATE_AF3_INFERENCE_JOBS_SPEEDY_AF3_PIPELINE:
 rule AGG_AF3_INFERENCE_JOBS:
     input:
         individual_jobs = get_individual_jobs if MODE == "default" else [],
-        multimer_individual_jobs = get_multimeric_inference_jobs if MODE in ["all-vs-all","pulldown"] else [],
+        merged_multimer = get_multimeric_json_with_msas if MODE in ["all-vs-all","pulldown"]  else [],
+        multimer_individual_jobs = expand(os.path.join(OUTPUT_DIR,"CREATE_AF3_INFERENCE_JOBS","{multi}_af3_inference_job.txt"), multi=glob_wildcards(os.path.join(OUTPUT_DIR,"MERGE_MONO_AND_MULTI_JSON","{multi}","{multi}_data.json")).multi) if MODE in ["all-vs-all","pulldown"]  else []
+
+#        multimer_individual_jobs =  get_multimeric_json_with_msas if MODE in ["all-vs-all","pulldown"] else [],
+#        multimer_individual_jobs = get_multimeric_inference_jobs if MODE in ["all-vs-all","pulldown"] else [],
     params:
         mode = MODE
     output:
@@ -482,9 +490,10 @@ rule AGG_AF3_INFERENCE_JOBS:
                 cat {input.individual_jobs} > {output.job_list}
         fi
         if [[ "{params.mode}" == "pulldown" || "{params.mode}" == "all-vs-all" ]]; then
-                cat {input.multimer_individual_jobs} >> {output.job_list}
+                find {OUTPUT_DIR}/CREATE_AF3_INFERENCE_JOBS -type f -name '*.txt' -print0 | tar --null -T - -cf - | tar -xOf - > {output.job_list}
         fi
         """
+#                cat {input.multimer_individual_jobs} >> {output.job_list}
 
 rule SPLIT_INFERENCE_JOB_LIST:
     input:
@@ -504,13 +513,13 @@ rule SPLIT_INFERENCE_JOB_LIST:
 rule AF3_INFERENCE:
     input:
         job_list = os.path.join(OUTPUT_DIR,"SPLIT_INFERENCE_JOB_LIST","af3_inference_jobs_{scatteritem}.txt"),
-        data_pipeline_msa= get_data_pipeline_outputs if MODE == "default" else [],
-        data_pipeline_msa_multimers = get_multimeric_json_with_msas if MODE in ["all-vs-all","pulldown"] else [],
+#        data_pipeline_msa= get_data_pipeline_outputs if MODE == "default" else [],
+#        data_pipeline_msa_multimers = get_multimeric_json_with_msas if MODE in ["all-vs-all","pulldown"] else [],
     output:
         touch(os.path.join(OUTPUT_DIR,"AF3_INFERENCE","af3_inference_jobs_{scatteritem}.done.txt")),
     container:
         AF3_CONTAINER
     shell:
         """
-        bash workflow/scripts/parallel.sh /root/af_output/SPLIT_INFERENCE_JOB_LIST/af3_inference_jobs_{wildcards.scatteritem}.txt
+        bash /scripts/parallel.sh /root/af_output/SPLIT_INFERENCE_JOB_LIST/af3_inference_jobs_{wildcards.scatteritem}.txt
         """
