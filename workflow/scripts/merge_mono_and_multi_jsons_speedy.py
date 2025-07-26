@@ -23,7 +23,7 @@ def merge_jsons(multimer_data, monomer_data_list):
     for multimer_entity_dict in multimer_data["sequences"]:
         for monomer_json in monomer_data_list:
             if "protein" in multimer_entity_dict:
-                if multimer_entity_dict["protein"]["sequence"] == monomer_json["sequences"][0]["protein"]["sequence"]:
+                if multimer_entity_dict["protein"]["sequence"].replace("U","X") == monomer_json["sequences"][0]["protein"]["sequence"]:
                     multimer_entity_dict["protein"]["unpairedMsa"] = monomer_json["sequences"][0]["protein"]["unpairedMsa"]
                     multimer_entity_dict["protein"]["pairedMsa"] = monomer_json["sequences"][0]["protein"]["pairedMsa"]
                     multimer_entity_dict["protein"]["templates"] = monomer_json["sequences"][0]["protein"].get("templates", [])
