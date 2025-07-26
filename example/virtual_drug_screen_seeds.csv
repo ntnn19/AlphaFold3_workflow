@@ -1,0 +1,3 @@
+id,type,sequence,drug_or_target,target_id,drug_id,model_seeds
+p2,protein,MASEQASDTTVCIK,target,t1,,"1,2"
+l1,ligand,CC(=O)Oc1ccccc1C(=O)O,drug,,d1,"1,2"

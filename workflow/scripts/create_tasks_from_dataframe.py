@@ -96,6 +96,7 @@ def create_batch_task(job_name, entities, model_seeds, bonded_atom_pairs=None, u
         alphafold_input["userCCD"] = user_ccd
 
     logger.debug(f"Created task for job: {job_name}")
+    logger.debug(f"json: {alphafold_input}")
     return alphafold_input
 
 
@@ -429,7 +430,6 @@ def create_pulldown_df(df,output_dir="output/PREPROCESSING",msa_option = None):
     job_names_with_1_id = job_names_with_1_id[job_names_with_1_id == 1]
     bait_df_oligo = bait_df_oligo[~bait_df_oligo["job_name"].isin(job_names_with_1_id.index.tolist())]
     target_df_oligo = target_df_oligo[~target_df_oligo["job_name"].isin(job_names_with_1_id.index.tolist())]
-
     oligo_bait_target_pairs_df_expanded["output_dir"]= os.path.join(output_dir,"multimers")
     pulldown_df = pd.concat([pulldown_df,target_df_oligo,bait_df_oligo,oligo_bait_target_pairs_df_expanded],ignore_index=True)
 
@@ -452,15 +452,28 @@ def create_virtual_drug_screen_df(df, output_dir="output/PREPROCESSING",msa_opti
 
     :return: DataFrame with ligand-target pairs and standalone targets.
     """
+    optional_columns = ["unpaired_msa", "paired_msa", "templates", "model_seeds", "bonded_atom_pairs", "user_ccd"]
     drug_df = df[df["drug_or_target"] == "drug"].copy()
     target_df = df[df["drug_or_target"] == "target"].copy()
 
     all_entries = []
 
     # Add standalone targets
-    for _, (target_id, target_seq,target_type) in target_df[['id', 'sequence','type']].iterrows():
-        all_entries.append(
-            {"job_name": target_id, "id": "A", "type": target_type, "sequence": target_seq, "smiles": ""})
+    for _, row in target_df[
+        ['id', 'sequence', 'type'] + [col for col in optional_columns if col in df.columns]].iterrows():
+        entry = {
+            "job_name": row["id"],
+            "id": "A",
+            "type": row["type"],
+            "sequence": row["sequence"],
+            "smiles": "",
+            "output_dir": os.path.join(output_dir, "monomers")
+        }
+        for col in optional_columns:
+            if col in row:
+                entry[col] = row[col]
+        all_entries.append(entry)
+
     target_df_oligo = pd.DataFrame()
     oligo_ligand_target_pairs_df_expanded = pd.DataFrame()
     # Add oligomeric targets
@@ -504,18 +517,43 @@ def create_virtual_drug_screen_df(df, output_dir="output/PREPROCESSING",msa_opti
         target_df_oligo = target_df_oligo.groupby("job_name").filter(lambda x: len(x) > 1)
 
     # Add ligand/standalone-target pairs
-    for _, (drug_id, drug_smiles) in drug_df[['id', 'sequence']].iterrows():
-        for _, (target_id, target_seq,target_type) in target_df[['id', 'sequence','type']].iterrows():
-            pair_name = f"{target_id}_{drug_id}"
-            all_entries.append(
-                {"job_name": pair_name, "id": "A", "type": target_type, "sequence": target_seq, "smiles": ""})
-            all_entries.append(
-                {"job_name": pair_name, "id": "B", "type": "ligand", "sequence": "", "smiles": drug_smiles})
+    for _, drug_row in drug_df[['id', 'sequence'] + [col for col in optional_columns if col in df.columns]].iterrows():
+        for _, target_row in target_df[
+            ['id', 'sequence', 'type'] + [col for col in optional_columns if col in df.columns]].iterrows():
+            pair_name = f"{target_row['id']}_{drug_row['id']}"
 
-    # Add ligand-oligomeric targets
+            target_entry = {
+                "job_name": pair_name,
+                "id": "A",
+                "type": target_row["type"],
+                "sequence": target_row["sequence"],
+                "smiles": "",
+                "output_dir": os.path.join(output_dir, "multimers")
+            }
+            drug_entry = {
+                "job_name": pair_name,
+                "id": "B",
+                "type": "ligand",
+                "sequence": "",
+                "smiles": drug_row["sequence"],
+                "output_dir": os.path.join(output_dir, "multimers")
+            }
+
+            for col in optional_columns:
+                if col in target_row:
+                    target_entry[col] = target_row[col]
+                if col in drug_row:
+                    drug_entry[col] = drug_row[col]
+
+            all_entries.extend([target_entry, drug_entry])
+
+    # Add ligand-oligomeric targets<
 
     screen_df = pd.DataFrame(all_entries)
+    target_df_oligo["output_dir"]=os.path.join(output_dir,"multimers")
+    oligo_ligand_target_pairs_df_expanded["output_dir"]=os.path.join(output_dir,"multimers")
     screen_df = pd.concat([screen_df,target_df_oligo,oligo_ligand_target_pairs_df_expanded],ignore_index=True)
+
 
     if msa_option in ["auto_template_based", "auto_template_free"]:
         screen_df["job_name"] += "_" + msa_option
@@ -606,9 +644,9 @@ def create_tasks_from_dataframe(df_path, output_dir, mode, msa_option):
     tasks = []
     job_names = []
     os.makedirs(output_dir, exist_ok=True)
-    df = pd.read_csv(df_path)
+    df_input = pd.read_csv(df_path)
     if mode != "default":
-        df = create_df_for_run_mode(df, mode, msa_option,output_dir)
+        df = create_df_for_run_mode(df_input, mode, msa_option,output_dir)
     df["job_name"] = df["job_name"].apply(lambda x: sanitised_name(x))
     df.to_csv(os.path.join(output_dir,f"task_table_{msa_option}.csv"),index=False)
     grouped = df.groupby('job_name')
@@ -688,11 +726,18 @@ def create_tasks_from_dataframe(df_path, output_dir, mode, msa_option):
             bonded_atom_pairs=bonded_atom_pairs,
             user_ccd=user_ccd
         )
-        input_json_path = os.path.join(outdir, f"{job_name}.json")
-        with open(input_json_path, "w") as outfile:
-            json.dump(task, outfile)
-        tasks.append(input_json_path)
-        job_names.append(f"{job_name}")
+
+        for s in task["modelSeeds"]:
+            seed_job_name = f"{job_name}_seed-{s}"
+            task["name"] = seed_job_name
+            task["modelSeeds"] = [s]
+            input_json_path = os.path.join(outdir, f"{seed_job_name}.json")
+
+            with open(input_json_path, "w") as outfile:
+#                print(input_json_path,task)
+                json.dump(task, outfile)
+            tasks.append(input_json_path)
+            job_names.append(f"{job_name}")
     return tasks, job_names
 
 
