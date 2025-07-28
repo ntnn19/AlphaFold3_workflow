@@ -1,6 +1,6 @@
 # Adapted from https://github.com/Hanziwww/AlphaFold3-GUI/blob/main/afusion/api.py
 
-
+import re
 import os
 import json
 import pandas as pd
@@ -9,11 +9,25 @@ from loguru import logger
 import click
 import itertools
 import numpy as np
-
+import yaml
 import base64
 
 from datetime import datetime
 
+def load_mutually_exclusive(value):
+    if value == "all":
+        return "all"
+
+    if not os.path.exists(value):
+        raise click.BadParameter(f'File "{value}" does not exist.')
+
+    with open(value) as f:
+        if value.endswith(".yaml") or value.endswith(".yml"):
+            return yaml.safe_load(f)
+        elif value.endswith(".json"):
+            return json.load(f)
+        else:
+            raise click.BadParameter("Only .yaml, .yml or .json supported for mutually exclusive input list.")
 
 def encode(s):
     """Encode a string using Base64 URL-safe encoding."""
@@ -270,7 +284,7 @@ def check_for_mode_validity(df, mode):
                 f"Dataframe must contain the following columns: {allowed_columns}. Got {df.columns} instead.")
         if df[~df["bait_or_target"].isin(["bait", "target"])].shape[0] > 0:
             raise ValueError(
-                f"Only 'bait' or 'target' are allowed as values for column 'bait_or_target'. Got {df[~df["bait_or_target"].isin(["bait", "target"])]["bait_or_target"].values} instead.")
+                f"Only 'bait' or 'target' are allowed as values for column 'bait_or_target'. Got {df[~df['bait_or_target'].isin(['bait', 'target'])]['bait_or_target'].values} instead.")
     if mode == "virtual-drug-screen":
         allowed_columns = ["id", "sequence", "type", "drug_or_target"]
         if not set(allowed_columns).issubset(df.columns):
@@ -278,7 +292,7 @@ def check_for_mode_validity(df, mode):
                 f"Dataframe must contain the following columns: {allowed_columns}. Got {df.columns} instead.")
         if df[~df["drug_or_target"].isin(["drug", "target"])].shape[0] > 0:
             raise ValueError(
-                f"Only 'drug' or 'target' are allowed as values for column 'drug_or_target'. Got {df[~df["drug_or_target"].isin(["drug", "target"])]["drug_or_target"].values} instead.")
+                f"Only 'drug' or 'target' are allowed as values for column 'drug_or_target'. Got {df[~df['drug_or_target'].isin(['drug', 'target'])]['drug_or_target'].values} instead.")
 
 
 def check_for_valid_columns(df, mode):
@@ -612,7 +626,9 @@ def create_df_for_run_mode(df, mode, msa_option=None,output_dir="output/PREPROCE
               help="Choose run mode: 'default', 'all-vs-all', 'pulldown','virtual-drug-screen', or 'stoichio-screen'")
 @click.option('--msa-option', type=str, default='auto_template_free',
               help="Run template free or template based structure prediction. Choose either 'auto_template_free' or 'auto_template_based'")
-def create_tasks_from_dataframe(df_path, output_dir, mode, msa_option):
+@click.option('--mutually-exclusive', type=str, default='all',
+              help='Either "all" or a path to a YAML/JSON file with mutually exclusive pairs. Use only if mode is  all-vs-all/pulldown/virtual-drug-screen')
+def create_tasks_from_dataframe(df_path, output_dir, mode, msa_option,mutually_exclusive):
     """
     Creates batch tasks from a DataFrame.
 
@@ -640,13 +656,21 @@ def create_tasks_from_dataframe(df_path, output_dir, mode, msa_option):
     :return: Writes one json path per task to output_dir. Returns a list of paths and a list of job_names
     :rtype: tuple of lists
     """
-
+    exclusives = load_mutually_exclusive(mutually_exclusive)["mutually_exclusive"] if mutually_exclusive!="all" else "all"
+    sanitized_exclusives = [[sanitised_name(x), sanitised_name(y)] for x, y in exclusives] if exclusives!="all" else None
     tasks = []
     job_names = []
     os.makedirs(output_dir, exist_ok=True)
     df_input = pd.read_csv(df_path)
     if mode != "default":
         df = create_df_for_run_mode(df_input, mode, msa_option,output_dir)
+        if exclusives!="all":
+            print("sanitised exclusives=",sanitized_exclusives)
+            patterns = [fr"{re.escape(a)}_{re.escape(b)}" for a, b in sanitized_exclusives]+ [fr"{re.escape(b)}_{re.escape(a)}" for a, b in sanitized_exclusives]
+            pattern = '|'.join(patterns)
+#            df = df[df['job_name'].str.contains(pattern, regex=True, na=False)]
+            df = pd.concat([df[df['job_name'].str.contains(pattern, regex=True, na=False)],df[df['output_dir'].str.contains("monomers")]],ignore_index=True)
+
     df["job_name"] = df["job_name"].apply(lambda x: sanitised_name(x))
     df.to_csv(os.path.join(output_dir,f"task_table_{msa_option}.csv"),index=False)
     grouped = df.groupby('job_name')
@@ -727,17 +751,13 @@ def create_tasks_from_dataframe(df_path, output_dir, mode, msa_option):
             user_ccd=user_ccd
         )
 
-        for s in task["modelSeeds"]:
-            seed_job_name = f"{job_name}_seed-{s}"
-            task["name"] = seed_job_name
-            task["modelSeeds"] = [s]
-            input_json_path = os.path.join(outdir, f"{seed_job_name}.json")
+        input_json_path = os.path.join(outdir, f"{job_name}.json")
+        with open(input_json_path, "w") as outfile:
+            print(input_json_path,task)
+            json.dump(task, outfile)
+        tasks.append(input_json_path)
+        job_names.append(f"{job_name}")
 
-            with open(input_json_path, "w") as outfile:
-#                print(input_json_path,task)
-                json.dump(task, outfile)
-            tasks.append(input_json_path)
-            job_names.append(f"{job_name}")
     return tasks, job_names
 
 

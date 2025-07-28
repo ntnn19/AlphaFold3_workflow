@@ -41,7 +41,8 @@ def merge_jsons(multimer_data, monomer_data_list):
 @click.argument("monomers_dir", type=click.Path())
 @click.argument("multimer_file", type=click.Path())
 @click.argument("output_dir",  type=click.Path())
-def main(monomers_dir,multimer_file,output_dir):
+@click.option("--mode",  type=str, default="pulldown")
+def main(monomers_dir,multimer_file,output_dir,mode):
     # Separate monomeric and multimeric files
     monomer_files =  []
     multimer_files =  [multimer_file]
@@ -61,21 +62,31 @@ def main(monomers_dir,multimer_file,output_dir):
         monomer_2 = multimer_name.split(suffix)[0].split("_")[1]
         monomer_files.append(os.path.join(monomers_dir,f"{monomer_1}{suffix}", f"{monomer_1}{suffix}_data.json"))
         monomer_files.append(os.path.join(monomers_dir,f"{monomer_2}{suffix}", f"{monomer_2}{suffix}_data.json"))
-
 #        monomer_data = {}
         for mf in monomer_files:
+            if mode=="virtual-drug-screen":
+                if not os.path.exists(mf):
+                    continue
             key = extract_monomer_key(mf)
 #            monomer_data[key] = load_json(mf)
             matched_monomers.append(load_json(mf))
         click.echo(f"matched_monomers= {[m for m in monomer_files]}")
         click.echo(f"multimer_json= {multimer_json}")
         merged = merge_jsons(multimer_json, matched_monomers)
-        sub_output_dir = os.path.join(output_dir,multimer_name)
-        os.makedirs(sub_output_dir, exist_ok=True)
-        out_path = os.path.join(sub_output_dir,multimer_base.replace(".json","_data.json"))
+        original_name = merged["name"]
+        original_model_seeds = merged["modelSeeds"]
 
-        write_json(merged, out_path)
-        click.echo(f"Wrote merged JSON to {out_path}")
+        for s in original_model_seeds:
+            merged_copy = merged.copy()
+            merged_copy["name"] = f"{original_name}_seed-{s}"
+            merged_copy["modelSeeds"] = [s]
+
+            sub_output_dir = os.path.join(output_dir, merged_copy["name"])
+            os.makedirs(sub_output_dir, exist_ok=True)
+
+            out_path = os.path.join(sub_output_dir, f"{merged_copy['name']}_data.json")
+            write_json(merged_copy, out_path)
+            click.echo(f"Wrote merged JSON to {out_path}")
 
 if __name__ == "__main__":
     main()
