@@ -2,15 +2,16 @@ import string
 import pandas as pd
 import os
 import yaml
-localrules: SPLIT_INFERENCE_JOB_LIST, AF3_DATA_DEFAULT_PIPELINE, CREATE_AF3_INFERENCE_JOBS_DEFAULT_AF3_PIPELINE, CREATE_AF3_INFERENCE_JOBS_SPEEDY_AF3_PIPELINE, AGG_AF3_INFERENCE_JOBS, SPLIT_INFERENCE_JOB_LIST, PREPROCESSING,MERGE_MONO_AND_MULTI_JSON, COLLECT_AF3_PREDICTIONS, OST_COMAPRE_LIGAND_STRUCTURES
-
+localrules: SPLIT_INFERENCE_JOB_LIST, AF3_DATA_DEFAULT_PIPELINE, CREATE_AF3_INFERENCE_JOBS_DEFAULT_AF3_PIPELINE, CREATE_AF3_INFERENCE_JOBS_SPEEDY_AF3_PIPELINE, AGG_AF3_INFERENCE_JOBS, SPLIT_INFERENCE_JOB_LIST, PREPROCESSING,MERGE_MONO_AND_MULTI_JSON, COLLECT_AF3_PREDICTIONS, CREATE_OST_COMAPRE_LIGAND_STRUCTURES_JOBS, AGG_OST_COMAPRE_LIGAND_STRUCTURES_JOBS, SPLIT_OST_COMAPRE_LIGAND_STRUCTURES_JOBS, AGG_OST_COMAPRE_LIGAND_STRUCTURES_JOBS_OVER_SCATTERS, GET_DONE_OUTPUTS, AGG_OST_REPORTS, CREATE_OST_REPORT
 #AF3_DATA_SPEEDY_PIPELINE,
 
 #localrules: CREATE_AF3_INFERENCE_JOBS_SPEEDY_AF3_PIPELINE,  MERGE_MONO_AND_MULTI_JSON, AGG_AF3_INFERENCE_JOBS
 #localrules: CREATE_AF3_INFERENCE_JOBS_SPEEDY_AF3_PIPELINE,  MERGE_MONO_AND_MULTI_JSON, AGG_AF3_INFERENCE_JOBS
 scattergather:
-    split=config.get("n_splits",1)
+    split=config.get("n_splits",1),
+    split_ost=config.get("n_splits_ost",1)
 SPLIT_TOTAL = workflow._scatter["split"]
+SPLIT_OST = workflow._scatter["split_ost"]
 from scripts import create_tasks_from_dataframe
 
 WORKFLOW_DIR = workflow.basedir
@@ -20,7 +21,9 @@ MODE = config.get("mode","default")
 OST_CONTAINER = config.get("ost_container",None)
 MUTUALLY_EXCLUSIVE =config.get("mutually_exclusive","all") 
 GROUND_TRUTH =config.get("ground_truth",None) 
-
+TASK = config.get("task", "")
+RUNS_N_POSES_JSON_INPUTS =  config["runs_n_poses_json_inputs"]
+RUNS_N_POSES_ANNOTATIONS =  config["runs_n_poses_annotations"]
 if GROUND_TRUTH  != None:
     with open(GROUND_TRUTH) as f:
         ground_truth_data = yaml.safe_load(f)
@@ -63,7 +66,6 @@ SEQRES_DATABASE_PATH = get_af3_flag_value('--seqres_database_path', os.path.join
 SMALL_BFD_DATABASE_PATH = get_af3_flag_value('--small_bfd_database_path', os.path.join('/root/public_databases','bfd-first_non_consensus_sequences.fasta'))
 UNIPROT_CLUSTER_ANNOT_DATABASE_PATH = get_af3_flag_value('--uniprot_cluster_annot_database_path', os.path.join('/root/public_databases','uniprot_all_2021_04.fa'))
 UNIREF90_DATABASE_PATH = get_af3_flag_value('--uniref90_database_path', os.path.join('/root/public_databases','uniref90_2022_05.fa'))
-#JOB_NAMES_MULTIMERS = None
 
 def sanitised_name(name):
     """Returns sanitised version of the name that can be used as a filename."""
@@ -100,7 +102,6 @@ def get_data_pipeline_outputs(wildcards):
 def get_multimeric_json_outputs(wildcards):
     print("get_multimeric_json_outputs checkpoint")
     PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
-#    JOB_NAMES_MONOMERS, = glob_wildcards(os.path.join(PREPROCESSING_DIR,"monomers","{i}.json"))
     JOB_NAMES_MULTIMERS, = glob_wildcards(os.path.join(PREPROCESSING_DIR,"multimers","{multi}.json"))
     print("get_multimeric_json_outputs","JOB_NAMES=",JOB_NAMES_MULTIMERS[:10])
     return list(expand(os.path.join(PREPROCESSING_DIR,"multimers","{multi}.json"),multi=JOB_NAMES_MULTIMERS)) + list(expand(os.path.join(OUTPUT_DIR,"MERGE_MONO_AND_MULTI_JSON","{multi}","{multi}_data.json"), multi=JOB_NAMES_MULTIMERS))
@@ -115,39 +116,28 @@ def get_monomeric_json_outputs(wildcards):
 def get_multimeric_json_with_msas(wildcards):
     print("get_multimeric_json_with_msa checkpoint")
     PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
-#    global JOB_NAMES_MULTIMERS    
     JOB_NAMES_MULTIMERS, = glob_wildcards(os.path.join(PREPROCESSING_DIR,"multimers","{multi}.json"))
     print("get_multimeric_json_with_msas","JOB_NAMES=",JOB_NAMES_MULTIMERS[:10])
-    return list(expand(os.path.join(OUTPUT_DIR,"MERGE_MONO_AND_MULTI_JSON","{multi}_seed-{seed}","{multi}_seed-{seed}_data.json"), multi=JOB_NAMES_MULTIMERS,seed=SEEDS))
+    return list(expand(os.path.join(OUTPUT_DIR,"CREATE_AF3_INFERENCE_JOBS","{multi}_seed-{seed}_af3_inference_job.txt"), multi=JOB_NAMES_MULTIMERS,seed=SEEDS))
+#    return list(expand(os.path.join(OUTPUT_DIR,"MERGE_MONO_AND_MULTI_JSON","{multi}","{multi}_data.json"), multi=JOB_NAMES_MULTIMERS))
 
 def get_collect_predictions(wildcards):
-    print("get_multimeric_json_with_msa checkpoint")
-    PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
-#    global JOB_NAMES_MULTIMERS    
-    JOB_NAMES_MULTIMERS, = glob_wildcards(os.path.join(PREPROCESSING_DIR,"multimers","{multi}.json"))
-    print("get_multimeric_json_with_msas","JOB_NAMES=",JOB_NAMES_MULTIMERS[:10])
-    return list(expand(os.path.join(OUTPUT_DIR,"OST_COMAPRE_LIGAND_STRUCTURES","{multi}_seed-{seed}_sample-{sample}_score.json"), multi=JOB_NAMES_MULTIMERS,seed=SEEDS, sample=[0,1,2,3,4]))
-
-#def get_collect_predictions(wildcards):
-#    print("HERE")
-#    COLLECT_PREDICTIONS_DIR = checkpoints.COLLECT_AF3_PREDICTIONS.get(**wildcards).output[0]
-#    PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
-#    COLLECT_PREDICTIONS_DIR = os.path.join(OUTPUT_DIR,"COLLECT_AF3_PREDICTIONS") 
-#    global JOB_NAMES_MULTIMERS    
-#    JOB_NAMES_MULTIMERS, = glob_wildcards(os.path.join(PREPROCESSING_DIR,"multimers","{multi}.json"))
-#    JOB_NAMES_MULTIMERS, = glob_wildcards(os.path.join(PREPROCESSING_DIR,"multimers","{multi}.json"))
-#    print("get_collect_predictions","JOB_NAMES=",JOB_NAMES_MULTIMERS[:10])
-#    return list(expand(os.path.join(OUTPUT_DIR,"OST_COMAPRE_LIGAND_STRUCTURES","{multi}_sample-{sample}_score.csv"), multi=JOB_NAMES_MULTIMERS, sample=[0,1,2,3,4]))
+    print("get_collect_predictions checkpoint")
+    GET_DONE_OUTPUTS_DIR = checkpoints.GET_DONE_OUTPUTS.get(**wildcards).output[0]
+    JOB_NAMES_MULTIMERS, SEEDS_ = glob_wildcards(os.path.join(GET_DONE_OUTPUTS_DIR,"{multi}_seed-{seed}.done.txt"))
+    files = list(expand(os.path.join(OUTPUT_DIR,"CREATE_OST_COMAPRE_LIGAND_STRUCTURES_JOBS","{multi}_seed-{seed}_sample-{sample}_job.txt"), multi=set(JOB_NAMES_MULTIMERS),seed=list(set(SEEDS_)), sample=[0,1,2,3,4]))
+    print("# files to return=", len(files))
+    return files
 
 
 rule all:
     input:
+        os.path.join(OUTPUT_DIR,"AGG_OST_REPORTS","ost_report.csv") if MODE == "virtual-drug-screen" and TASK=="ost" else [],
+        expand(os.path.join(OUTPUT_DIR,"OST_COMAPRE_LIGAND_STRUCTURES","done_flags",f"job_{{s}}-of-{SPLIT_OST}.done.txt"),s=list(range(1,SPLIT_OST+1))) if MODE == "virtual-drug-screen" and TASK=="ost" else [],
         expand(os.path.join(OUTPUT_DIR,"AF3_INFERENCE",f"af3_inference_jobs_{{s}}-of-{SPLIT_TOTAL}.done.txt"),s=list(range(1,SPLIT_TOTAL+1))),
-        get_collect_predictions if MODE == "virtual-drug-screen" else [],
-#expand(os.path.join(OUTPUT_DIR,"OST_COMAPRE_LIGAND_STRUCTURES","{multi}_sample-{sample}_score.csv"),
-#        get_collect_predictions,
-#        get_collect_predictions if MODE == "virtual-drug-screen" else [],
-#        get_monomeric_json_outputs,
+#        get_multimeric_json_with_msas if MODE in ["all-vs-all","pulldown","virtual-drug-screen"] and TASK=="af3" else [],
+
+
 
 checkpoint PREPROCESSING:
     input:
@@ -416,6 +406,8 @@ rule CREATE_AF3_INFERENCE_JOBS_DEFAULT_AF3_PIPELINE:
 rule CREATE_AF3_INFERENCE_JOBS_SPEEDY_AF3_PIPELINE:
     input:
         multimers = os.path.join(OUTPUT_DIR,"MERGE_MONO_AND_MULTI_JSON","{multi}","{multi}_data.json") if MODE in ["all-vs-all","pulldown","virtual-drug-screen"]  else []
+#        data_pipeline_msa = expand(os.path.join(OUTPUT_DIR,"MERGE_MONO_AND_MULTI_JSON","{{multi}}_seed-{seed}","{{multi}}_seed-{seed}_data.json"),seed=SEEDS) if MODE in ["all-vs-all","pulldown","virtual-drug-screen"] else [],
+#        multimers = os.path.join(OUTPUT_DIR,"MERGE_MONO_AND_MULTI_JSON","{multi}_seed-{seed}","{multi}_seed-{seed}_data.json") if MODE in ["all-vs-all","pulldown","virtual-drug-screen"]  else []
     params:
         mode = MODE,
         buckets = BUCKETS,
@@ -446,6 +438,7 @@ rule CREATE_AF3_INFERENCE_JOBS_SPEEDY_AF3_PIPELINE:
         uniref90_database_path = UNIREF90_DATABASE_PATH
     output:
         multimers = os.path.join(OUTPUT_DIR,"CREATE_AF3_INFERENCE_JOBS","{multi}_af3_inference_job.txt") if MODE in ["all-vs-all","pulldown","virtual-drug-screen"]  else []
+#        multimers = expand(os.path.join(OUTPUT_DIR,"CREATE_AF3_INFERENCE_JOBS","{{multi}}_seed-{seed}_af3_inference_job.txt"),seed=SEEDS) if MODE in ["all-vs-all","pulldown","virtual-drug-screen"]  else []
     shell:
         """
         echo 'python /app/alphafold/run_alphafold.py --json_path=/root/af_output/MERGE_MONO_AND_MULTI_JSON/{wildcards.multi}/{wildcards.multi}_data.json \
@@ -485,9 +478,10 @@ rule CREATE_AF3_INFERENCE_JOBS_SPEEDY_AF3_PIPELINE:
 
 rule AGG_AF3_INFERENCE_JOBS:
     input:
-        individual_jobs = get_individual_jobs if MODE == "default" else [],
         merged_multimer = get_multimeric_json_with_msas if MODE in ["all-vs-all","pulldown","virtual-drug-screen"]  else [],
-        multimer_individual_jobs = expand(os.path.join(OUTPUT_DIR,"CREATE_AF3_INFERENCE_JOBS","{multi}_af3_inference_job.txt"), multi=glob_wildcards(os.path.join(OUTPUT_DIR,"MERGE_MONO_AND_MULTI_JSON","{multi}","{multi}_data.json")).multi) if MODE in ["all-vs-all","pulldown","virtual-drug-screen"]  else []
+        individual_jobs = get_individual_jobs if MODE == "default" else [],
+#        multimers = expand(os.path.join(OUTPUT_DIR,"CREATE_AF3_INFERENCE_JOBS","{{multi}}_seed-{seed}_af3_inference_job.txt"),seed=SEEDS) if MODE in ["all-vs-all","pulldown","virtual-drug-screen"]  else []
+#        multimer_individual_jobs = expand(os.path.join(OUTPUT_DIR,"CREATE_AF3_INFERENCE_JOBS","{multi}_af3_inference_job.txt"), multi=glob_wildcards(os.path.join(OUTPUT_DIR,"MERGE_MONO_AND_MULTI_JSON","{multi}","{multi}_data.json")).multi) if MODE in ["all-vs-all","pulldown","virtual-drug-screen"]  else [],
     params:
         mode = MODE
     output:
@@ -529,47 +523,113 @@ rule AF3_INFERENCE:
         bash /scripts/parallel.sh /root/af_output/SPLIT_INFERENCE_JOB_LIST/af3_inference_jobs_{wildcards.scatteritem}.txt
         """
 
-#checkpoint COLLECT_AF3_PREDICTIONS:
-#    input:
-#        done_files = expand(os.path.join(OUTPUT_DIR,"AF3_INFERENCE",f"af3_inference_jobs_{{s}}-of-{SPLIT_TOTAL}.done.txt"),s=list(range(1,SPLIT_TOTAL+1))),
-#        job_list = os.path.join(OUTPUT_DIR,"AGG_AF3_INFERENCE_JOBS","af3_inference_jobs.txt")
-#    output:
-#        directory(os.path.join(OUTPUT_DIR,"COLLECT_AF3_PREDICTIONS"))
-#    shell:
-#        """
-#        python {WORKFLOW_DIR}/scripts/collect_predictions.py --job-list {input.job_list} --output-dir {output}
-#        """
+
+checkpoint GET_DONE_OUTPUTS:
+    input:
+        expand(os.path.join(OUTPUT_DIR,"AF3_INFERENCE",f"af3_inference_jobs_{{s}}-of-{SPLIT_TOTAL}.done.txt"),s=list(range(1,SPLIT_TOTAL+1))),
+    output:
+        directory(os.path.join(OUTPUT_DIR,"GET_DONE_OUTPUTS"))
+    shell:
+        """
+        mkdir -p {output}
+        for i in {{1..{SPLIT_TOTAL}}}; do
+            eval \"$(grep -- '--json_path=' {OUTPUT_DIR}/SPLIT_INFERENCE_JOB_LIST/af3_inference_jobs_${{i}}-of-{SPLIT_TOTAL}.txt  | sed -E 's/.*--json_path=\\/.*\\/([^/]+)_data\\.json.*/touch {OUTPUT_DIR}\\/GET_DONE_OUTPUTS\\/\\1.done.txt/')\";
+        done
+        """
 
 rule COLLECT_AF3_PREDICTIONS:
     input:
-        done_files = expand(os.path.join(OUTPUT_DIR,"AF3_INFERENCE",f"af3_inference_jobs_{{s}}-of-{SPLIT_TOTAL}.done.txt"),s=list(range(1,SPLIT_TOTAL+1))),
+        done_files = os.path.join(OUTPUT_DIR,"GET_DONE_OUTPUTS","{multi}_seed-{seed}.done.txt"),
         job = os.path.join(OUTPUT_DIR,"CREATE_AF3_INFERENCE_JOBS","{multi}_seed-{seed}_af3_inference_job.txt") if MODE in ["all-vs-all","pulldown","virtual-drug-screen"]  else []
-#p01584_t9c_auto_template_based_seed-1000_af3_inference_job.txt
-#os.path.join(OUTPUT_DIR,"OST_COMAPRE_LIGAND_STRUCTURES","{multi}_seed-{seed}_sample-{sample}.csv")
+#expand(os.path.join(OUTPUT_DIR,"AF3_INFERENCE",f"af3_inference_jobs_{{s}}-of-{SPLIT_TOTAL}.done.txt"),s=list(range(1,SPLIT_TOTAL+1))),
     output:
         os.path.join(OUTPUT_DIR,"COLLECT_AF3_PREDICTIONS","{multi}_seed-{seed}_sample-{sample}_model.cif")
-#        os.path.join(OUTPUT_DIR,"COLLECT_AF3_PREDICTIONS","{multi}_sample-{sample}_model.cif")
-#        expand(os.path.join(OUTPUT_DIR,"COLLECT_AF3_PREDICTIONS","{{multi}}_sample-{sample}_model.cif"),sample=[0,1,2,3,4])
     shell:
         """
         python {WORKFLOW_DIR}/scripts/collect_predictions.py --source-dir {OUTPUT_DIR}/AF3_INFERENCE/{wildcards.multi}_seed-{wildcards.seed} --job-list {input.job} --output-dir {OUTPUT_DIR}/COLLECT_AF3_PREDICTIONS
         """
 
-rule OST_COMAPRE_LIGAND_STRUCTURES:
+rule CREATE_OST_COMAPRE_LIGAND_STRUCTURES_JOBS:
     input:
-        prediction = os.path.join(OUTPUT_DIR,"COLLECT_AF3_PREDICTIONS","{multi}_seed-{seed}_sample-{sample}_model.cif") if MODE == "virtual-drug-screen" else [], 
-        ground_truth_cif=lambda wildcards: get_ground_truth_files(wildcards)["cif"] if MODE == "virtual-drug-screen" else [], 
-        ground_truth_sdf=lambda wildcards: get_ground_truth_files(wildcards)["sdf"] if MODE == "virtual-drug-screen" else []
-    container:
-        OST_CONTAINER
+        prediction = os.path.join(OUTPUT_DIR,"COLLECT_AF3_PREDICTIONS","{multi}_seed-{seed}_sample-{sample}_model.cif") if MODE == "virtual-drug-screen" and TASK=="ost" else [], 
+        ground_truth_cif=lambda wildcards: get_ground_truth_files(wildcards)["cif"] if MODE == "virtual-drug-screen" and TASK=="ost" else [], 
+        ground_truth_sdf=lambda wildcards: get_ground_truth_files(wildcards)["sdf"] if MODE == "virtual-drug-screen" and TASK=="ost" else []
     output:
-        os.path.join(OUTPUT_DIR,"OST_COMAPRE_LIGAND_STRUCTURES","{multi}_seed-{seed}_sample-{sample}_score.json") if MODE == "virtual-drug-screen" else [],
+        os.path.join(OUTPUT_DIR,"CREATE_OST_COMAPRE_LIGAND_STRUCTURES_JOBS","{multi}_seed-{seed}_sample-{sample}_job.txt") if MODE == "virtual-drug-screen" and TASK=="ost" else [],
     shell:
         """    
-        ost compare-ligand-structures \
+        json_path={OUTPUT_DIR}/OST_COMAPRE_LIGAND_STRUCTURES/{wildcards.multi}_seed-{wildcards.seed}_sample-{wildcards.sample}_score.json
+        echo "ost compare-ligand-structures \
         -m {input.prediction} \
         -rl {input.ground_truth_sdf} \
         -r {input.ground_truth_cif} \
-        -o {output} \
-        --lddt-pli --rmsd --lddt-pli-add-mdl-contacts -ft
+        -o $json_path \
+        --lddt-pli --rmsd --lddt-pli-add-mdl-contacts -ft" > {output}
+        """
+
+rule AGG_OST_COMAPRE_LIGAND_STRUCTURES_JOBS:
+    input:
+        get_collect_predictions,        
+    output:
+        os.path.join(OUTPUT_DIR,"AGG_OST_COMAPRE_LIGAND_STRUCTURES_JOBS","jobs.txt")
+    shell:
+        """
+        cat {input} > {output}
+        """
+
+rule SPLIT_OST_COMAPRE_LIGAND_STRUCTURES_JOBS:
+    input:
+         rules.AGG_OST_COMAPRE_LIGAND_STRUCTURES_JOBS.output if MODE == "virtual-drug-screen" and TASK=="ost" else [],
+    params:
+         split_ost = SPLIT_OST
+    output:
+         sub_job_list = scatter.split_ost(os.path.join(OUTPUT_DIR,"SPLIT_OST_COMAPRE_LIGAND_STRUCTURES_JOBS","job_{scatteritem}.txt"))
+    run:
+        import os
+        lines = open(input[0]).readlines()
+        [open(output.sub_job_list[i], "w").writelines(lines[i*len(lines)//params.split_ost:(i+1)*len(lines)//params.split_ost + (1 if i == 3 else 0)])
+         for i in range(params.split_ost)]
+
+
+rule OST_COMAPRE_LIGAND_STRUCTURES:
+    input:
+         sub_job_list = os.path.join(OUTPUT_DIR,"SPLIT_OST_COMAPRE_LIGAND_STRUCTURES_JOBS","job_{scatteritem}.txt") if MODE == "virtual-drug-screen" and TASK=="ost" else [],
+    output:
+         touch(os.path.join(OUTPUT_DIR,"OST_COMAPRE_LIGAND_STRUCTURES","done_flags","job_{scatteritem}.done.txt")),
+#    container:
+#        OST_CONTAINER
+    shell:
+         """
+         bash {WORKFLOW_DIR}/scripts/parallel_cpu.sh {input}
+         """
+#         bash /scripts/parallel_cpu.sh {input}
+
+rule CREATE_OST_REPORT:
+    input:
+         sub_job_list = os.path.join(OUTPUT_DIR,"SPLIT_OST_COMAPRE_LIGAND_STRUCTURES_JOBS","job_{scatteritem}.txt") if MODE == "virtual-drug-screen" and TASK=="ost" else [],
+         done_file = os.path.join(OUTPUT_DIR,"OST_COMAPRE_LIGAND_STRUCTURES","done_flags","job_{scatteritem}.done.txt")
+    output:
+         os.path.join(OUTPUT_DIR,"CREATE_OST_REPORT","{scatteritem}_ost_report.csv")
+    shell:
+         """
+         > {wildcards.scatteritem}.commands.sh
+         grep -oP '(?<=-o )\\S+' {input.sub_job_list} | while read -r path; do echo "python {WORKFLOW_DIR}/scripts/af3_analysis.py.bak $path {RUNS_N_POSES_JSON_INPUTS} {OUTPUT_DIR}/AF3_INFERENCE {OUTPUT_DIR}/OST_COMAPRE_LIGAND_STRUCTURES {RUNS_N_POSES_ANNOTATIONS} >> {output}" >> {wildcards.scatteritem}.commands.sh; done
+         chmod +x {wildcards.scatteritem}.commands.sh
+         bash {WORKFLOW_DIR}/scripts/parallel_cpu.sh {wildcards.scatteritem}.commands.sh
+         rm {wildcards.scatteritem}.commands.sh
+         """
+#         grep -oP '(?<=-o )\\S+' {input.sub_job_list} | cut -d '/' -f3- | while read -r path; do echo "python {WORKFLOW_DIR}/scripts/af3_analysis.py.bak $path input/json/inputs.json output/AF3_INFERENCE output/OST_COMAPRE_LIGAND_STRUCTURES input/annotations.csv >> {output}" >> {wildcards.scatteritem}.commands.sh; done
+#xargs -I{{}} echo python {WORKFLOW_DIR}/scripts/af3_analysis.py.bak {{}} input/json/inputs.json output/AF3_INFERENCE output/OST_COMAPRE_LIGAND_STRUCTURES input/annotations.csv \>\> {output} > commands.sh
+#         rm commands.sh
+
+rule AGG_OST_REPORTS:
+    input:
+         expand(os.path.join(OUTPUT_DIR,"CREATE_OST_REPORT",f"{{s}}-of-{SPLIT_OST}_ost_report.csv"),s=list(range(1,SPLIT_OST+1))) if MODE == "virtual-drug-screen" and TASK=="ost" else [],
+    output:
+         os.path.join(OUTPUT_DIR,"AGG_OST_REPORTS","ost_report.csv")
+    shell:
+        """
+        > {output}
+        echo "target method seed sample ranking_score prot_lig_chain_iptm_average_lddt_pli prot_lig_chain_iptm_min_lddt_pli prot_lig_chain_iptm_max_lddt_pli lig_prot_chain_iptm_average_lddt_pli lig_prot_chain_iptm_min_lddt_pli lig_prot_chain_iptm_max_lddt_pli lddt_pli model_ligand_chain_lddt_pli model_ligand_ccd_code model_ligand_smiles ligand_ccd_code_x prot_lig_chain_iptm_average_rmsd prot_lig_chain_iptm_min_rmsd prot_lig_chain_iptm_max_rmsd lig_prot_chain_iptm_average_rmsd lig_prot_chain_iptm_min_rmsd lig_prot_chain_iptm_max_rmsd rmsd lddt_lp bb_rmsd model_ligand_chain_rmsd ligand_ccd_code_y ligand_instance_chain ligand_is_proper" > {output}
+        cat {input} >> {output}
         """

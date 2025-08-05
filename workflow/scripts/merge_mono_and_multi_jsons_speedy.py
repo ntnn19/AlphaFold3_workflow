@@ -60,8 +60,12 @@ def main(monomers_dir,multimer_file,output_dir,mode):
         suffix = "_auto_template_based" if "_auto_template_based" in multimer_name else "_auto_template_free"
         monomer_1 = multimer_name.split(suffix)[0].split("_")[0]
         monomer_2 = multimer_name.split(suffix)[0].split("_")[1]
-        monomer_files.append(os.path.join(monomers_dir,f"{monomer_1}{suffix}", f"{monomer_1}{suffix}_data.json"))
-        monomer_files.append(os.path.join(monomers_dir,f"{monomer_2}{suffix}", f"{monomer_2}{suffix}_data.json"))
+        all_monomers = [m for m in multimer_name.split(suffix)[0].split("_")]
+#        print(all_monomers)
+#        exit()
+        monomer_files = [os.path.join(monomers_dir,f"{m}{suffix}", f"{m}{suffix}_data.json") for m in all_monomers]
+#        monomer_files.append(os.path.join(monomers_dir,f"{monomer_1}{suffix}", f"{monomer_1}{suffix}_data.json"))
+#        monomer_files.append(os.path.join(monomers_dir,f"{monomer_2}{suffix}", f"{monomer_2}{suffix}_data.json"))
 #        monomer_data = {}
         for mf in monomer_files:
             if mode=="virtual-drug-screen":
