@@ -398,6 +398,7 @@ def create_pulldown_df(df,output_dir="output/PREPROCESSING",msa_option = None):
         grouped_target_df_oligo = target_df_oligo.groupby('target_id')
         grouped_bait_df_oligo = bait_df_oligo.groupby('bait_id')
         letters = list(string.ascii_uppercase)
+        letters = [''.join(pair) for pair in itertools.product(letters, repeat=2)] + letters
         target_df_oligo['job_name'] =  grouped_target_df_oligo['id'].transform(lambda x: '_'.join(x))
         bait_df_oligo['job_name'] =  grouped_bait_df_oligo['id'].transform(lambda x: '_'.join(x))
         oligo_df = pd.concat([target_df_oligo, bait_df_oligo], ignore_index=True)
@@ -455,7 +456,7 @@ def create_pulldown_df(df,output_dir="output/PREPROCESSING",msa_option = None):
 
 
 
-def create_virtual_drug_screen_df(df, output_dir="output/PREPROCESSING",msa_option=None):
+def create_virtual_drug_screen_df(df, output_dir="output/PREPROCESSING",msa_option=None,mutually_exclusives="all"):
     """
     Generates input for a  virtual drug screening by pairing ligands (drug) and targets (protein / dna / rna).
     Also includes standalone targets.
@@ -512,7 +513,17 @@ def create_virtual_drug_screen_df(df, output_dir="output/PREPROCESSING",msa_opti
             for target, drug in itertools.product(oligo_df[oligo_df["drug_or_target"]=="target"].job_name.unique(),
                                           oligo_df[oligo_df["drug_or_target"]=="drug"].job_name.unique())
         ])
-        print(515)
+        if mutually_exclusives != "all":
+            print(oligo_ligand_target_pairs_df)
+            oligo_ligand_target_pairs_df["job_components"] = oligo_ligand_target_pairs_df["job_name"].str.split("_").apply(lambda x: [[x[0], item] for item in x[1:]])
+
+
+            target_set = set(map(tuple,mutually_exclusives))
+
+            # Filter rows where any sublist in df['col'] matches any target
+            oligo_ligand_target_pairs_df = oligo_ligand_target_pairs_df[oligo_ligand_target_pairs_df['job_components'].apply(
+                lambda row: bool(set(map(tuple, row)).intersection(target_set))
+            )]
 #        oligo_ligand_target_pairs_df_expanded = (oligo_ligand_target_pairs_df.assign(id=oligo_ligand_target_pairs_df["job_name"].str.split("_"))
 #                       .explode("id")
 #                       .reset_index(drop=True))
@@ -544,7 +555,6 @@ def create_virtual_drug_screen_df(df, output_dir="output/PREPROCESSING",msa_opti
         target_df_oligo["smiles"] = ""
         target_df_oligo = target_df_oligo.drop(columns=["drug_or_target","drug_id","target_id"])
         target_df_oligo = target_df_oligo.groupby("job_name").filter(lambda x: len(x) > 1)
-    print(547)
 #claude
     # Prepare drug data
     drug_cols = ['id', 'sequence'] + [col for col in optional_columns if col in drug_df.columns]
@@ -587,7 +597,7 @@ def create_virtual_drug_screen_df(df, output_dir="output/PREPROCESSING",msa_opti
             drug_entries[col] = cross_join[f'{col}_drug']
     
     # Combine and convert to list of dicts
-    all_entries = pd.concat([target_entries, drug_entries]).to_dict('records')
+    all_entries = pd.concat([pd.DataFrame(all_entries),target_entries, drug_entries])
     # Add ligand/standalone-target pairs
 #    for _, drug_row in drug_df[['id', 'sequence'] + [col for col in optional_columns if col in df.columns]].iterrows():
 #        for _, target_row in target_df[
@@ -620,7 +630,6 @@ def create_virtual_drug_screen_df(df, output_dir="output/PREPROCESSING",msa_opti
 #            all_entries.extend([target_entry, drug_entry])
 
     # Add ligand-oligomeric targets<
-    print(580)
     screen_df = pd.DataFrame(all_entries)
     target_df_oligo["output_dir"]=os.path.join(output_dir,"multimers")
     oligo_ligand_target_pairs_df_expanded["output_dir"]=os.path.join(output_dir,"multimers")
@@ -633,7 +642,7 @@ def create_virtual_drug_screen_df(df, output_dir="output/PREPROCESSING",msa_opti
     return screen_df
 
 
-def create_df_for_run_mode(df, mode, msa_option=None,output_dir="output/PREPROCESSING"):
+def create_df_for_run_mode(df, mode, msa_option=None,output_dir="output/PREPROCESSING",mutually_exclusive="all"):
     """
     Creates mode specific dataframe and writes it to a file.
 
@@ -672,7 +681,7 @@ def create_df_for_run_mode(df, mode, msa_option=None,output_dir="output/PREPROCE
     if mode == "stoichio-screen":
         df = create_stoichio_screen_df(df,output_dir,msa_option)
     if mode == "virtual-drug-screen":
-        df = create_virtual_drug_screen_df(df, output_dir, msa_option)
+        df = create_virtual_drug_screen_df(df, output_dir, msa_option,mutually_exclusive)
 
     return df
 
@@ -719,14 +728,14 @@ def create_tasks_from_dataframe(df_path, output_dir, mode, msa_option,mutually_e
     tasks = []
     job_names = []
     os.makedirs(output_dir, exist_ok=True)
-    df_input = pd.read_csv(df_path)
+    df = pd.read_csv(df_path)
     if mode != "default":
         print("creating df for", mode, "mode")
-        df = create_df_for_run_mode(df_input, mode, msa_option,output_dir)
+        df = create_df_for_run_mode(df, mode, msa_option,output_dir,sanitized_exclusives)
         if exclusives!="all":
-            patterns = [fr"{re.escape(a)}_{re.escape(b)}" for a, b in sanitized_exclusives]+ [fr"{re.escape(b)}_{re.escape(a)}" for a, b in sanitized_exclusives]
-            pattern = '|'.join(patterns)
-            multimers_df = df[df['job_name'].str.contains(pattern, regex=True, na=False)]
+            #patterns = [fr"{re.escape(a)}_{re.escape(b)}" for a, b in sanitized_exclusives]+ [fr"{re.escape(b)}_{re.escape(a)}" for a, b in sanitized_exclusives]
+            #pattern = '|'.join(patterns)
+            multimers_df = df[df['output_dir'].str.contains("multimers")]
             monomers_df = df[df['output_dir'].str.contains("monomers")]
             multimers_df["job_name"] = multimers_df["job_name"].apply(lambda x: sanitised_name(x))
             job_counts = multimers_df.groupby("job_name").size().reset_index(name="count")
@@ -738,6 +747,12 @@ def create_tasks_from_dataframe(df_path, output_dir, mode, msa_option,mutually_e
 
             multimers_df = multimers_df[multimers_df["job_name"].isin(largest_jobs["job_name"])]
             df = pd.concat([multimers_df,monomers_df],ignore_index=True)
+
+    df["job_name"] = df["job_name"].apply(lambda x: sanitised_name(x))
+
+    if msa_option in ["auto_template_based", "auto_template_free"]:
+        df["job_name"] = df["job_name"] + "_" + msa_option
+
     print("writing task df")
     df.to_csv(os.path.join(output_dir,f"task_table_{msa_option}.csv"),index=False)
     grouped = df.groupby('job_name')
@@ -784,8 +799,8 @@ def create_tasks_from_dataframe(df_path, output_dir, mode, msa_option,mutually_e
                     modifications=modifications
                 )
             elif entity_type == 'ligand':
-                ccd_codes = parse_list_field(row.get('ccd_codes'))
-                smiles = row.get('smiles')
+                ccd_codes = parse_list_field(row.get('ccd_codes'),row.get("sequence"))
+                smiles = row.get('smiles',row.get("sequence"))
                 sequence_data = create_ligand_sequence_data(
                     ccd_codes=ccd_codes,
                     smiles=smiles
