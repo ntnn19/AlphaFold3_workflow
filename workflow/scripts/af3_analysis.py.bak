@@ -1,0 +1,260 @@
+import os
+import re
+import json
+import string
+import click
+import pandas as pd
+
+
+
+def merge_to_final_df(lddt_pli, rmsd, ref_df):
+    df_lddt_pli = pd.DataFrame(lddt_pli)
+    df_rmsd = pd.DataFrame(rmsd)
+    if "target" in df_lddt_pli.columns or "target" in df_rmsd.columns:
+        
+        df_lddt_pli_name = (
+            pd.merge(
+                df_lddt_pli,
+                ref_df[["system_id", "ligand_instance_chain", "ligand_ccd_code"]],
+                how="left",
+                left_on=["target", "target_ligand_chain"],
+                right_on=["system_id", "ligand_instance_chain"]
+            ).drop(columns=["system_id", "ligand_instance_chain"])
+        ) 
+    
+        df_rmsd_name = (
+            pd.merge(
+                df_rmsd,
+                ref_df[["system_id", "ligand_instance_chain", "ligand_ccd_code"]],
+                how="left",
+                left_on=["target", "target_ligand_chain"],
+                right_on=["system_id", "ligand_instance_chain"]
+            ).drop(columns=["system_id", "ligand_instance_chain"])
+         ) 
+
+        df_lddt_rmsd = pd.merge(
+            df_lddt_pli_name,
+            df_rmsd_name,
+            how="outer",
+            on=["target", "method", "seed", "sample", "ranking_score", "model_ligand_ccd_code", "model_ligand_smiles", "ligand_ccd_code"],
+            indicator=True,          
+            suffixes=("_lddt_pli", "_rmsd")
+        ) 
+
+        df_final = pd.merge(
+            df_lddt_rmsd,
+            ref_df[["system_id", "ligand_ccd_code", "ligand_instance_chain", "ligand_is_proper"]],
+            how="left",    
+            left_on=["target", "model_ligand_ccd_code", "target_ligand_chain_lddt_pli"],
+            right_on=["system_id", "ligand_ccd_code", "ligand_instance_chain"]
+        ) 
+
+        df_final.drop(["system_id", "_merge", "target_ligand_chain_rmsd", "target_ligand_chain_lddt_pli"], axis=1, inplace=True)
+
+    if "target" not in df_lddt_pli.columns or "target" not in df_rmsd.columns:
+        df_final = pd.DataFrame([],columns=[])
+
+    return df_final 
+
+
+
+def process_af3_file(json_file, input_data, af3_output_dir, af3_analysis_dir,annotations):
+    pattern = r"^(.*?)_seed-(\d+)_sample-(\d+)_score\.json$"
+    match = re.match(pattern, json_file)
+
+    if not match:
+        raise ValueError(f"Filename {json_file} does not match expected pattern.")
+
+    target_id = match.group(1)
+    pdb_id = target_id.split("_")[0].split("-")[0]
+    system_id = annotations.loc[annotations.entry_pdb_id==pdb_id,"system_id"].values[0]
+    seed = int(match.group(2))
+    sample = int(match.group(3))
+
+    target_id_lower = target_id.lower()
+    trg_out_dir = os.path.join(af3_output_dir, target_id_lower+f"_seed-{seed}")
+    df_ranking = pd.read_csv(os.path.join(trg_out_dir, "ranking_scores.csv"))
+    if seed not in df_ranking["seed"].values:
+        return [], []
+    ranking_score_df = df_ranking[
+        (df_ranking["seed"] == seed) & (df_ranking["sample"] == sample)
+    ]
+
+    conf_json = os.path.join(
+        trg_out_dir, f"seed-{seed}_sample-{sample}", "summary_confidences.json"
+    )
+
+    json_path = os.path.join(af3_analysis_dir, json_file)
+
+    with open(json_path) as f:
+        result = json.load(f)
+
+    with open(conf_json) as f:
+        confidences = json.load(f)
+
+    try:
+        lddt_pli_list = result["lddt_pli"]["assigned_scores"]
+        rmsd_list = result["rmsd"]["assigned_scores"]
+    except KeyError:
+        return [], []
+
+    af3_data_lddt_pli = []
+    af3_data_rmsd = []
+
+    if not lddt_pli_list or not rmsd_list:
+        af3_data_lddt_pli.append(
+            {
+                "target": system_id,
+                "method": "af3",
+                "seed": seed, 
+                "sample": sample,
+                "ranking_score": ranking_score_df["ranking_score"].item(),
+                "prot_lig_chain_iptm_average": None,
+                "prot_lig_chain_iptm_min": None,
+                "prot_lig_chain_iptm_max": None,
+                "lig_prot_chain_iptm_average": None,
+                "lig_prot_chain_iptm_min": None,
+                "lig_prot_chain_iptm_max": None,
+                "lddt_pli": None,
+                "model_ligand_chain": None,
+                "model_ligand_ccd_code": None,
+                "model_ligand_smiles": None,
+                "target_ligand_chain": None,
+            }
+        )
+
+        af3_data_rmsd.append(
+            {
+                "target": system_id,
+                "method": "af3",
+                "seed": seed,
+                "sample": sample,
+                "ranking_score": ranking_score_df["ranking_score"].item(),
+                "prot_lig_chain_iptm_average": None,
+                "prot_lig_chain_iptm_min": None,
+                "prot_lig_chain_iptm_max": None,
+                "lig_prot_chain_iptm_average": None,
+                "lig_prot_chain_iptm_min": None,
+                "lig_prot_chain_iptm_max": None,
+                "rmsd": None,
+                "lddt_lp": None,
+                "bb_rmsd": None,
+                "model_ligand_chain": None,
+                "model_ligand_ccd_code": None,
+                "model_ligand_smiles": None,
+                "target_ligand_chain": None,
+            }
+        )
+        return af3_data_lddt_pli, af3_data_rmsd
+
+    for item in lddt_pli_list:
+        trg_lig_chain = item["reference_ligand"].split("/")[-1].split(".sdf")[0]
+        mdl_lig_chain = item["model_ligand"].split(".")[0]
+        global_index = string.ascii_uppercase.index(mdl_lig_chain)
+        num_prot_chains = len(input_data[system_id]["sequences"])
+        ligand_index = global_index - num_prot_chains
+        lddt_pli = item["score"]
+        prot_lig_chain_iptm = [
+            confidences["chain_pair_iptm"][idx][global_index]
+            for idx in range(num_prot_chains)
+        ]
+        prot_lig_chain_iptm_average = sum(prot_lig_chain_iptm) / len(prot_lig_chain_iptm)
+        lig_prot_chain_iptm = [
+            confidences["chain_pair_iptm"][global_index][idx]
+            for idx in range(num_prot_chains)
+        ]
+        lig_prot_chain_iptm_average = sum(lig_prot_chain_iptm) / len(lig_prot_chain_iptm)
+        af3_data_lddt_pli.append(
+            {
+                "target": system_id,
+                "method": "af3",
+                "seed": seed,
+                "sample": sample,
+                "ranking_score": ranking_score_df["ranking_score"].item(),
+                "prot_lig_chain_iptm_average": prot_lig_chain_iptm_average,
+                "prot_lig_chain_iptm_min": min(prot_lig_chain_iptm),
+                "prot_lig_chain_iptm_max": max(prot_lig_chain_iptm),
+                "lig_prot_chain_iptm_average": lig_prot_chain_iptm_average,
+                "lig_prot_chain_iptm_min": min(lig_prot_chain_iptm),
+                "lig_prot_chain_iptm_max": max(lig_prot_chain_iptm),
+                "lddt_pli": lddt_pli,
+                "model_ligand_chain": mdl_lig_chain,
+                "model_ligand_ccd_code": input_data[system_id]["ccd_codes"][ligand_index],
+                "model_ligand_smiles": input_data[system_id]["smiles"][ligand_index],
+                "target_ligand_chain": trg_lig_chain,
+            }
+        )
+
+    for item in rmsd_list:
+        trg_lig_chain = item["reference_ligand"].split("/")[-1].split(".sdf")[0]
+        mdl_lig_chain = item["model_ligand"].split(".")[0]
+        global_index = string.ascii_uppercase.index(mdl_lig_chain)
+        num_prot_chains = len(input_data[system_id]["sequences"])
+        ligand_index = global_index - num_prot_chains
+        rmsd = item["score"]
+        lddt_lp = item["lddt_lp"]
+        bb_rmsd = item["bb_rmsd"]
+        prot_lig_chain_iptm = [
+            confidences["chain_pair_iptm"][idx][global_index]
+            for idx in range(num_prot_chains)
+        ]
+        prot_lig_chain_iptm_average = sum(prot_lig_chain_iptm) / len(prot_lig_chain_iptm)
+        lig_prot_chain_iptm = [
+            confidences["chain_pair_iptm"][global_index][idx]
+            for idx in range(num_prot_chains)
+        ]
+        lig_prot_chain_iptm_average = sum(lig_prot_chain_iptm) / len(lig_prot_chain_iptm)
+        af3_data_rmsd.append(
+            {
+                "target": system_id,
+                "method": "af3",
+                "seed": seed,
+                "sample": sample,
+                "ranking_score": ranking_score_df["ranking_score"].item(),
+                "prot_lig_chain_iptm_average": prot_lig_chain_iptm_average,
+                "prot_lig_chain_iptm_min": min(prot_lig_chain_iptm),
+                "prot_lig_chain_iptm_max": max(prot_lig_chain_iptm),
+                "lig_prot_chain_iptm_average": lig_prot_chain_iptm_average,
+                "lig_prot_chain_iptm_min": min(lig_prot_chain_iptm),
+                "lig_prot_chain_iptm_max": max(lig_prot_chain_iptm),
+                "rmsd": rmsd,
+                "lddt_lp": lddt_lp,
+                "bb_rmsd": bb_rmsd,
+                "model_ligand_chain": mdl_lig_chain,
+                "model_ligand_ccd_code": input_data[system_id]["ccd_codes"][ligand_index],
+                "model_ligand_smiles": input_data[system_id]["smiles"][ligand_index],
+                "target_ligand_chain": trg_lig_chain,
+            }
+        )
+
+    return af3_data_lddt_pli, af3_data_rmsd
+
+
+@click.command()
+@click.argument("json_file", type=click.Path(exists=True))
+@click.argument("input_data_file", type=click.Path(exists=True))
+@click.argument("af3_output_dir", type=click.Path(exists=True))
+@click.argument("af3_analysis_dir", type=click.Path(exists=True))
+@click.argument("annotations", type=click.Path(exists=True))
+def main(json_file, input_data_file, af3_output_dir, af3_analysis_dir,annotations):
+    """Process AF3 analysis file and print results to stdout."""
+    with open(input_data_file) as f:
+        input_data = json.load(f)
+    ref_df = pd.read_csv(annotations)
+    json_filename = os.path.basename(json_file)
+
+
+    lddt_pli = list()
+    rmsd=list()
+
+    lddt_pli_data, rmsd_data = process_af3_file(
+        json_filename, input_data, af3_output_dir, af3_analysis_dir,ref_df
+    )
+    lddt_pli.extend(lddt_pli_data)
+    rmsd.extend(rmsd_data)
+
+    df = merge_to_final_df(lddt_pli, rmsd, ref_df)
+    print(df.to_string(header=False,index=False))
+
+if __name__ == "__main__":
+    main()
