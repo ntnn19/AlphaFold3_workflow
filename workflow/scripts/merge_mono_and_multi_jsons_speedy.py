@@ -80,20 +80,20 @@ def main(monomers_dir,multimer_file,output_dir,mode):
         original_name = merged["name"]
         original_model_seeds = merged["modelSeeds"]
 
-#        for s in original_model_seeds:
-#            merged_copy = merged.copy()
-#            merged_copy["name"] = f"{original_name}_seed-{s}"
-#            merged_copy["modelSeeds"] = [s]
+        for s in original_model_seeds:
+            merged_copy = merged.copy()
+            merged_copy["name"] = f"{original_name}_seed-{s}"
+            merged_copy["modelSeeds"] = [s]
 
-#        sub_output_dir = os.path.join(output_dir, merged_copy["name"])
-        sub_output_dir = os.path.join(output_dir, merged["name"])
-        os.makedirs(sub_output_dir, exist_ok=True)
+            sub_output_dir = os.path.join(output_dir, merged_copy["name"])
+#        sub_output_dir = os.path.join(output_dir, merged["name"])
+            os.makedirs(sub_output_dir, exist_ok=True)
 
-        out_path = os.path.join(sub_output_dir, f"{merged['name']}_data.json")
-#        out_path = os.path.join(sub_output_dir, f"{merged_copy['name']}_data.json")
-#        write_json(merged_copy, out_path)
-        write_json(merged, out_path)
-        click.echo(f"Wrote merged JSON to {out_path}")
+#        out_path = os.path.join(sub_output_dir, f"{merged['name']}_data.json")
+            out_path = os.path.join(sub_output_dir, f"{merged_copy['name']}_data.json")
+            write_json(merged_copy, out_path)
+#        write_json(merged, out_path)
+            click.echo(f"Wrote merged JSON to {out_path}")
 
 if __name__ == "__main__":
     main()

@@ -85,7 +85,6 @@ def process_af3_file(json_file, input_data, af3_output_dir, af3_analysis_dir,ann
     )
 
     json_path = os.path.join(af3_analysis_dir, json_file)
-
     with open(json_path) as f:
         result = json.load(f)
 
