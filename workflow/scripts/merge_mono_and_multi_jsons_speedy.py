@@ -41,8 +41,9 @@ def merge_jsons(multimer_data, monomer_data_list):
 @click.argument("monomers_dir", type=click.Path())
 @click.argument("multimer_file", type=click.Path())
 @click.argument("output_dir",  type=click.Path())
-@click.option("--mode",  type=str, default="pulldown")
-def main(monomers_dir,multimer_file,output_dir,mode):
+#@click.option("--mode",  type=str, default="pulldown")
+#def main(monomers_dir,multimer_file,output_dir,mode):
+def main(monomers_dir,multimer_file,output_dir):
     # Separate monomeric and multimeric files
     monomer_files =  []
     multimer_files =  [multimer_file]
@@ -68,9 +69,10 @@ def main(monomers_dir,multimer_file,output_dir,mode):
 #        monomer_files.append(os.path.join(monomers_dir,f"{monomer_2}{suffix}", f"{monomer_2}{suffix}_data.json"))
 #        monomer_data = {}
         for mf in monomer_files:
-            if mode=="virtual-drug-screen":
-                if not os.path.exists(mf):
-                    continue
+            if not os.path.exists(mf):
+                continue
+#            if mode=="virtual-drug-screen":
+#            if mode=="virtual-drug-screen":
             key = extract_monomer_key(mf)
 #            monomer_data[key] = load_json(mf)
             matched_monomers.append(load_json(mf))
