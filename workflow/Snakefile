@@ -125,6 +125,7 @@ def get_collect_predictions(wildcards):
 
 rule all:
     input:
+        get_monomeric_json_outputs,
         os.path.join(OUTPUT_DIR,"AGG_OST_REPORTS","ost_report.csv") if MODE == "virtual-drug-screen" and TASK=="ost" else [],
         expand(os.path.join(OUTPUT_DIR,"OST_COMAPRE_LIGAND_STRUCTURES","done_flags",f"job_{{s}}-of-{SPLIT_OST}.done.txt"),s=list(range(1,SPLIT_OST+1))) if MODE == "virtual-drug-screen" and TASK=="ost" else [],
         expand(os.path.join(OUTPUT_DIR,"AF3_INFERENCE",f"af3_inference_jobs_{{s}}-of-{SPLIT_TOTAL}.done.txt"),s=list(range(1,SPLIT_TOTAL+1))),
