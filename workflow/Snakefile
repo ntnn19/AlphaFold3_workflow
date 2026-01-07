@@ -139,17 +139,17 @@ checkpoint PREPROCESSING:
     shell:
         """
         if [[ "{params.msa_option}" == "auto" ]]; then
-            python {params.workflow_dir}/scripts/create_tasks_from_dataframe.py {input} {output} --msa-option auto_template_based --mode {params.mode} --mutually-exclusive {params.mutually_exclusive}
-            python {params.workflow_dir}/scripts/create_tasks_from_dataframe.py {input} {output} --msa-option auto_template_free --mode {params.mode} --mutually-exclusive {params.mutually_exclusive}
+            python scripts/create_tasks_from_dataframe.py {input} {output} --msa-option auto_template_based --mode {params.mode} --mutually-exclusive {params.mutually_exclusive}
+            python scripts/create_tasks_from_dataframe.py {input} {output} --msa-option auto_template_free --mode {params.mode} --mutually-exclusive {params.mutually_exclusive}
         fi
         if [[ "{params.msa_option}" == "auto_template_free" ]]; then
-            python {params.workflow_dir}/scripts/create_tasks_from_dataframe.py {input} {output} --msa-option auto_template_free --mode {params.mode} --mutually-exclusive {params.mutually_exclusive}
+            python scripts/create_tasks_from_dataframe.py {input} {output} --msa-option auto_template_free --mode {params.mode} --mutually-exclusive {params.mutually_exclusive}
         fi
         if [[ "{params.msa_option}" == "auto_template_based" ]]; then
-            python {params.workflow_dir}/scripts/create_tasks_from_dataframe.py {input} {output} --msa-option auto_template_based --mode {params.mode} --mutually-exclusive {params.mutually_exclusive}
+            python scripts/create_tasks_from_dataframe.py {input} {output} --msa-option auto_template_based --mode {params.mode} --mutually-exclusive {params.mutually_exclusive}
         fi
         if [[ "{params.msa_option}" == "custom" ]]; then
-            python {params.workflow_dir}/scripts/create_tasks_from_dataframe.py {input} {output} --mode {params.mode} --mutually-exclusive {params.mutually_exclusive}
+            python scripts/create_tasks_from_dataframe.py {input} {output} --mode {params.mode} --mutually-exclusive {params.mutually_exclusive}
         fi
         """
 
