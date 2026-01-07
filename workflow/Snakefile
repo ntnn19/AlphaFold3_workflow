@@ -10,10 +10,11 @@ scattergather:
 SPLIT_TOTAL = workflow._scatter["split"]
 SPLIT_OST = workflow._scatter["split_ost"]
 WORKFLOW_DIR = workflow.basedir
+print("WORKFLOW_DIR=", WORKFLOW_DIR)
 WORKFLOW_DIR = workflow.source_path(".")
 
 print("WORKFLOW_DIR=", WORKFLOW_DIR)
-#exit()
+exit()
 INPUT_DF = config["input_csv"]
 OUTPUT_DIR = config["output_dir"]
 MODE = config.get("mode","default")
