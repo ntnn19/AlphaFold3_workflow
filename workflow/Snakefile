@@ -14,7 +14,10 @@ print("WORKFLOW_DIR=", WORKFLOW_DIR)
 WORKFLOW_DIR = workflow.source_path(".")
 
 print("WORKFLOW_DIR=", WORKFLOW_DIR)
-exit()
+WORKFLOW_DIR = workflow.workdir_init
+
+print("WORKFLOW_DIR=", WORKFLOW_DIR)
+#exit()
 INPUT_DF = config["input_csv"]
 OUTPUT_DIR = config["output_dir"]
 MODE = config.get("mode","default")
@@ -129,7 +132,7 @@ checkpoint PREPROCESSING:
     output:
         directory(os.path.join(OUTPUT_DIR,"PREPROCESSING"))
     params:
-        workflow_dir = WORKFLOW_DIR,
+        workflow_dir = workflow.current_basedir,
         msa_option = MSA_OPTION,
         mode = MODE,
         mutually_exclusive = MUTUALLY_EXCLUSIVE
