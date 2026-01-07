@@ -9,7 +9,6 @@ scattergather:
     split_ost=config.get("n_splits_ost",1)
 SPLIT_TOTAL = workflow._scatter["split"]
 SPLIT_OST = workflow._scatter["split_ost"]
-#from scripts import create_tasks_from_dataframe
 WORKFLOW_DIR = workflow.basedir
 WORKFLOW_DIR = workflow.source_path(".")
 
