@@ -137,7 +137,7 @@ checkpoint PREPROCESSING:
     params:
         msa_option = MSA_OPTION,
         mode = MODE,
-        mutually_exclusive = MUTUALLY_EXCLUSIVE
+        mutually_exclusive = MUTUALLY_EXCLUSIVE,
         workflow_dir = workflow.source_path("scripts/create_tasks_from_dataframe.py"),
     shell:
         """
