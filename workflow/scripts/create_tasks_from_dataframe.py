@@ -598,36 +598,6 @@ def create_virtual_drug_screen_df(df, output_dir="output/PREPROCESSING",msa_opti
     
     # Combine and convert to list of dicts
     all_entries = pd.concat([pd.DataFrame(all_entries),target_entries, drug_entries])
-    # Add ligand/standalone-target pairs
-#    for _, drug_row in drug_df[['id', 'sequence'] + [col for col in optional_columns if col in df.columns]].iterrows():
-#        for _, target_row in target_df[
-#            ['id', 'sequence', 'type'] + [col for col in optional_columns if col in df.columns]].iterrows():
-#            pair_name = f"{target_row['id']}_{drug_row['id']}"
-
-#            target_entry = {
-#                "job_name": pair_name,
-#                "id": "A",
-#                "type": target_row["type"],
-#                "sequence": target_row["sequence"],
-#                "smiles": "",
-#                "output_dir": os.path.join(output_dir, "multimers")
-#            }
-#            drug_entry = {
-#                "job_name": pair_name,
-#                "id": "B",
-#                "type": "ligand",
-#                "sequence": "",
-#                "smiles": drug_row["sequence"],
-#                "output_dir": os.path.join(output_dir, "multimers")
-#            }
-
-#            for col in optional_columns:
-#                if col in target_row:
-#                    target_entry[col] = target_row[col]
-#                if col in drug_row:
-#                    drug_entry[col] = drug_row[col]
-
-#            all_entries.extend([target_entry, drug_entry])
 
     # Add ligand-oligomeric targets<
     screen_df = pd.DataFrame(all_entries)
@@ -729,6 +699,8 @@ def create_tasks_from_dataframe(df_path, output_dir, mode, msa_option,mutually_e
     job_names = []
     os.makedirs(output_dir, exist_ok=True)
     df = pd.read_csv(df_path)
+    if "model_seeds" in df.columns:
+        df["model_seeds"] = df["model_seeds"] = df.model_seeds.astype(str)
     if mode != "default":
         print("creating df for", mode, "mode")
         df = create_df_for_run_mode(df, mode, msa_option,output_dir,sanitized_exclusives)
