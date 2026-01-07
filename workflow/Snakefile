@@ -20,7 +20,7 @@ print("WORKFLOW_DIR=", WORKFLOW_DIR)
 WORKFLOW_DIR = os.path.dirname(os.path.abspath(workflow.snakefile))
 
 print("WORKFLOW_DIR=", WORKFLOW_DIR)
-exit()
+#exit()
 INPUT_DF = config["input_csv"]
 OUTPUT_DIR = config["output_dir"]
 MODE = config.get("mode","default")
@@ -132,28 +132,27 @@ rule all:
 checkpoint PREPROCESSING:
     input:
         INPUT_DF,
-        workflow.source_path(".")
     output:
         directory(os.path.join(OUTPUT_DIR,"PREPROCESSING"))
     params:
         msa_option = MSA_OPTION,
         mode = MODE,
         mutually_exclusive = MUTUALLY_EXCLUSIVE
-#        workflow_dir = workflow.curr,
+        workflow_dir = workflow.source_path("scripts/create_tasks_from_dataframe.py"),
     shell:
         """
         if [[ "{params.msa_option}" == "auto" ]]; then
-            python {input[1]}/scripts/create_tasks_from_dataframe.py {input[0]} {output} --msa-option auto_template_based --mode {params.mode} --mutually-exclusive {params.mutually_exclusive}
-            python {input[1]}/scripts/create_tasks_from_dataframe.py {input[0]} {output} --msa-option auto_template_free --mode {params.mode} --mutually-exclusive {params.mutually_exclusive}
+            python {params.workflow_dir} {input} {output} --msa-option auto_template_based --mode {params.mode} --mutually-exclusive {params.mutually_exclusive}
+            python {params.workflow_dir} {input} {output} --msa-option auto_template_free --mode {params.mode} --mutually-exclusive {params.mutually_exclusive}
         fi
         if [[ "{params.msa_option}" == "auto_template_free" ]]; then
-            python {input[1]}/scripts/create_tasks_from_dataframe.py {input[0]} {output} --msa-option auto_template_free --mode {params.mode} --mutually-exclusive {params.mutually_exclusive}
+            python {params.workflow_dir} {input} {output} --msa-option auto_template_free --mode {params.mode} --mutually-exclusive {params.mutually_exclusive}
         fi
         if [[ "{params.msa_option}" == "auto_template_based" ]]; then
-            python {input[1]}/scripts/create_tasks_from_dataframe.py {input[0]} {output} --msa-option auto_template_based --mode {params.mode} --mutually-exclusive {params.mutually_exclusive}
+            python {params.workflow_dir} {input} {output} --msa-option auto_template_based --mode {params.mode} --mutually-exclusive {params.mutually_exclusive}
         fi
         if [[ "{params.msa_option}" == "custom" ]]; then
-            python {input[1]}/scripts/create_tasks_from_dataframe.py {input[0]} {output} --mode {params.mode} --mutually-exclusive {params.mutually_exclusive}
+            python {params.workflow_dir} {input} {output} --mode {params.mode} --mutually-exclusive {params.mutually_exclusive}
         fi
         """
 
