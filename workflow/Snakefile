@@ -3,7 +3,6 @@ import pandas as pd
 import os
 import yaml
 localrules: PREPROCESSING , MERGE_MONO_AND_MULTI_JSON, CREATE_AF3_INFERENCE_JOBS_SPEEDY_AF3_PIPELINE, AGG_AF3_INFERENCE_JOBS, SPLIT_INFERENCE_JOB_LIST
-print("COMMIT 55163e7")
 scattergather:
     split=config.get("n_splits",1),
     split_ost=config.get("n_splits_ost",1)
@@ -237,7 +236,7 @@ rule AF3_DATA_SPEEDY_PIPELINE_TEST:
     input:
         monomers = os.path.join(OUTPUT_DIR,"PREPROCESSING","monomers","{mono}.json") if MODE in ["default", "all-vs-all","pulldown","virtual-drug-screen"]  else [],
     output:
-        touch(data_pipeline_monomers=os.path.join(OUTPUT_DIR,"AF3_DATA_PIPELINE_TEST","monomers","{mono}/{mono}_data.json")) if MODE in [
+        data_pipeline_monomers=touch(os.path.join(OUTPUT_DIR,"AF3_DATA_PIPELINE_TEST","monomers","{mono}/{mono}_data.json")) if MODE in [
             "default","all-vs-all", "pulldown","virtual-drug-screen"] else [],
 
 rule AF3_DATA_SPEEDY_PIPELINE:
