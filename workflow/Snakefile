@@ -30,10 +30,12 @@ GROUND_TRUTH =config.get("ground_truth",None)
 TASK = config.get("task", "")
 
 DF = pd.read_csv(INPUT_DF)
-SEEDS = (DF["model_seeds"].astype(str).str.split(",").values[0] 
-         if "model_seeds" in DF.columns 
-         else ["1"])
-#SEEDS= DF["model_seeds"].str.split(",").values[0] if "model_seeds" in DF.columns else [1]
+#SEEDS = (DF["model_seeds"].astype(str).str.split(",").values[0] 
+#         if "model_seeds" in DF.columns 
+#         else ["1"])
+if "model_seeds" in DF.columns:
+    DF["model_seeds"] = t["model_seeds"] = t.model_seeds.astype(str)
+SEEDS= DF["model_seeds"].str.split(",").values[0] if "model_seeds" in DF.columns else [1]
 MSA_OPTION = config.get("msa_option","auto")
 AF3_CONTAINER = config["af3_flags"]["--af3_container"]
 def get_af3_flag_value(flag, default_value):
