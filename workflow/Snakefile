@@ -10,8 +10,11 @@ scattergather:
 SPLIT_TOTAL = workflow._scatter["split"]
 SPLIT_OST = workflow._scatter["split_ost"]
 from scripts import create_tasks_from_dataframe
-
 WORKFLOW_DIR = workflow.basedir
+WORKFLOW_DIR = workflow.source_path(".")
+
+print("WORKFLOW_DIR=", WORKFLOW_DIR)
+#exit()
 INPUT_DF = config["input_csv"]
 OUTPUT_DIR = config["output_dir"]
 MODE = config.get("mode","default")
@@ -21,7 +24,10 @@ GROUND_TRUTH =config.get("ground_truth",None)
 TASK = config.get("task", "")
 
 DF = pd.read_csv(INPUT_DF)
-SEEDS= DF["model_seeds"].str.split(",").values[0] if "model_seeds" in DF.columns else [1]
+SEEDS = (DF["model_seeds"].astype(str).str.split(",").values[0] 
+         if "model_seeds" in DF.columns 
+         else ["1"])
+#SEEDS= DF["model_seeds"].str.split(",").values[0] if "model_seeds" in DF.columns else [1]
 MSA_OPTION = config.get("msa_option","auto")
 AF3_CONTAINER = config["af3_flags"]["--af3_container"]
 def get_af3_flag_value(flag, default_value):
@@ -123,23 +129,24 @@ checkpoint PREPROCESSING:
     output:
         directory(os.path.join(OUTPUT_DIR,"PREPROCESSING"))
     params:
+        workflow_dir = WORKFLOW_DIR,
         msa_option = MSA_OPTION,
         mode = MODE,
         mutually_exclusive = MUTUALLY_EXCLUSIVE
     shell:
         """
         if [[ "{params.msa_option}" == "auto" ]]; then
-            python {WORKFLOW_DIR}/scripts/create_tasks_from_dataframe.py {input} {output} --msa-option auto_template_based --mode {params.mode} --mutually-exclusive {params.mutually_exclusive}
-            python {WORKFLOW_DIR}/scripts/create_tasks_from_dataframe.py {input} {output} --msa-option auto_template_free --mode {params.mode} --mutually-exclusive {params.mutually_exclusive}
+            python {params.workflow_dir}/scripts/create_tasks_from_dataframe.py {input} {output} --msa-option auto_template_based --mode {params.mode} --mutually-exclusive {params.mutually_exclusive}
+            python {params.workflow_dir}/scripts/create_tasks_from_dataframe.py {input} {output} --msa-option auto_template_free --mode {params.mode} --mutually-exclusive {params.mutually_exclusive}
         fi
         if [[ "{params.msa_option}" == "auto_template_free" ]]; then
-            python {WORKFLOW_DIR}/scripts/create_tasks_from_dataframe.py {input} {output} --msa-option auto_template_free --mode {params.mode} --mutually-exclusive {params.mutually_exclusive}
+            python {params.workflow_dir}/scripts/create_tasks_from_dataframe.py {input} {output} --msa-option auto_template_free --mode {params.mode} --mutually-exclusive {params.mutually_exclusive}
         fi
         if [[ "{params.msa_option}" == "auto_template_based" ]]; then
-            python {WORKFLOW_DIR}/scripts/create_tasks_from_dataframe.py {input} {output} --msa-option auto_template_based --mode {params.mode} --mutually-exclusive {params.mutually_exclusive}
+            python {params.workflow_dir}/scripts/create_tasks_from_dataframe.py {input} {output} --msa-option auto_template_based --mode {params.mode} --mutually-exclusive {params.mutually_exclusive}
         fi
         if [[ "{params.msa_option}" == "custom" ]]; then
-            python {WORKFLOW_DIR}/scripts/create_tasks_from_dataframe.py {input} {output} --mode {params.mode} --mutually-exclusive {params.mutually_exclusive}
+            python {params.workflow_dir}/scripts/create_tasks_from_dataframe.py {input} {output} --mode {params.mode} --mutually-exclusive {params.mutually_exclusive}
         fi
         """
 
