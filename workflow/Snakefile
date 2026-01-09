@@ -109,8 +109,8 @@ def get_multimeric_json_outputs(wildcards):
 def get_monomeric_json_outputs(wildcards):
     PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
     JOB_NAMES_MONOMERS, = glob_wildcards(os.path.join(PREPROCESSING_DIR,"monomers","{mono}.json"))
-#    return list(expand(os.path.join(OUTPUT_DIR,"AF3_DATA_PIPELINE","monomers","{mono}/{mono}_data.json"),mono=JOB_NAMES_MONOMERS))
-    return list(expand(os.path.join(OUTPUT_DIR,"AF3_DATA_PIPELINE_TEST","monomers","{mono}/{mono}_data.json"),mono=JOB_NAMES_MONOMERS))
+    return list(expand(os.path.join(OUTPUT_DIR,"AF3_DATA_PIPELINE","monomers","{mono}/{mono}_data.json"),mono=JOB_NAMES_MONOMERS))
+#    return list(expand(os.path.join(OUTPUT_DIR,"AF3_DATA_PIPELINE_TEST","monomers","{mono}/{mono}_data.json"),mono=JOB_NAMES_MONOMERS))
 
 def get_multimeric_json_with_msas(wildcards):
     PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
