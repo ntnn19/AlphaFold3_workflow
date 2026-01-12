@@ -1,4 +1,4 @@
-print("AlphaFold3 PREPROCSSING + DATA PIPELINE")
+print("Step #1: AlphaFold3 preprocessing + data pipeline")
 import string
 import pandas as pd
 import os
