@@ -236,7 +236,7 @@ rule AF3_DATA_SPEEDY_PIPELINE_TEST:
     input:
         monomers = os.path.join(OUTPUT_DIR,"PREPROCESSING","monomers","{mono}.json") if MODE in ["default", "all-vs-all","pulldown","virtual-drug-screen"]  else [],
     output:
-        data_pipeline_monomers=touch(os.path.join(OUTPUT_DIR,"AF3_DATA_PIPELINE_TEST","monomers","{mono}/{mono}_data.json")) if MODE in [
+        data_pipeline_monomers=touch(os.path.join(OUTPUT_DIR,"AF3_DATA_PIPELINE","monomers","{mono}/{mono}_data.json")) if MODE in [
             "default","all-vs-all", "pulldown","virtual-drug-screen"] else [],
 
 rule AF3_DATA_SPEEDY_PIPELINE:
