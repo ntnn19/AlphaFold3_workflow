@@ -1,17 +1,15 @@
 executor: slurm
 
 default-resources:
-    slurm_partition: "allcpu"
-    slurm_account: "cssb"
+    slurm_partition: "normal"
 
 set-resources:
     AF3_DATA_PIPELINE:
-        slurm_partition: "allcpu"
         nodes: 1
         runtime: 10000
         cpus_per_task: 16
+        mem_mb: 496000
     AF3_INFERENCE:
-        slurm_partition: "topfgpu"
         nodes: 1
         runtime: 10000
         mem_mb: 256000

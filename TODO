@@ -1,0 +1,7 @@
+# Disable the requirment to specifiy output directory in the sample tables
+# Don't ask the users for different lines of monomers/multimers. break it down your self when there is a multimer to predict.
+# Let the user configure alphafold using a flag for --extra-alphafold-params instead of speicfying each param.
+# Make this branch as main. 
+# add schemas to check config, sample sheet, and profile
+# add a python wrapper to the workflow
+
