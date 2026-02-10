@@ -1,7 +1,4 @@
-id,type,sequence,drug_or_target,target_id,drug_id
-p2,protein,MASEQASDTTVCIK,target,t1,
-l1,ligand,CC(=O)Oc1ccccc1C(=O)O,drug,,d1
-l2,ligand,CN1C=NC2=C1C(=O)N(C(=O)N2C),drug,,d1
-p1,protein,MHIKPEERF,target,t1,
-p3,protein,ANHIREQDS,target,t2,
-l3,ligand,CN1C=NC2,drug,,d2
+job_id,type,data,count,userCCDpath
+vls_run_1,protein,MASEQ,2,
+vls_run_1,ligand,CC(=O)O,1,PATH_TO_CCD
+vls_run_1,ligand,PZ1,1,PATH_TO_CCD
