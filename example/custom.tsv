@@ -1,10 +1,20 @@
-name,id,chain_type,sequence,modifications,description,unpairedMsa,pairedMsa,templates,ccdCodes,smiles
-Hello fold,A,protein,PVLSCGEWQL,"[{'ptmType': 'HY3', 'ptmPosition': 1}, {'ptmType': 'P1L', 'ptmPosition': 5}]",10-residue protein with 2 modifications,,,,,
-Hello fold,B,protein,RPACQLW,,,,,"[{'mmcif': '', 'queryIndices': [0, 1, 2, 4, 5, 6], 'templateIndices': [0, 1, 2, 3, 4, 8]}]",,
-Hello fold,C,dna,GACCTCT,"[{'modificationType': '6OG', 'basePosition': 1}, {'modificationType': '6MA', 'basePosition': 2}]",,,,,,
-Hello fold,E,rna,AGCU,"[{'modificationType': '2MG', 'basePosition': 1}, {'modificationType': '5MC', 'basePosition': 4}]",,,,,,
-Hello fold,F,ligand,,,,,,,['ATP'],
-Hello fold,G,ligand,,,,,,,['ATP'],
-Hello fold,H,ligand,,,,,,,['ATP'],
-Hello fold,I,ligand,,,,,,,"['NAG', 'FUC']",
-Hello fold,Z,ligand,,,,,,,,CC(=O)OC1C[NH+]2CCC1CC2
+job_name	type	id	sequence	modifications	ccd_codes	smiles	msa_option	unpaired_msa	paired_msa	templates	model_seeds	bonded_atom_pairs	user_ccd
+job1	protein	A	PVLSCGEWQL	"[{""ptmType"":""HY3"",""ptmPosition"":1},{""ptmType"":""P1L"",""ptmPosition"":5}]"			auto				10,42	"[[[""A"",1,""CA""],[""G"",1,""CHA""]],[[""I"",1,""O6""],[""I"",2,""C1""]]]"	
+job1	protein	B	RPACQLW				auto			"[{""mmcif"":"""",""queryIndices"":[0,1,2,4,5,6],""templateIndices"":[0,1,2,3,4,8]}]"	10,42	"[[[""A"",1,""CA""],[""G"",1,""CHA""]],[[""I"",1,""O6""],[""I"",2,""C1""]]]"	
+job1	dna	C	GACCTCT	"[{""modificationType"":""6OG"",""basePosition"":1},{""modificationType"":""6MA"",""basePosition"":2}]"			auto				10,42	"[[[""A"",1,""CA""],[""G"",1,""CHA""]],[[""I"",1,""O6""],[""I"",2,""C1""]]]"	
+job1	rna	E	AGCU	"[{""modificationType"":""2MG"",""basePosition"":1},{""modificationType"":""5MC"",""basePosition"":4}]"			auto				10,42	"[[[""A"",1,""CA""],[""G"",1,""CHA""]],[[""I"",1,""O6""],[""I"",2,""C1""]]]"	
+job1	ligand	F			ATP		auto				10,42	"[[[""A"",1,""CA""],[""G"",1,""CHA""]],[[""I"",1,""O6""],[""I"",2,""C1""]]]"	
+job1	ligand	G			ATP		auto				10,42	"[[[""A"",1,""CA""],[""G"",1,""CHA""]],[[""I"",1,""O6""],[""I"",2,""C1""]]]"	
+job1	ligand	H			ATP		auto				10,42	"[[[""A"",1,""CA""],[""G"",1,""CHA""]],[[""I"",1,""O6""],[""I"",2,""C1""]]]"	
+job1	ligand	I			NAG,FUC		auto				10,42	"[[[""A"",1,""CA""],[""G"",1,""CHA""]],[[""I"",1,""O6""],[""I"",2,""C1""]]]"
+job1	ligand	Z				CC(=O)OC1C[NH+]2CCC1CC2	auto				10,42	"[[[""A"",1,""CA""],[""G"",1,""CHA""]],[[""I"",1,""O6""],[""I"",2,""C1""]]]"	
+job2	protein	A	PVLSCGEWQL	"[{""ptmType"":""HY3"",""ptmPosition"":1},{""ptmType"":""P1L"",""ptmPosition"":5}]"			auto				10,42	"[[[""A"",1,""CA""],[""G"",1,""CHA""]],[[""I"",1,""O6""],[""I"",2,""C1""]]]"	
+job2	protein	B	RPACQLW				auto			"[{""mmcif"":"""",""queryIndices"":[0,1,2,4,5,6],""templateIndices"":[0,1,2,3,4,8]}]"	10,42	"[[[""A"",1,""CA""],[""G"",1,""CHA""]],[[""I"",1,""O6""],[""I"",2,""C1""]]]"	
+job2	dna	C	GACCTCT	"[{""modificationType"":""6OG"",""basePosition"":1},{""modificationType"":""6MA"",""basePosition"":2}]"			auto				10,42	"[[[""A"",1,""CA""],[""G"",1,""CHA""]],[[""I"",1,""O6""],[""I"",2,""C1""]]]"	
+job2	rna	E	AGCU	"[{""modificationType"":""2MG"",""basePosition"":1},{""modificationType"":""5MC"",""basePosition"":4}]"			auto				10,42	"[[[""A"",1,""CA""],[""G"",1,""CHA""]],[[""I"",1,""O6""],[""I"",2,""C1""]]]"	
+job2	ligand	F			ATP		auto				10,42	"[[[""A"",1,""CA""],[""G"",1,""CHA""]],[[""I"",1,""O6""],[""I"",2,""C1""]]]"	
+job2	ligand	G			ATP		auto				10,42	"[[[""A"",1,""CA""],[""G"",1,""CHA""]],[[""I"",1,""O6""],[""I"",2,""C1""]]]"	
+job2	ligand	H			ATP		auto				10,42	"[[[""A"",1,""CA""],[""G"",1,""CHA""]],[[""I"",1,""O6""],[""I"",2,""C1""]]]"	
+job2	ligand	I			NAG,FUC		auto				10,42	"[[[""A"",1,""CA""],[""G"",1,""CHA""]],[[""I"",1,""O6""],[""I"",2,""C1""]]]"	
+job2	ligand	Z				CC(=O)OC1C[NH+]2CCC1CC2	auto				10,42	"[[[""A"",1,""CA""],[""G"",1,""CHA""]],[[""I"",1,""O6""],[""I"",2,""C1""]]]"	
+job3_test	protein	A	PVLSCGEWQL	"[{""ptmType"":""HY3"",""ptmPosition"":1},{""ptmType"":""P1L"",""ptmPosition"":5}]"			auto				10,42	"[[[""A"",1,""CA""],[""G"",1,""CHA""]],[[""I"",1,""O6""],[""I"",2,""C1""]]]"
