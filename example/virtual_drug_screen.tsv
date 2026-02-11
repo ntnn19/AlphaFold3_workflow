@@ -1,0 +1,4 @@
+job_name	type	data	count	user_ccd
+vls_run_1	protein	MASEQ	2	
+vls_run_1	ligand	CC(=O)O	1	PATH_TO_CCD
+vls_run_1	ligand	PZ1	1	PATH_TO_CCD

@@ -1,0 +1,10 @@
+name,id,chain_type,sequence,modifications,description,unpairedMsa,pairedMsa,templates,ccdCodes,smiles
+Hello fold,A,protein,PVLSCGEWQL,"[{'ptmType': 'HY3', 'ptmPosition': 1}, {'ptmType': 'P1L', 'ptmPosition': 5}]",10-residue protein with 2 modifications,,,,,
+Hello fold,B,protein,RPACQLW,,,,,"[{'mmcif': '', 'queryIndices': [0, 1, 2, 4, 5, 6], 'templateIndices': [0, 1, 2, 3, 4, 8]}]",,
+Hello fold,C,dna,GACCTCT,"[{'modificationType': '6OG', 'basePosition': 1}, {'modificationType': '6MA', 'basePosition': 2}]",,,,,,
+Hello fold,E,rna,AGCU,"[{'modificationType': '2MG', 'basePosition': 1}, {'modificationType': '5MC', 'basePosition': 4}]",,,,,,
+Hello fold,F,ligand,,,,,,,['ATP'],
+Hello fold,G,ligand,,,,,,,['ATP'],
+Hello fold,H,ligand,,,,,,,['ATP'],
+Hello fold,I,ligand,,,,,,,"['NAG', 'FUC']",
+Hello fold,Z,ligand,,,,,,,,CC(=O)OC1C[NH+]2CCC1CC2
