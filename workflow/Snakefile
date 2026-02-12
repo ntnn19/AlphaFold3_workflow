@@ -86,11 +86,13 @@ else:
 PDB_DATABASE_PATH = get_af3_flag_value('--pdb_database_path', os.path.join('/root/public_databases','mmcif_files'))
 RFAM_DATABASE_PATH = get_af3_flag_value('--rfam_database_path', os.path.join('/root/public_databases','rfam_14_9_clust_seq_id_90_cov_80_rep_seq.fasta'))
 RNA_CENTRAL_DATABASE_PATH = get_af3_flag_value('--rna_central_database_path', os.path.join('/root/public_databases','rnacentral_active_seq_id_90_cov_80_linclust.fasta'))
-SAVE_EMBEDDINGS = get_af3_flag_value('--save_embeddings', False)
+SAVE_EMBEDDINGS = get_af3_flag_value('--save_embeddings', "false")
 SEQRES_DATABASE_PATH = get_af3_flag_value('--seqres_database_path', os.path.join('/root/public_databases','pdb_seqres_2022_09_28.fasta'))
 SMALL_BFD_DATABASE_PATH = get_af3_flag_value('--small_bfd_database_path', os.path.join('/root/public_databases','bfd-first_non_consensus_sequences.fasta'))
 UNIPROT_CLUSTER_ANNOT_DATABASE_PATH = get_af3_flag_value('--uniprot_cluster_annot_database_path', os.path.join('/root/public_databases','uniprot_all_2021_04.fa'))
 UNIREF90_DATABASE_PATH = get_af3_flag_value('--uniref90_database_path', os.path.join('/root/public_databases','uniref90_2022_05.fa'))
+
+EXTRA_AF3_FLAGS = get_af3_flag_value('--extra_af3_flags', '')
 
 def sanitised_name(name):
     """Returns sanitised version of the name that can be used as a filename."""
@@ -122,16 +124,17 @@ def get_data_pipeline_outputs(wildcards):
     return list(expand(os.path.join(OUTPUT_DIR,"rule_AF3_DATA_PIPELINE","{i}/{i}_data.json"),i=JOB_NAMES))
 
 def get_multimeric_json_outputs(wildcards):
+    print("HERE")
     PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
     JOB_NAMES_MULTIMERS, = glob_wildcards(os.path.join(PREPROCESSING_DIR,"multimers","{multi}.json"))
-    return list(expand(os.path.join(PREPROCESSING_DIR,"multimers","{multi}.json"),multi=JOB_NAMES_MULTIMERS)) + list(expand(os.path.join(OUTPUT_DIR,"rule_MERGE_MONO_AND_MULTI_JSON","{multi}","{multi}_data.json"), multi=JOB_NAMES_MULTIMERS))
+    return list(expand(os.path.join(PREPROCESSING_DIR,"multimers","{multi}.json"),multi=JOB_NAMES_MULTIMERS)) + list(expand(os.path.join(OUTPUT_DIR,"rule_MERGE_MONOMERS_TO_MULTIMERS","{multi}_data.json"), multi=JOB_NAMES_MULTIMERS))
 
 def get_monomeric_json_outputs(wildcards):
     PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
     JOB_NAMES_MONOMERS, = glob_wildcards(os.path.join(PREPROCESSING_DIR,"monomers","{mono}.json"))
     print(JOB_NAMES_MONOMERS)
 #    return list(expand(os.path.join(OUTPUT_DIR,"AF3_DATA_PIPELINE_TEST","monomers","{mono}/{mono}_data.json"),mono=JOB_NAMES_MONOMERS))
-    return list(expand(os.path.join(OUTPUT_DIR,"rule_AF3_DATA_PIPELINE","monomers","{mono}/{mono}_data.json"),mono=JOB_NAMES_MONOMERS))
+    return list(expand(os.path.join(OUTPUT_DIR,"rule_AF3_DATA_PIPELINE","{mono}/{mono}_data.json"),mono=JOB_NAMES_MONOMERS))
 
 def get_multi_to_monomeric_dict(wildcards):
     PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
@@ -218,9 +221,10 @@ rule AF3_DATA_SPEEDY_PIPELINE:
         seqres_database_path = SEQRES_DATABASE_PATH,
         small_bfd_database_path = SMALL_BFD_DATABASE_PATH,
         uniprot_cluster_annot_database_path = UNIPROT_CLUSTER_ANNOT_DATABASE_PATH,
-        uniref90_database_path = UNIREF90_DATABASE_PATH
+        uniref90_database_path = UNIREF90_DATABASE_PATH,
+        extra_af3_flags = EXTRA_AF3_FLAGS
     output:
-        data_pipeline_monomers=temp(os.path.join(OUTPUT_DIR,"rule_AF3_DATA_PIPELINE","monomers","{mono}/{mono}_data.json")) if MODE in [
+        data_pipeline_monomers=temp(os.path.join(OUTPUT_DIR,"rule_AF3_DATA_PIPELINE","{mono}","{mono}_data.json")) if MODE in [
             "custom","stoichio-screen","all-vs-all", "pulldown","virtual-drug-screen"] else [],
     container:
         AF3_CONTAINER
@@ -228,7 +232,7 @@ rule AF3_DATA_SPEEDY_PIPELINE:
         """
         python /app/alphafold/run_alphafold.py --json_path=/root/af_output/rule_PREPROCESSING/monomers/{wildcards.mono}.json \
         --model_dir=/root/models \
-        --output_dir=/root/af_output/AF3_DATA_PIPELINE/monomers \
+        --output_dir=/root/af_output/rule_AF3_DATA_PIPELINE \
         --db_dir=/root/public_databases \
         --run_data_pipeline=true \
         --run_inference=false \
@@ -257,30 +261,29 @@ rule AF3_DATA_SPEEDY_PIPELINE:
         --seqres_database_path={params.seqres_database_path} \
         --small_bfd_database_path={params.small_bfd_database_path} \
         --uniprot_cluster_annot_database_path={params.uniprot_cluster_annot_database_path} \
-        --uniref90_database_path={params.uniref90_database_path}
+        --uniref90_database_path={params.uniref90_database_path} \
+        {params.extra_af3_flags} 
         """
-
 
 rule MERGE_MONO_AND_MULTI_JSON:
     input:
-        data_pipeline_monomers = lambda wildcards: [os.path.join(OUTPUT_DIR, "rule_AF3_DATA_PIPELINE", "monomers",f"{os.path.basename(mono).split("_data.json")[0]}",f"{os.path.basename(mono).split("_data.json")[0]}_data.json")  for mono in
+        data_pipeline_monomers = lambda wildcards: [os.path.join(OUTPUT_DIR, "rule_AF3_DATA_PIPELINE",f"{os.path.basename(mono).split("_data.json")[0]}",f"{os.path.basename(mono).split("_data.json")[0]}_data.json")  for mono in
                                                     get_multi_to_monomeric_dict(wildcards).loc[get_multi_to_monomeric_dict(wildcards).inference_samples.str.contains(wildcards.multi),"data_pipeline_samples"].values.tolist()]
         if MODE in ["all-vs-all", "pulldown","virtual-drug-screen", "stoichio-screen"] else [],
         preprocessed_multimers = os.path.join(OUTPUT_DIR,"rule_PREPROCESSING","multimers","{multi}.json") if MODE in ["custom","all-vs-all","pulldown","virtual-drug-screen","stoichio-screen"]  else [],
     params:
         metdata_dir = os.path.join(OUTPUT_DIR,"rule_PREPROCESSING","metadata"),
     output:
-        # TO DO SEEDS NEEDS TO BE EXTRACTED FROM A DICT THAT RELATES EACH SAMPLE TO ITS SEEDS
-        data_pipeline_msa = expand(os.path.join(OUTPUT_DIR,"rule_MERGE_MONO_AND_MULTI_JSON","{{multi}}_seed-{seed}","{{multi}}_seed-{seed}_data.json"),seed=SEEDS) if MODE in ["custom","all-vs-all","pulldown","virtual-drug-screen","stoichio-screen"] else [],
+        data_pipeline_msa = expand(os.path.join(OUTPUT_DIR,"rule_MERGE_MONOMERS_TO_MULTIMERS","{{multi}}_seed-{seed}_data.json"),seed=SEEDS) if MODE in ["custom","all-vs-all","pulldown","virtual-drug-screen","stoichio-screen"] else [],
     shell:
         """
-        python {WORKFLOW_DIR}/scripts/merge_mono_and_multi_jsons_speedy_TEMP.py {params.metdata_dir}/inference_to_data_pipeline_map.tsv {params.metdata_dir}/inference_samples.tsv {wildcards.multi}
+        python {WORKFLOW_DIR}/scripts/merge_mono_and_multi_jsons.py {params.metdata_dir}/inference_to_data_pipeline_map.tsv {params.metdata_dir}/inference_samples.tsv {wildcards.multi}
         """
 
 
 rule CREATE_AF3_INFERENCE_JOBS_SPEEDY_AF3_PIPELINE:
     input:
-        multimers = os.path.join(OUTPUT_DIR,"rule_MERGE_MONO_AND_MULTI_JSON","{multi}","{multi}_data.json") if MODE in ["custom","all-vs-all","pulldown","virtual-drug-screen","stoichio-screen"]  else []
+        multimers = os.path.join(OUTPUT_DIR,"rule_MERGE_MONOMERS_TO_MULTIMERS","{multi}_data.json") if MODE in ["custom","all-vs-all","pulldown","virtual-drug-screen","stoichio-screen"]  else []
     params:
         mode = MODE,
         buckets = BUCKETS,
@@ -308,15 +311,15 @@ rule CREATE_AF3_INFERENCE_JOBS_SPEEDY_AF3_PIPELINE:
         seqres_database_path = SEQRES_DATABASE_PATH,
         small_bfd_database_path = SMALL_BFD_DATABASE_PATH,
         uniprot_cluster_annot_database_path = UNIPROT_CLUSTER_ANNOT_DATABASE_PATH,
-        uniref90_database_path = UNIREF90_DATABASE_PATH
+        uniref90_database_path = UNIREF90_DATABASE_PATH,
+        extra_af3_flags = EXTRA_AF3_FLAGS
     output:
         multimers = os.path.join(OUTPUT_DIR,"rule_CREATE_AF3_INFERENCE_JOBS","{multi}_af3_inference_job.txt") if MODE in ["custom","all-vs-all","pulldown","virtual-drug-screen","stoichio-screen"]  else []
     shell:
         """
-        echo 'python /app/alphafold/run_alphafold.py --json_path=/root/af_output/rule_MERGE_MONO_AND_MULTI_JSON/{wildcards.multi}/{wildcards.multi}_data.json \
-        --compress_output_dir=true \
+        echo 'python /app/alphafold/run_alphafold.py --json_path=/root/af_output/rule_MERGE_MONOMERS_TO_MULTIMERS/{wildcards.multi}_data.json \
         --model_dir=/root/models \
-        --output_dir=/root/af_output/AF3_INFERENCE \
+        --output_dir=/root/af_output/rule_AF3_INFERENCE \
         --db_dir=/root/public_databases \
         --run_data_pipeline=false \
         --run_inference=true \
@@ -345,7 +348,8 @@ rule CREATE_AF3_INFERENCE_JOBS_SPEEDY_AF3_PIPELINE:
         --seqres_database_path={params.seqres_database_path} \
         --small_bfd_database_path={params.small_bfd_database_path} \
         --uniprot_cluster_annot_database_path={params.uniprot_cluster_annot_database_path} \
-        --uniref90_database_path={params.uniref90_database_path}' > {output}
+        --uniref90_database_path={params.uniref90_database_path} \
+        {params.extra_af3_flags}' > {output}
         """
 
 

@@ -530,7 +530,7 @@ def extract_monomer_jobs(
         if has_multimers
         else monomers["job_name"]
     )
-
+    monomers["job_name"] = monomers["job_name"].apply(lambda x: sanitised_name(x))
     monomers["fold_input"] = os.path.dirname(output_dir + "/rule_PREPROCESSING") + "/rule_AF3_DATA_PIPELINE/" + \
                              monomers["job_name"] + "_data.json"
 
