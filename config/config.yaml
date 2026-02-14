@@ -1,4 +1,6 @@
-input_csv: example/stoichio_screen.tsv
+sample_sheets:
+  raw_data: example/stoichio_screen.tsv
+  data_pipeline_ready: /home/nadmin/Downloads/data_pipeline_samples.tsv
 #input_csv: example/all_vs_all.csv # all-vs-all
 #input_csv: example/virtual_drug_screen.csv # virtual drug screen
 output_dir: output/stoichio_screen # stores the outputs of this workflow. The output of each rule is stored at <output_dir>/<RULE_NAME>

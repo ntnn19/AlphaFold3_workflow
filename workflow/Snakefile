@@ -1,9 +1,26 @@
 #print("Step #1: AlphaFold3 preprocessing + data pipeline")
 import string
+from pathlib import Path
 import pandas as pd
 import os
 import yaml
+
 localrules: PREPROCESSING , MERGE_MONO_AND_MULTI_JSON, CREATE_AF3_INFERENCE_JOBS_SPEEDY_AF3_PIPELINE, AGG_AF3_INFERENCE_JOBS, SPLIT_INFERENCE_JOB_LIST
+
+
+# Define expected schema for each sample sheet type
+SAMPLE_SHEET_SCHEMAS = {
+    "raw_data": [
+        "job_name", "type", "id", "sequence", "modifications", "ccd_codes",
+        "smiles", "msa_option", "unpaired_msa", "paired_msa", "templates",
+        "model_seeds", "bonded_atom_pairs", "user_ccd"
+    ],
+    "data_pipeline_ready": ["sample_id", "file"],
+    "inference_ready": ["sample_id", "file"],
+    "merge_ready_samples": ["sample_id", "multimer_file", "monomer_chain_id", "monomer_file"],
+}
+
+
 scattergather:
     split=config.get("n_splits",1),
     split_ost=config.get("n_splits_ost",1)
@@ -20,32 +37,34 @@ def as_bool(val):
 def bool_flag(name, value):
     return f"--{name}" if as_bool(value) else ""
 
-SPLIT_TOTAL = workflow._scatter["split"]
-SPLIT_OST = workflow._scatter["split_ost"]
 
-#Workflow flags
-INPUT_DF = config["input_csv"]
-OUTPUT_DIR = config["output_dir"]
-MODE = config.get("mode","custom")
-OST_CONTAINER = config.get("ost_container",None)
-GROUND_TRUTH =config.get("ground_truth",None)
-TASK = config.get("task", "")
-PREDICT_INDIVIDUAL_COMPONENTS = bool_flag("predict_individual_components",config.get("predict_individual_components",False))
-N_SEEDS = config.get("n_seeds", 1)
-N_SAMPLES = config.get("n_samples", 5)
+def load_sample_sheet(sheet_key):
+    """Safely load a sample sheet, returns (path, dataframe)"""
+    path = config.get("sample_sheets",{}).get(sheet_key)
 
-# Helper function to get JSON path for each multimer
-def claude(wildcards):
-    """Get JSON path from sample sheet or from upstream rule"""
-    row = INPUT_DF[INPUT_DF['id'] == wildcards.multi]
+    # Get expected columns for this sheet type
+    columns = SAMPLE_SHEET_SCHEMAS.get(sheet_key,[])
 
-    if not row.empty and pd.notna(row.iloc[0]['json_path']):
-        # Use external JSON if provided
-        return row.iloc[0]['json_path']
-    else:
-        # Fall back to upstream rule output
-        return os.path.join(OUTPUT_DIR,"rule_MERGE_MONOMERS_TO_MULTIMERS",
-            f"{wildcards.multi}_data.json")
+    # Return None, empty DataFrame with correct columns if not specified
+    if not path:
+        return None, pd.DataFrame(columns=columns)
+
+    # Check if file exists
+    if not Path(path).exists():
+        print(f"Warning: Sample sheet '{sheet_key}' not found at {path}")
+        return path, pd.DataFrame(columns=columns)
+
+    # Try to read
+    try:
+        df = pd.read_csv(path,sep="\t")
+        print(f"✓ Loaded {len(df)} samples from '{sheet_key}' ({path})")
+        return path, df
+    except Exception as e:
+        print(f"✗ Error reading '{sheet_key}' from {path}: {e}")
+        return path, pd.DataFrame(columns=columns)
+
+
+
 
 def as_bool(val):
     if isinstance(val, bool):
@@ -58,37 +77,6 @@ def as_bool(val):
 
 def bool_flag(name, value):
     return f"--{name}" if as_bool(value) else ""
-
-
-WORKFLOW_DIR = workflow.basedir
-#print("WORKFLOW_DIR=", WORKFLOW_DIR)
-WORKFLOW_DIR = workflow.source_path(".")
-
-#print("WORKFLOW_DIR=", WORKFLOW_DIR)
-WORKFLOW_DIR = workflow.workdir_init
-
-#print("WORKFLOW_DIR=", WORKFLOW_DIR)
-WORKFLOW_DIR = os.path.dirname(os.path.abspath(workflow.snakefile))
-
-#print("WORKFLOW_DIR=", WORKFLOW_DIR)
-#exit()
-
-DF = pd.read_csv(INPUT_DF)
-#SEEDS = (DF["model_seeds"].astype(str).str.split(",").values[0] 
-#         if "model_seeds" in DF.columns 
-#         else ["1"])
-if "model_seeds" in DF.columns:
-    DF["model_seeds"] = DF["model_seeds"] = DF.model_seeds.astype(str)
-SEEDS= DF["model_seeds"].str.split(",").values[0] if "model_seeds" in DF.columns else [1] # TODO: ONLY WORKS IF EVERY JOB HAS THE SAME SEEDS
-MSA_OPTION = config.get("msa_option","auto")
-AF3_CONTAINER = config["af3_flags"]["--af3_container"]
-
-def get_af3_flag_value(flag, default_value):
-    return config.get('alphafold3_flags', {}).get(flag, default_value)
-
-
-EXTRA_AF3_FLAGS = config.get('alphafold3_flags', {}).get("--extra_af3_flags", '')
-
 
 def sanitised_name(name):
     """Returns sanitised version of the name that can be used as a filename."""
@@ -141,30 +129,81 @@ def get_collect_predictions(wildcards):
     files = list(expand(os.path.join(OUTPUT_DIR,"rule_CREATE_OST_COMAPRE_LIGAND_STRUCTURES_JOBS","{multi}_seed-{seed}_sample-{sample}_job.txt"), multi=set(JOB_NAMES_MULTIMERS),seed=list(set(SEEDS_)), sample=[0,1,2,3,4]))
     return files
 
+def get_af3_flag_value(flag, default_value):
+    return config.get('alphafold3_flags', {}).get(flag, default_value)
+
+
+
+SPLIT_TOTAL = workflow._scatter["split"]
+SPLIT_OST = workflow._scatter["split_ost"]
+
+
+
+# Load all sample sheets - get both paths and DataFrames
+RAW_DATA_PATH, RAW_DATA_DF = load_sample_sheet("raw_data")
+DATA_PIPELINE_READY_PATH, DATA_PIPELINE_READY_DF = load_sample_sheet("data_pipeline_ready")
+INFERENCE_READY_PATH, INFERENCE_READY_DF = load_sample_sheet("inference_ready")
+MERGE_READY_PATH, MERGE_READY_DF = load_sample_sheet("merge_ready")
+
+OUTPUT_DIR = config["output_dir"]
+MODE = config.get("mode","custom")
+OST_CONTAINER = config.get("ost_container")
+GROUND_TRUTH =config.get("ground_truth")
+TASK = config.get("task", "")
+PREDICT_INDIVIDUAL_COMPONENTS = bool_flag("predict_individual_components",config.get("predict_individual_components",False))
+N_SEEDS = config.get("n_seeds") # See TODO
+N_SAMPLES = config.get("n_samples")
+
+
+
+
+WORKFLOW_DIR = os.path.dirname(os.path.abspath(workflow.snakefile))
+
+
+
+if "model_seeds" in RAW_DATA_DF.columns:
+    RAW_DATA_DF["model_seeds"] = RAW_DATA_DF["model_seeds"] = RAW_DATA_DF.model_seeds.astype(str)
+if RAW_DATA_DF.empty:
+    SEEDS =  [1]
+else:
+    SEEDS= RAW_DATA_DF["model_seeds"].str.split(",").values[0] if "model_seeds" in RAW_DATA_DF.columns else [1] # TODO: ONLY WORKS IF EVERY JOB HAS THE SAME SEEDS
+MSA_OPTION = config.get("msa_option","auto")
+AF3_CONTAINER = config["af3_flags"]["--af3_container"]
+
+
+
+EXTRA_AF3_FLAGS = config.get('alphafold3_flags', {}).get("--extra_af3_flags", '')
+
+
 
 rule all:
     input:
-        get_monomeric_json_outputs,
+        get_monomeric_json_outputs  if not RAW_DATA_DF.empty else [],
+        expand(os.path.join(OUTPUT_DIR,"rule_AF3_DATA_PIPELINE","{mono}","{mono}_data.json"),mono=DATA_PIPELINE_READY_DF["sample_id"]),
         os.path.join(OUTPUT_DIR,"rule_AGG_OST_REPORTS","ost_report.csv") if MODE == "virtual-drug-screen" and TASK=="ost" else [],
         expand(os.path.join(OUTPUT_DIR,"rule_OST_COMAPRE_LIGAND_STRUCTURES","done_flags",f"job_{{s}}-of-{SPLIT_OST}.done.txt"),s=list(range(1,SPLIT_OST+1))) if MODE == "virtual-drug-screen" and TASK=="ost" else [],
-        expand(os.path.join(OUTPUT_DIR,"rule_AF3_INFERENCE","done_flags",f"af3_inference_jobs_{{s}}-of-{SPLIT_TOTAL}.done.txt"),s=list(range(1,SPLIT_TOTAL+1))),
+#        expand(os.path.join(OUTPUT_DIR,"rule_AF3_INFERENCE","done_flags",f"af3_inference_jobs_{{s}}-of-{SPLIT_TOTAL}.done.txt"),s=list(range(1,SPLIT_TOTAL+1))),
 
 
 
 checkpoint PREPROCESSING:
     input:
-        INPUT_DF,
+        RAW_DATA_PATH if not RAW_DATA_DF.empty else [],
     output:
-        directory(os.path.join(OUTPUT_DIR,"rule_PREPROCESSING"))
+        directory(os.path.join(OUTPUT_DIR,"rule_PREPROCESSING")) if not RAW_DATA_DF.empty else []
     params:
         msa_option = MSA_OPTION,
         mode = MODE,
-        n_seeds = N_SEEDS,
-        n_samples = N_SAMPLES,
+        n_seeds = "--n-seeds {N_SEEDS}" if N_SEEDS else "",
+        n_samples = "--n-samples {N_SAMPLES}" if N_SAMPLES else "",
         predict_individual_components = PREDICT_INDIVIDUAL_COMPONENTS
     shell:
         """
-        python {WORKFLOW_DIR}/scripts/preprocessing.py {input[0]} {OUTPUT_DIR} --mode={params.mode} {params.predict_individual_components} --n-seeds {params.n_seeds} --n-samples {params.n_samples} 
+        python {WORKFLOW_DIR}/scripts/preprocessing.py \
+        {input[0]} \
+        {OUTPUT_DIR} \
+        --mode={params.mode} \
+        {params.predict_individual_components} {params.n_seeds} {params.n_samples} 
         """
 
 
@@ -178,12 +217,18 @@ checkpoint PREPROCESSING:
 
 rule AF3_DATA_SPEEDY_PIPELINE:
     input:
-        monomers = os.path.join(OUTPUT_DIR,"rule_PREPROCESSING","monomers","{mono}.json") if MODE in ["custom",
-                                                                                                      "stoichio-screen",
-                                                                                                      "all-vs-all",
-                                                                                                      "pulldown",
-                                                                                                      "virtual-drug-screen"]  else [],
+        data = branch(
+            lookup(query="sample_id == '{mono}'",within=DATA_PIPELINE_READY_DF ,cols="file"),
+            then=lookup(query="sample_id == '{mono}'",within=DATA_PIPELINE_READY_DF ,cols="file"),
+            otherwise=os.path.join(OUTPUT_DIR,"rule_PREPROCESSING","monomers","{mono}.json")
+        ),
+        #monomers = os.path.join(OUTPUT_DIR,"rule_PREPROCESSING","monomers","{mono}.json") if MODE in ["custom",
+        #                                                                                              "stoichio-screen",
+        #                                                                                              "all-vs-all",
+        #                                                                                              "pulldown",
+        #                                                                                              "virtual-drug-screen"]  else [],
     params:
+        json_path = input.data,
         mode = MODE,
         extra_af3_flags = EXTRA_AF3_FLAGS
     output:
@@ -193,7 +238,7 @@ rule AF3_DATA_SPEEDY_PIPELINE:
         AF3_CONTAINER
     shell:
         """
-        python /app/alphafold/run_alphafold.py --json_path=/root/af_output/rule_PREPROCESSING/monomers/{wildcards.mono}.json \
+        python /app/alphafold/run_alphafold.py --json_path={params.json_path} \
         --model_dir=/root/models \
         --output_dir=/root/af_output/rule_AF3_DATA_PIPELINE \
         --db_dir=/root/public_databases \
@@ -220,8 +265,7 @@ rule MERGE_MONO_AND_MULTI_JSON:
 
 rule CREATE_AF3_INFERENCE_JOBS_SPEEDY_AF3_PIPELINE:
     input:
-        multimers = claude
-        #multimers = os.path.join(OUTPUT_DIR,"rule_MERGE_MONOMERS_TO_MULTIMERS","{multi}_data.json") if MODE in ["custom","all-vs-all","pulldown","virtual-drug-screen","stoichio-screen"]  else []
+        multimers = os.path.join(OUTPUT_DIR,"rule_MERGE_MONOMERS_TO_MULTIMERS","{multi}_data.json") if MODE in ["custom","all-vs-all","pulldown","virtual-drug-screen","stoichio-screen"]  else []
     params:
         mode = MODE,
         extra_af3_flags = EXTRA_AF3_FLAGS

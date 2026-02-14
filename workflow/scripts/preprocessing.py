@@ -1097,11 +1097,14 @@ def main(sample_sheet, output_dir, mode, predict_individual_components, n_seeds,
     data_pipeline_df = pd.DataFrame(
         set([v.replace("rule_AF3_DATA_PIPELINE", "rule_PREPROCESSING/monomers").replace("_data.json", ".json") for d in
              inference_to_data_pipeline_map.values() for v in d.values()]),
-        columns=["data_pipeline_samples"])
-    data_pipeline_df["expected_output"] = data_pipeline_df["data_pipeline_samples"].apply(
+        columns=["file"])
+    data_pipeline_df["sample_id"] = data_pipeline_df["file"].apply(
+        lambda x: Path(x).stem)
+    data_pipeline_df["expected_output"] = data_pipeline_df["file"].apply(
         lambda x: x.replace("rule_PREPROCESSING/monomers", f"rule_AF3_DATA_PIPELINE/{os.path.basename(x).split(".json")[0]}"))
     data_pipeline_df["expected_output"] = data_pipeline_df["expected_output"].apply(
         lambda x: x.replace(".json", "_data.json"))
+
     # tmp/rule_PREPROCESSING/monomers/job1_job1_chain-B.json
 
     inference_df = pd.DataFrame(set([k.replace(
@@ -1114,7 +1117,7 @@ def main(sample_sheet, output_dir, mode, predict_individual_components, n_seeds,
     if predict_individual_components:
         if has_multimers_:
             inference_df = pd.DataFrame(np.vstack([inference_df.values,
-                                                   pd.DataFrame(data_pipeline_df.data_pipeline_samples.str.replace(
+                                                   pd.DataFrame(data_pipeline_df.file.str.replace(
                                                        "rule_PREPROCESSING/monomers",
                                                        "rule_MERGE_MONOMERS_TO_MULTIMERS").values)])
                                         , columns=inference_df.columns)
@@ -1189,12 +1192,11 @@ def main(sample_sheet, output_dir, mode, predict_individual_components, n_seeds,
     inference_df["job_name"] = inference_df["inference_samples"].apply(
         lambda x: os.path.basename(x).split("_data.json")[0])
     inference_df["job_name"] = inference_df["job_name"].apply(lambda x: os.path.basename(x).split("_data", 1)[0])
+    inference_df["job_name"] = inference_df["job_name"].apply(lambda x: Path(x).stem)
 
-    long_inference_to_data_pipeline_df = long_inference_to_data_pipeline_df.rename(
-        columns={"multimer_file": "inference_samples",
-                 "monomer_file": "data_pipeline_samples"})
 
-    long_inference_to_data_pipeline_df["data_pipeline_samples"] = long_inference_to_data_pipeline_df["data_pipeline_samples"].apply(lambda x: os.path.join(os.path.dirname(x), os.path.basename(x).split("_data.json")[0], os.path.basename(x)))
+    long_inference_to_data_pipeline_df["monomer_file"] = long_inference_to_data_pipeline_df["monomer_file"].apply(lambda x: os.path.join(os.path.dirname(x), os.path.basename(x).split("_data.json")[0], os.path.basename(x)))
+    long_inference_to_data_pipeline_df["sample_id"] = long_inference_to_data_pipeline_df["multimer_file"].apply(lambda x: Path(x).stem)
 
     long_inference_to_data_pipeline_df.to_csv(f"{metadata_dir}/inference_to_data_pipeline_map.tsv",
                                               sep="\t", index=False)
@@ -1202,7 +1204,7 @@ def main(sample_sheet, output_dir, mode, predict_individual_components, n_seeds,
     data_pipeline_df.to_csv(f"{metadata_dir}/data_pipeline_samples.tsv", sep="\t", index=False)
 
     inference_df.sort_values(["job_name", "seed", "sample"])[
-        ["job_name", "inference_samples", "expected_output"]].to_csv(
+        ["job_name", "inference_samples", "expected_output"]].rename(columns={"job_name":"sample_id","inference_samples":"file"}).to_csv(
         f"{metadata_dir}/inference_samples.tsv", sep="\t", index=False)
 
     logger.info(f"Rule PREPROCESSING was completed successfully!")
