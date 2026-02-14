@@ -79,7 +79,7 @@ DF = pd.read_csv(INPUT_DF)
 #         else ["1"])
 if "model_seeds" in DF.columns:
     DF["model_seeds"] = DF["model_seeds"] = DF.model_seeds.astype(str)
-SEEDS= DF["model_seeds"].str.split(",").values[0] if "model_seeds" in DF.columns else [1]
+SEEDS= DF["model_seeds"].str.split(",").values[0] if "model_seeds" in DF.columns else [1] # TODO: ONLY WORKS IF EVERY JOB HAS THE SAME SEEDS
 MSA_OPTION = config.get("msa_option","auto")
 AF3_CONTAINER = config["af3_flags"]["--af3_container"]
 
@@ -394,3 +394,4 @@ rule AGG_OST_REPORTS:
         echo "target method seed sample ranking_score prot_lig_chain_iptm_average_lddt_pli prot_lig_chain_iptm_min_lddt_pli prot_lig_chain_iptm_max_lddt_pli lig_prot_chain_iptm_average_lddt_pli lig_prot_chain_iptm_min_lddt_pli lig_prot_chain_iptm_max_lddt_pli lddt_pli model_ligand_chain_lddt_pli model_ligand_ccd_code model_ligand_smiles ligand_ccd_code_x prot_lig_chain_iptm_average_rmsd prot_lig_chain_iptm_min_rmsd prot_lig_chain_iptm_max_rmsd lig_prot_chain_iptm_average_rmsd lig_prot_chain_iptm_min_rmsd lig_prot_chain_iptm_max_rmsd rmsd lddt_lp bb_rmsd model_ligand_chain_rmsd ligand_ccd_code_y ligand_instance_chain ligand_is_proper" > {output}
         cat {input} >> {output}
         """
+

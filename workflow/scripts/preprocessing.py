@@ -124,8 +124,8 @@ def transform_vds_to_af3(df,n_seeds=None) -> pd.DataFrame:
                         ccd_codes = data_val
 
                 if n_seeds is not None:
-                    model_seeds = list(range(1, n_seeds + 1))
-                if not pd.notna(row.get('model_seeds')):
+                    model_seeds = ",".join(list(map(lambda x: str(x),list(range(1, n_seeds + 1)))))
+                elif not pd.notna(row.get('model_seeds')):
                     model_seeds = "1"  # default seed
 
 
@@ -382,7 +382,6 @@ def create_pulldown_df(jobs_df: pd.DataFrame) -> pd.DataFrame:
 def write_fold_inputs(
         df: pd.DataFrame,
         output_dir: Union[str, Path],
-        breakdown: bool = True,
         mode: str = "custom",
         n_seeds: Optional[int] = None,
 ) -> None:
@@ -906,7 +905,7 @@ def remove_duplicate_jobs_scalable(df, cols_to_compare, log_file=f'duplicate_job
               help="Choose run mode: 'custom', 'all-vs-all', 'pulldown','virtual-drug-screen', or 'stoichio-screen'")
 @click.option('--predict-individual-components', is_flag=True,
               help="The individual components of multimeric samples will also be predicted.")
-@click.option('--n-seeds', type=int, default=1,
+@click.option('--n-seeds', type=int, default=None,
               help="Number of random seeds. Useful for massive sampling. If specified, the model_seeds column in the sample sheet is ignored")
 @click.option('--n-samples', type=int, default=5,
               help="Number of models per seed. Useful for massive sampling")
