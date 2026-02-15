@@ -140,6 +140,7 @@ SPLIT_OST = workflow._scatter["split_ost"]
 
 
 # Load all sample sheets - get both paths and DataFrames
+# TODO fill the empty dataframes for all downstream rules if something other than raw_data/inference ready was provided
 RAW_DATA_PATH, RAW_DATA_DF = load_sample_sheet("raw_data")
 DATA_PIPELINE_READY_PATH, DATA_PIPELINE_READY_DF = load_sample_sheet("data_pipeline_ready")
 INFERENCE_READY_PATH, INFERENCE_READY_DF = load_sample_sheet("inference_ready")
@@ -182,7 +183,7 @@ rule all:
         expand(os.path.join(OUTPUT_DIR,"rule_AF3_DATA_PIPELINE","{mono}","{mono}_data.json"),mono=DATA_PIPELINE_READY_DF["sample_id"]),
         os.path.join(OUTPUT_DIR,"rule_AGG_OST_REPORTS","ost_report.csv") if MODE == "virtual-drug-screen" and TASK=="ost" else [],
         expand(os.path.join(OUTPUT_DIR,"rule_OST_COMAPRE_LIGAND_STRUCTURES","done_flags",f"job_{{s}}-of-{SPLIT_OST}.done.txt"),s=list(range(1,SPLIT_OST+1))) if MODE == "virtual-drug-screen" and TASK=="ost" else [],
-#        expand(os.path.join(OUTPUT_DIR,"rule_AF3_INFERENCE","done_flags",f"af3_inference_jobs_{{s}}-of-{SPLIT_TOTAL}.done.txt"),s=list(range(1,SPLIT_TOTAL+1))),
+        expand(os.path.join(OUTPUT_DIR,"rule_AF3_INFERENCE","done_flags",f"af3_inference_jobs_{{s}}-of-{SPLIT_TOTAL}.done.txt"),s=list(range(1,SPLIT_TOTAL+1))),
 
 
 
@@ -249,17 +250,25 @@ rule AF3_DATA_SPEEDY_PIPELINE:
 
 rule MERGE_MONO_AND_MULTI_JSON:
     input:
-        data_pipeline_monomers = lambda wildcards: [os.path.join(OUTPUT_DIR, "rule_AF3_DATA_PIPELINE",f"{os.path.basename(mono).split("_data.json")[0]}",f"{os.path.basename(mono).split("_data.json")[0]}_data.json")  for mono in
-                                                    get_multi_to_monomeric_dict(wildcards).loc[get_multi_to_monomeric_dict(wildcards).inference_samples.str.contains(wildcards.multi),"data_pipeline_samples"].values.tolist()]
-        if MODE in ["all-vs-all", "pulldown","virtual-drug-screen", "stoichio-screen"] else [],
-        preprocessed_multimers = os.path.join(OUTPUT_DIR,"rule_PREPROCESSING","multimers","{multi}.json") if MODE in ["custom","all-vs-all","pulldown","virtual-drug-screen","stoichio-screen"]  else [],
+        data=branch(
+            lookup(query="sample_id == '{mono}'",within=DATA_PIPELINE_READY_DF,cols="file"),
+            then=lookup(query="sample_id == '{mono}'",within=DATA_PIPELINE_READY_DF,cols="file"),
+            otherwise=os.path.join(OUTPUT_DIR,"rule_PREPROCESSING","monomers","{mono}.json")
+        )
+
+#        data_pipeline_monomers = lambda wildcards: [os.path.join(OUTPUT_DIR, "rule_AF3_DATA_PIPELINE",f"{os.path.basename(mono).split("_data.json")[0]}",f"{os.path.basename(mono).split("_data.json")[0]}_data.json")  for mono in
+#                                                    get_multi_to_monomeric_dict(wildcards).loc[get_multi_to_monomeric_dict(wildcards).inference_samples.str.contains(wildcards.multi),"data_pipeline_samples"].values.tolist()]
+#        if MODE in ["all-vs-all", "pulldown","virtual-drug-screen", "stoichio-screen"] else [],
+#        preprocessed_multimers = os.path.join(OUTPUT_DIR,"rule_PREPROCESSING","multimers","{multi}.json") if MODE in ["custom","all-vs-all","pulldown","virtual-drug-screen","stoichio-screen"]  else [],
     params:
         metdata_dir = os.path.join(OUTPUT_DIR,"rule_PREPROCESSING","metadata"),
     output:
         data_pipeline_msa = expand(os.path.join(OUTPUT_DIR,"rule_MERGE_MONOMERS_TO_MULTIMERS","{{multi}}_seed-{seed}_data.json"),seed=SEEDS) if MODE in ["custom","all-vs-all","pulldown","virtual-drug-screen","stoichio-screen"] else [],
     shell:
         """
-        python {WORKFLOW_DIR}/scripts/merge_mono_and_multi_jsons.py {params.metdata_dir}/inference_to_data_pipeline_map.tsv {params.metdata_dir}/inference_samples.tsv {wildcards.multi}
+        python {WORKFLOW_DIR}/scripts/merge_mono_and_multi_jsons.py \
+        {params.metdata_dir}/inference_to_data_pipeline_map.tsv \
+        {params.metdata_dir}/inference_samples.tsv {wildcards.multi}
         """
 
 

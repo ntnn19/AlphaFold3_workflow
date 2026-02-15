@@ -30,42 +30,30 @@ def has_multimers(df: pd.DataFrame) -> bool:
     )
     return has_multimers_
 
+
 def expand_df(df: pd.DataFrame, column: str) -> pd.DataFrame:
     df = df.copy()
 
-    # Parse seeds into lists (vectorized via Series.map)
-    seeds = df["n_seeds"].map(
-        lambda x: list(map(int, x.split(","))) if isinstance(x, str)
-        else list(range(1, int(x) + 1))
-    )
-
-    # Number of seeds per row
-    n_seeds_per_row = seeds.map(len)
-
-    # Total repeats per row
-    repeats = n_seeds_per_row * df["n_samples"]
+    # Repeat each row n_samples times
+    repeats = df["n_samples"]
 
     # Repeat input column
     fold_input_col = np.repeat(df[column].to_numpy(), repeats)
 
-    # Build seed column
-    seed_col = np.concatenate([
-        np.tile(s, n)
-        for s, n in zip(seeds, df["n_samples"])
+    # Build sample column (1, 2, 3, ... for each original row)
+    sample_col = np.concatenate([
+        np.arange(1, n + 1)
+        for n in df["n_samples"]
     ])
 
-    # Build sample column
-    sample_col = np.concatenate([
-        np.repeat(np.arange(1, n + 1), k)
-        for n, k in zip(df["n_samples"], n_seeds_per_row)
-    ])
+    # Keep seed column as is (repeat it)
+    seed_col = np.repeat(df["n_seeds"].to_numpy(), repeats)
 
     return pd.DataFrame({
         column: fold_input_col,
         "seed": seed_col,
         "sample": sample_col,
     })
-
 
 def sanitised_name(name: str) -> str:
     """Returns sanitised version of the name that can be used as a filename."""
@@ -207,6 +195,7 @@ def transform_stoichio_screen_to_af3(df: pd.DataFrame, n_seeds: Optional[int] = 
                     ccd_codes = ""
                     bonded_atom_pairs = None
                     user_ccd = None
+                    model_seeds = None
                     modifications = parse_json_field(row.get('modifications'))
                     msa_option = row.get('msa_option', 'auto')
                     unpaired_msa = row.get('unpaired_msa')
@@ -230,10 +219,11 @@ def transform_stoichio_screen_to_af3(df: pd.DataFrame, n_seeds: Optional[int] = 
                             smiles = data_val
                         else:
                             ccd_codes = data_val
+
                     if n_seeds is not None:
-                        model_seeds = list(range(1, n_seeds + 1))
-                    if not pd.notna(row.get('model_seeds')):
-                        model_seeds = "1"  # default seed
+                        model_seeds = ",".join([str(i) for i in list(range(1, n_seeds + 1))])
+                    #if not pd.notna(row.get('model_seeds')):
+                    #    model_seeds = "1"  # default seed
 
                     rows.append({
                         'job_name': specific_job_id,
@@ -474,10 +464,20 @@ def write_fold_inputs(
         output_dir_ = os.path.join(output_dir + "/rule_PREPROCESSING", order)
         os.makedirs(output_dir_, exist_ok=True)
 
-        fold_input = os.path.join(output_dir_, f"{job_name}.json")
+        if order == "multimers":
+            original_name = task["name"]  # Save original once
+            for s in model_seeds:
+                bname = job_name + f"_seed-{s}.json"
+                fold_input = os.path.join(output_dir_, bname)
+                task["modelSeeds"] = [s]
+                task["name"] = original_name + f"_seed-{s}"  # Set from original, not append
+                with open(fold_input, "w") as f:
+                    json.dump(task, f, indent=4)
 
-        with open(fold_input, "w") as f:
-            json.dump(task, f, indent=4)
+        else:
+            fold_input = os.path.join(output_dir_, f"{job_name}.json")
+            with open(fold_input, "w") as f:
+                json.dump(task, f, indent=4)
 
 
 def extract_multimer_jobs(
@@ -495,6 +495,18 @@ def extract_multimer_jobs(
         return n_polymers > 1
 
     df["fold_input"] = output_dir + "/rule_PREPROCESSING/multimers/" + df["job_name"] + ".json"
+    # Assuming model_seeds is a comma-separated string like "1,2,3,4,5"
+
+    # Split model_seeds and expand into separate rows TODO check if this respects the individual seeds specs
+    df["model_seeds"] = df["model_seeds"].str.split(",")  # or str.split() for space-separated
+    df = df.explode("model_seeds").reset_index(drop=True)
+
+    # Optional: convert seeds to integers and clean whitespace
+    df["model_seeds"] = df["model_seeds"].str.strip()  # Remove whitespace
+    df["seed"] = pd.to_numeric(df["model_seeds"], errors="coerce")  # Convert to int
+    df["job_name"] = df["job_name"] + "_seed-" + df["seed"].astype(str)
+    df["fold_input"] = df["fold_input"].apply(lambda x: x.replace(".json",""))
+    df["fold_input"] = df["fold_input"]+ "_seed-" + df["seed"].astype(str) + ".json"
     return (
         df.groupby("job_name", group_keys=False)
         .filter(is_multimer)
@@ -997,7 +1009,7 @@ def main(sample_sheet, output_dir, mode, predict_individual_components, n_seeds,
         monomer_df = extract_monomer_jobs(multimer_df, output_dir, has_multimers=True)
 
     elif mode == "stoichio-screen":
-        df, summary = transform_stoichio_screen_to_af3(df)
+        df, summary = transform_stoichio_screen_to_af3(df,n_seeds=n_seeds)
         summary.to_csv(os.path.join(output_dir,"rule_PREPROCESSING","metadata","stoichio_screen.csv"), index=False)
         cols_to_compare = df.columns.difference(['job_name'])
 
@@ -1006,10 +1018,7 @@ def main(sample_sheet, output_dir, mode, predict_individual_components, n_seeds,
 
         write_fold_inputs(df_dedup, output_dir, n_seeds=n_seeds)
 
-        combined_df = df_dedup
-        write_fold_inputs(combined_df, output_dir, n_seeds=n_seeds)
-
-        multimer_df = extract_multimer_jobs(combined_df, output_dir)
+        multimer_df = extract_multimer_jobs(df_dedup, output_dir)
         monomer_df = extract_monomer_jobs(multimer_df, output_dir, has_multimers=True)
 
 
@@ -1048,6 +1057,10 @@ def main(sample_sheet, output_dir, mode, predict_individual_components, n_seeds,
             for canonical in [sorted(group)[0]]
             for m in group
         }
+
+
+        #multimer_to_monomer_df["fold_input_x"] = multimer_to_monomer_df["fold_input_x"].apply(lambda x: x.replace(".json",""))
+        #multimer_to_monomer_df["fold_input_x"] = multimer_to_monomer_df["fold_input_x"]+"_seed-"+multimer_to_monomer_df["model_seeds"]+".json"
 
         inference_to_data_pipeline_map = (
             multimer_to_monomer_df
@@ -1159,32 +1172,32 @@ def main(sample_sheet, output_dir, mode, predict_individual_components, n_seeds,
 
     inference_df.columns = ["inference_samples", "n_seeds", "n_samples"]
     inference_df = expand_df(inference_df, "inference_samples")
-    inference_df["inference_samples"] = inference_df.apply(
-        lambda row: row["inference_samples"].replace("_data.json", f"_seed-{row['seed']}_data.json"),
-        # TODO: Act differently
-        axis=1
-    )
+#    inference_df["inference_samples"] = inference_df.apply(
+#        lambda row: row["inference_samples"].replace("_data.json", f"_seed-{row['seed']}_data.json"),
+#        # TODO: Act differently
+#        axis=1
+#    )
     inference_df["expected_output"] = inference_df["inference_samples"].apply(
         lambda x: x.replace("rule_MERGE_MONOMERS_TO_MULTIMERS",
                             "rule_AF3_INFERENCE"))
     inference_df["expected_output"] = inference_df.apply(
         lambda row: str(row["expected_output"]).replace(
-            "_data.json", f"/seed-{row['seed']}_sample-{row['sample']}/model.cif"
+            "_data.json", f"/seed-{Path(row["inference_samples"]).stem.split("_data")[0].split("_seed-")[-1]}_sample-{row['sample']}/model.cif"
         ),
         axis=1
     )
 
-    pattern = r".*_chain-[A-Z]{1,2}\.json$"  # TODO: when predict-individual-components is specified the number of seeds should also be included
+    pattern = r".*_seed-[0-9]+_chain-[a-z]{1,2}\.json$"  # TODO: when predict-individual-components is specified the number of seeds should also be included
     inference_df.loc[inference_df["inference_samples"].str.match(pattern), "inference_samples"] = inference_df[
         inference_df["inference_samples"].str.match(pattern)].apply(
-        lambda row: row["inference_samples"].replace(".json", f"_seed-{row['seed']}_data.json"),
+        lambda row: row["inference_samples"].replace(".json", f"_data.json"),
         # TODO: Act differently
         axis=1
     )
     inference_df.loc[inference_df["expected_output"].str.match(pattern), "expected_output"] = inference_df.loc[
         inference_df["expected_output"].str.match(pattern)].apply(
         lambda row: str(row["expected_output"]).replace(
-            ".json", f"_seed-{row['seed']}/seed-{row['seed']}_sample-{row['sample']}/model.cif"
+            ".json", f"/seed-{row['seed']}_sample-{row['sample']}/model.cif"
         ),
         axis=1
     )

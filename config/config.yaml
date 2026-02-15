@@ -1,5 +1,5 @@
 sample_sheets:
-  raw_data: example/stoichio_screen.tsv
+#  raw_data: example/stoichio_screen.tsv
   data_pipeline_ready: /home/nadmin/Downloads/data_pipeline_samples.tsv
 #input_csv: example/all_vs_all.csv # all-vs-all
 #input_csv: example/virtual_drug_screen.csv # virtual drug screen
