@@ -119,10 +119,30 @@ def get_multi_to_monomeric_dict(wildcards):
     return map_df
 
 def get_multimeric_json_with_msas(wildcards):
-    PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
-    JOB_NAMES_MULTIMERS, = glob_wildcards(os.path.join(PREPROCESSING_DIR,"multimers","{multi}.json"))
-    #return list(expand(os.path.join(OUTPUT_DIR,"rule_CREATE_AF3_INFERENCE_JOBS","{multi}_seed-{seed}_af3_inference_job.txt"), multi=JOB_NAMES_MULTIMERS,seed=SEEDS))
-    return list(expand(os.path.join(OUTPUT_DIR,"rule_CREATE_AF3_INFERENCE_JOBS","{multi}_af3_inference_job.txt"), multi=JOB_NAMES_MULTIMERS))
+    is_internal = False
+    is_external = False
+    # Check if user provided this multimer in MERGE_READY_DF
+    if not MERGE_READY_DF.empty:
+        is_external = True
+        #return list(expand(os.path.join(OUTPUT_DIR,"rule_CREATE_AF3_INFERENCE_JOBS","{multi}_seed-{seed}_af3_inference_job.txt"), multi=JOB_NAMES_MULTIMERS,seed=SEEDS))
+        external =  MERGE_READY_DF["multimer_file"].apply(lambda x: f"{OUTPUT_DIR}/rule_CREATE_AF3_INFERENCE_JOBS/" + f"{Path(x).stem}_af3_inference_job.txt").unique().tolist()
+
+    if not RAW_DATA_DF.empty:
+        is_internal = True
+        PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
+        JOB_NAMES_MULTIMERS, = glob_wildcards(os.path.join(PREPROCESSING_DIR,"multimers","{multi}.json"))
+        #return list(expand(os.path.join(OUTPUT_DIR,"rule_CREATE_AF3_INFERENCE_JOBS","{multi}_seed-{seed}_af3_inference_job.txt"), multi=JOB_NAMES_MULTIMERS,seed=SEEDS))
+        internal =  list(expand(os.path.join(OUTPUT_DIR,"rule_CREATE_AF3_INFERENCE_JOBS","{multi}_af3_inference_job.txt"),multi=JOB_NAMES_MULTIMERS))
+
+
+    if is_internal and is_external:
+        return internal + external
+    if is_internal and not is_external:
+        return internal
+    if not is_internal and is_external:
+        return external
+    if not is_internal and not is_external:
+        return []
 
 def get_collect_predictions(wildcards):
     GET_DONE_OUTPUTS_DIR = checkpoints.GET_DONE_OUTPUTS.get(**wildcards).output[0]
@@ -159,14 +179,8 @@ def get_merge_inputs(wildcards):
             'multimer_template': multimer_template,
             'monomer_files': monomer_files
         }
-
     # Otherwise, use checkpoint-generated mapping
     checkpoint_output = os.path.join(checkpoints.PREPROCESSING.get(**wildcards).output[0],"metadata","inference_to_data_pipeline_map.tsv")
-
-
-    #    return list(expand(os.path.join(OUTPUT_DIR,"AF3_DATA_PIPELINE_TEST","monomers","{mono}/{mono}_data.json"),mono=JOB_NAMES_MONOMERS))
-    #return list(expand(os.path.join(OUTPUT_DIR,"rule_AF3_DATA_PIPELINE","{mono}/{mono}_data.json"),mono=JOB_NAMES_MONOMERS))
-    print("WD=",wildcards)
 
     mapping = pd.read_csv(checkpoint_output,sep="\t")
 
@@ -181,7 +195,6 @@ def get_merge_inputs(wildcards):
         "multimers",
         f"{wildcards.multi}.json"
     )
-    print(wildcards)
 
     # Get monomer files - check DATA_PIPELINE_READY_DF for each
     monomer_files = get_monomeric_json_outputs(wildcards)
@@ -194,12 +207,13 @@ def get_merge_inputs(wildcards):
             f"{mono}_data.json"
         )
         monomer_files.append(mono_file)
-    print(multimer_template,monomer_files)
-    #exit()
+
+
     return {
         'multimer_template': multimer_template,
         'monomer_files': monomer_files
     }
+
 
 SPLIT_TOTAL = workflow._scatter["split"]
 SPLIT_OST = workflow._scatter["split_ost"]
@@ -246,10 +260,10 @@ EXTRA_AF3_FLAGS = config.get('alphafold3_flags', {}).get("--extra_af3_flags", ''
 
 rule all:
     input:
-        expand(os.path.join(OUTPUT_DIR,"rule_AF3_DATA_PIPELINE","{mono}","{mono}_data.json"),mono=DATA_PIPELINE_READY_DF["sample_id"]),
         os.path.join(OUTPUT_DIR,"rule_AGG_OST_REPORTS","ost_report.csv") if MODE == "virtual-drug-screen" and TASK=="ost" else [],
         expand(os.path.join(OUTPUT_DIR,"rule_OST_COMAPRE_LIGAND_STRUCTURES","done_flags",f"job_{{s}}-of-{SPLIT_OST}.done.txt"),s=list(range(1,SPLIT_OST+1))) if MODE == "virtual-drug-screen" and TASK=="ost" else [],
         expand(os.path.join(OUTPUT_DIR,"rule_AF3_INFERENCE","done_flags",f"af3_inference_jobs_{{s}}-of-{SPLIT_TOTAL}.done.txt"),s=list(range(1,SPLIT_TOTAL+1))),
+#        expand(os.path.join(OUTPUT_DIR,"rule_AF3_DATA_PIPELINE","{mono}","{mono}_data.json"),mono=DATA_PIPELINE_READY_DF["sample_id"]),
 #        get_monomeric_json_outputs if not RAW_DATA_DF.empty else [],
 #        get_multimeric_json_outputs if not RAW_DATA_DF.empty else [],
 
@@ -275,14 +289,6 @@ checkpoint PREPROCESSING:
         """
 
 
-
-#rule AF3_DATA_SPEEDY_PIPELINE_TEST:
-#    input:
-#        monomers = os.path.join(OUTPUT_DIR,"rule_PREPROCESSING","monomers","{mono}.json") if MODE in ["custom", "all-vs-all","pulldown","virtual-drug-screen"]  else [],
-#    output:
-#        data_pipeline_monomers=touch(os.path.join(OUTPUT_DIR,"rule_AF3_DATA_PIPELINE","monomers","{mono}/{mono}_data.json")) if MODE in [
-#            "custom","all-vs-all", "pulldown","virtual-drug-screen"] else [],
-
 rule AF3_DATA_SPEEDY_PIPELINE:
     input:
         data = branch(
@@ -290,11 +296,6 @@ rule AF3_DATA_SPEEDY_PIPELINE:
             then=lookup(query="sample_id == '{mono}'",within=DATA_PIPELINE_READY_DF ,cols="file"),
             otherwise=os.path.join(OUTPUT_DIR,"rule_PREPROCESSING","monomers","{mono}.json")
         ),
-        #monomers = os.path.join(OUTPUT_DIR,"rule_PREPROCESSING","monomers","{mono}.json") if MODE in ["custom",
-        #                                                                                              "stoichio-screen",
-        #                                                                                              "all-vs-all",
-        #                                                                                              "pulldown",
-        #                                                                                              "virtual-drug-screen"]  else [],
     params:
         json_path = input.data,
         mode = MODE,
@@ -317,18 +318,7 @@ rule AF3_DATA_SPEEDY_PIPELINE:
 
 rule MERGE_MONO_AND_MULTI_JSON: # TODO: PROBLEM IS THAT FOR EACH MULTIMER CREATED IN THE PREPROCESS RULE I NEED MULTIPLE MONOMERS CREATED IN THE AF3_DATA_PIPELINE RULE
     input:
-        get_monomeric_json_outputs,
-        unpack(get_merge_inputs)
-        #data=branch(
-        #    lookup(query="sample_id == '{mono}'",within=MERGE_READY_DF,cols="file"),
-        #    then=lookup(query="sample_id == '{mono}'",within=MERGE_READY_DF,cols="file"),
-        #    otherwise=os.path.join(OUTPUT_DIR,"rule_AF3_DATA_PIPELINE","{mono}","{mono}_data.json")
-        #)
-
-#        data_pipeline_monomers = lambda wildcards: [os.path.join(OUTPUT_DIR, "rule_AF3_DATA_PIPELINE",f"{os.path.basename(mono).split("_data.json")[0]}",f"{os.path.basename(mono).split("_data.json")[0]}_data.json")  for mono in
-#                                                    get_multi_to_monomeric_dict(wildcards).loc[get_multi_to_monomeric_dict(wildcards).inference_samples.str.contains(wildcards.multi),"data_pipeline_samples"].values.tolist()]
-#        if MODE in ["all-vs-all", "pulldown","virtual-drug-screen", "stoichio-screen"] else [],
-#        preprocessed_multimers = os.path.join(OUTPUT_DIR,"rule_PREPROCESSING","multimers","{multi}.json") if MODE in ["custom","all-vs-all","pulldown","virtual-drug-screen","stoichio-screen"]  else [],
+        unpack(get_merge_inputs),
     params:
         metdata_dir = os.path.join(OUTPUT_DIR,"rule_PREPROCESSING","metadata"),
     output:
@@ -344,15 +334,22 @@ rule MERGE_MONO_AND_MULTI_JSON: # TODO: PROBLEM IS THAT FOR EACH MULTIMER CREATE
 
 rule CREATE_AF3_INFERENCE_JOBS_SPEEDY_AF3_PIPELINE:
     input:
-        multimers = os.path.join(OUTPUT_DIR,"rule_MERGE_MONOMERS_TO_MULTIMERS","{multi}_data.json") if MODE in ["custom","all-vs-all","pulldown","virtual-drug-screen","stoichio-screen"]  else []
+        data = branch(
+            lookup(query="sample_id == '{multi}'",within=INFERENCE_READY_DF,cols="file"),
+            then=lookup(query="sample_id == '{multi}'",within=INFERENCE_READY_DF,cols="file"),
+            otherwise=os.path.join(OUTPUT_DIR,"rule_MERGE_MONOMERS_TO_MULTIMERS","{multi}_data.json")
+        ),
+#        multimers = os.path.join(OUTPUT_DIR,"rule_MERGE_MONOMERS_TO_MULTIMERS","{multi}_data.json") if MODE in ["custom","all-vs-all","pulldown","virtual-drug-screen","stoichio-screen"]  else []
     params:
+        json_path = input.data,
         mode = MODE,
         extra_af3_flags = EXTRA_AF3_FLAGS
+    #/root/af_output/rule_MERGE_MONOMERS_TO_MULTIMERS/{wildcards.multi}_data.json
     output:
         multimers = os.path.join(OUTPUT_DIR,"rule_CREATE_AF3_INFERENCE_JOBS","{multi}_af3_inference_job.txt") if MODE in ["custom","all-vs-all","pulldown","virtual-drug-screen","stoichio-screen"]  else []
     shell:
         """
-        echo 'python /app/alphafold/run_alphafold.py --json_path=/root/af_output/rule_MERGE_MONOMERS_TO_MULTIMERS/{wildcards.multi}_data.json \
+        echo 'python /app/alphafold/run_alphafold.py --json_path={params.json_path} \
         --model_dir=/root/models \
         --output_dir=/root/af_output/rule_AF3_INFERENCE \
         --db_dir=/root/public_databases \
@@ -364,7 +361,7 @@ rule CREATE_AF3_INFERENCE_JOBS_SPEEDY_AF3_PIPELINE:
 
 rule AGG_AF3_INFERENCE_JOBS:
     input:
-        merged_multimer = get_multimeric_json_with_msas if MODE in ["custom", "all-vs-all","pulldown","virtual-drug-screen","stoichio-screen","stoichio-screen"]  else [],
+        merged_multimer = get_multimeric_json_with_msas if not RAW_DATA_DF.empty else [],
     params:
         mode = MODE
     output:

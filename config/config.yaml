@@ -1,6 +1,8 @@
 sample_sheets:
+  merge_ready: tmp/rule_PREPROCESSING/metadata/inference_to_data_pipeline_map.tsv
   raw_data: example/custom.tsv
-  #data_pipeline_ready: /home/nadmin/Downloads/data_pipeline_samples.tsv
+#  data_pipeline_ready: /home/nadmin/Downloads/data_pipeline_samples.tsv
+#  inference_ready: tmp/rule_PREPROCESSING/metadata/inference_samples.tsv
 #input_csv: example/all_vs_all.csv # all-vs-all
 #input_csv: example/virtual_drug_screen.csv # virtual drug screen
 output_dir: output/custom # stores the outputs of this workflow. The output of each rule is stored at <output_dir>/<RULE_NAME>
