@@ -483,6 +483,7 @@ def write_fold_inputs(
 def extract_multimer_jobs(
         df: pd.DataFrame,
         output_dir: Union[str, Path],
+        n_seeds: Optional[int] = None,
 ) -> pd.DataFrame:
     """
     Return rows belonging to multimeric jobs only.
@@ -498,7 +499,11 @@ def extract_multimer_jobs(
     # Assuming model_seeds is a comma-separated string like "1,2,3,4,5"
 
     # Split model_seeds and expand into separate rows TODO check if this respects the individual seeds specs
-    df["model_seeds"] = df["model_seeds"].str.split(",")  # or str.split() for space-separated
+    df["model_seeds"] = (
+        df["model_seeds"].str.split(",")
+        if n_seeds is None
+        else [[str(i) for i in range(1, n_seeds + 1)]] * len(df)
+    )
     df = df.explode("model_seeds").reset_index(drop=True)
 
     # Optional: convert seeds to integers and clean whitespace
@@ -917,7 +922,7 @@ def remove_duplicate_jobs_scalable(df, cols_to_compare, log_file=f'duplicate_job
               help="Choose run mode: 'custom', 'all-vs-all', 'pulldown','virtual-drug-screen', or 'stoichio-screen'")
 @click.option('--predict-individual-components', is_flag=True,
               help="The individual components of multimeric samples will also be predicted.")
-@click.option('--n-seeds', type=int, default=1,
+@click.option('--n-seeds', type=int, default=None,
               help="Number of random seeds. Useful for massive sampling. If specified, the model_seeds column in the sample sheet is ignored")
 @click.option('--n-samples', type=int, default=5,
               help="Number of models per seed. Useful for massive sampling")
@@ -967,7 +972,7 @@ def main(sample_sheet, output_dir, mode, predict_individual_components, n_seeds,
         write_fold_inputs(df_dedup, output_dir, n_seeds=n_seeds)
 
         # derive + write monomers from multimers
-        multimer_df = extract_multimer_jobs(df_dedup, output_dir)
+        multimer_df = extract_multimer_jobs(df_dedup, output_dir,n_seeds=n_seeds)
 
         if has_multimers_:
             monomer_df = extract_monomer_jobs(multimer_df, output_dir, has_multimers=True)
@@ -1160,7 +1165,6 @@ def main(sample_sheet, output_dir, mode, predict_individual_components, n_seeds,
                                                                                   "rule_MERGE_MONOMERS_TO_MULTIMERS").replace(
             "rule_PREPROCESSING/multimers", "rule_MERGE_MONOMERS_TO_MULTIMERS").replace("rule_AF3_DATA_PIPELINE",
                                                                                         "rule_MERGE_MONOMERS_TO_MULTIMERS"):v
-
         for k, v in fold_input_to_model_seeds_map.items()}
 
     inference_df = pd.concat([inference_df,
