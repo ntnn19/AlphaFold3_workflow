@@ -917,11 +917,11 @@ def remove_duplicate_jobs_scalable(df, cols_to_compare, log_file=f'duplicate_job
               help="Choose run mode: 'custom', 'all-vs-all', 'pulldown','virtual-drug-screen', or 'stoichio-screen'")
 @click.option('--predict-individual-components', is_flag=True,
               help="The individual components of multimeric samples will also be predicted.")
-@click.option('--n-seeds', type=int, default=None,
+@click.option('--n-seeds', type=int, default=1,
               help="Number of random seeds. Useful for massive sampling. If specified, the model_seeds column in the sample sheet is ignored")
 @click.option('--n-samples', type=int, default=5,
               help="Number of models per seed. Useful for massive sampling")
-def main(sample_sheet, output_dir, mode, predict_individual_components, n_seeds, n_samples):
+def main(sample_sheet, output_dir, mode, predict_individual_components, n_seeds, n_samples): #TODO support "count" column for homooligomers in the samplesheet
     """
     Creates batch tasks from a DataFrame.
 
