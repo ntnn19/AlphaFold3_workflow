@@ -7,9 +7,8 @@ import click
 @click.command()
 @click.argument("multimer_file", type=click.Path(exists=True))
 @click.argument("monomer_file", type=click.Path(exists=True), nargs=-1)
-@click.argument("sample_id", type=str)
 @click.argument("output_file", type=click.Path())  # where merged JSON will be saved
-def main(multimer_file, monomer_file, sample_id, output_file):
+def main(multimer_file, monomer_file, output_file):
     """
     Merge monomer JSONs into a multimer JSON for a given sample.
     """

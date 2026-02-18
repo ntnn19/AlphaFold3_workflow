@@ -273,7 +273,9 @@ checkpoint PREPROCESSING:
     output:
         directory(os.path.join(OUTPUT_DIR,"rule_PREPROCESSING")) if not RAW_DATA_DF.empty else []
     params:
-        msa_option = MSA_OPTION,
+        msa_option = MSA_OPTION, # implement this as a global option: msa-free/auto/other
+         # template_option = TEMPLATE_OPTION, # implement this as a global option: template-based/free. for custom templates, use the mmcif path to
+        # run structural alignment and write the indices map in the samplesheet before conversion to json
         mode = MODE,
         n_seeds = f"--n-seeds {N_SEEDS}" if N_SEEDS else "",
         n_samples = f"--n-samples {N_SAMPLES}" if N_SAMPLES else "",
@@ -315,21 +317,16 @@ rule AF3_DATA_SPEEDY_PIPELINE:
         {params.extra_af3_flags} 
         """
 
-rule MERGE_MONO_AND_MULTI_JSON: # TODO: PROBLEM IS THAT FOR EACH MULTIMER CREATED IN THE PREPROCESS RULE I NEED MULTIPLE MONOMERS CREATED IN THE AF3_DATA_PIPELINE RULE
+rule MERGE_MONO_AND_MULTI_JSON:
     input:
-        unpack(get_merge_inputs),
-    params:
-        inference_to_data_pipeline_map = os.path.join(OUTPUT_DIR,"rule_PREPROCESSING","metadata","inference_to_data_pipeline_map.tsv"),
-        inference_samples = os.path.join(OUTPUT_DIR,"rule_PREPROCESSING","metadata","inference_to_data_pipeline_map.tsv"),
+        unpack(get_merge_inputs)
     output:
-        #data_pipeline_msa = expand(os.path.join(OUTPUT_DIR,"rule_MERGE_MONOMERS_TO_MULTIMERS","{{multi}}_seed-{seed}_data.json"),seed=SEEDS) if MODE in ["custom","all-vs-all","pulldown","virtual-drug-screen","stoichio-screen"] else [],
         os.path.join(OUTPUT_DIR,"rule_MERGE_MONOMERS_TO_MULTIMERS","{multi}_data.json") if MODE in ["custom","all-vs-all","pulldown","virtual-drug-screen","stoichio-screen"] else [],
     shell:
         """
-        python {WORKFLOW_DIR}/scripts/merge_mono_and_multi_jsons_non_silly.py {input} {wildcards.multi}  {output}
+        python {WORKFLOW_DIR}/scripts/merge_mono_and_multi_jsons_non_silly.py {input} {output}
         """
-#        {params.inference_to_data_pipeline_map} \
-#        {params.inference_samples} {wildcards.multi}
+
 
 
 rule CREATE_AF3_INFERENCE_JOBS_SPEEDY_AF3_PIPELINE:
@@ -339,12 +336,10 @@ rule CREATE_AF3_INFERENCE_JOBS_SPEEDY_AF3_PIPELINE:
             then=lookup(query="sample_id == '{multi}'",within=INFERENCE_READY_DF,cols="file"),
             otherwise=os.path.join(OUTPUT_DIR,"rule_MERGE_MONOMERS_TO_MULTIMERS","{multi}_data.json")
         ),
-#        multimers = os.path.join(OUTPUT_DIR,"rule_MERGE_MONOMERS_TO_MULTIMERS","{multi}_data.json") if MODE in ["custom","all-vs-all","pulldown","virtual-drug-screen","stoichio-screen"]  else []
     params:
         json_path = input.data,
         mode = MODE,
         extra_af3_flags = EXTRA_AF3_FLAGS
-    #/root/af_output/rule_MERGE_MONOMERS_TO_MULTIMERS/{wildcards.multi}_data.json
     output:
         multimers = os.path.join(OUTPUT_DIR,"rule_CREATE_AF3_INFERENCE_JOBS","{multi}_af3_inference_job.txt") if MODE in ["custom","all-vs-all","pulldown","virtual-drug-screen","stoichio-screen"]  else []
     shell:
@@ -414,8 +409,6 @@ rule AF3_INFERENCE:
         echo $NUM_GPUS
         < $JOB_LIST parallel -j $NUM_GPUS 'eval CUDA_VISIBLE_DEVICES=$(({{%}} - 1)) {{}}'
         """
-#        bash /scripts/parallel.sh /root/af_output/rule_SPLIT_INFERENCE_JOB_LIST/af3_inference_jobs_{wildcards.scatteritem}.txt
-
 
 checkpoint GET_DONE_OUTPUTS:
     input:

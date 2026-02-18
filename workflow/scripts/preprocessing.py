@@ -374,6 +374,7 @@ def write_fold_inputs(
         output_dir: Union[str, Path],
         mode: str = "custom",
         n_seeds: Optional[int] = None,
+        is_fold_independent: Optional[bool] = False,
 ) -> None:
     grouped = df.groupby('job_name')
     for job_name, group in grouped:
@@ -464,13 +465,13 @@ def write_fold_inputs(
         output_dir_ = os.path.join(output_dir + "/rule_PREPROCESSING", order)
         os.makedirs(output_dir_, exist_ok=True)
 
-        if order == "multimers":
+        if order == "multimers" or is_fold_independent:
             original_name = task["name"]  # Save original once
             for s in model_seeds:
-                bname = job_name + f"_seed-{s}.json"
+                bname = job_name + f"_seed-{s}.json" if not is_fold_independent else job_name + f"_seed-{s}_chain-{entity_id.lower()}.json"
                 fold_input = os.path.join(output_dir_, bname)
                 task["modelSeeds"] = [s]
-                task["name"] = original_name + f"_seed-{s}"  # Set from original, not append
+                task["name"] = original_name + f"_seed-{s}"  if not is_fold_independent else original_name + f"_seed-{s}_chain-{entity_id.lower()}" # Set from original, not append
                 with open(fold_input, "w") as f:
                     json.dump(task, f, indent=4)
 
@@ -914,6 +915,19 @@ def remove_duplicate_jobs_scalable(df, cols_to_compare, log_file=f'duplicate_job
     unique_job_names = [jobs[0] for jobs in sig_to_jobs.values()]
     return df[df['job_name'].isin(unique_job_names)]
 
+def separate_to_dependent_and_independent_jobs(df_dedup, n_seeds, output_dir):
+    counts = df_dedup['job_name'].value_counts()
+    job_name_not_part_of_multimers = counts[counts == 1].index
+    if not counts[counts == 1].empty:
+        df_dedup_not_part_of_multimers = df_dedup[
+            df_dedup.job_name.isin(job_name_not_part_of_multimers)].reset_index(drop=True)
+        #df_dedup_not_part_of_multimers["model_seeds"] = df_dedup_not_part_of_multimers["model_seeds"].apply(
+        #    lambda x: ",".join(x))
+        write_fold_inputs(df_dedup_not_part_of_multimers, output_dir, n_seeds=n_seeds, is_fold_independent=True)
+    df_dedup_dependent = df_dedup[~df_dedup.job_name.isin(job_name_not_part_of_multimers)].reset_index(drop=True)
+    return df_dedup_dependent, df_dedup_not_part_of_multimers
+
+
 
 @click.command()
 @click.argument('sample_sheet', type=click.Path(exists=True))
@@ -967,23 +981,19 @@ def main(sample_sheet, output_dir, mode, predict_individual_components, n_seeds,
 
         df_dedup = remove_duplicate_jobs_scalable(df, cols_to_compare,log_file=os.path.join(metadata_dir,"duplicate_job_summary.json"))
         has_multimers_ = has_multimers(df_dedup)
+        df_dedup_dependent, df_dedup_not_part_of_multimers = separate_to_dependent_and_independent_jobs(df_dedup, n_seeds, output_dir)
     if mode == "custom":
         # write originals
-        write_fold_inputs(df_dedup, output_dir, n_seeds=n_seeds)
+
+        write_fold_inputs(df_dedup_dependent, output_dir, n_seeds=n_seeds)
 
         # derive + write monomers from multimers
-        multimer_df = extract_multimer_jobs(df_dedup, output_dir,n_seeds=n_seeds)
+        multimer_df = extract_multimer_jobs(df_dedup_dependent, output_dir,n_seeds=n_seeds)
 
         if has_multimers_:
             monomer_df = extract_monomer_jobs(multimer_df, output_dir, has_multimers=True)
         else:
-            monomer_df = extract_monomer_jobs(df_dedup, output_dir, has_multimers=False)
-        counts = df_dedup['job_name'].value_counts()
-        job_name_not_part_of_multimers = counts[counts == 1].index
-        if not counts[counts == 1].empty:
-            df_dedup_not_part_of_multimers = df_dedup[df_dedup.job_name.isin(job_name_not_part_of_multimers)].reset_index(drop=True)
-            df_dedup_not_part_of_multimers["model_seeds"] = df_dedup_not_part_of_multimers["model_seeds"].apply(lambda x: ",".join(x))
-            write_fold_inputs(df_dedup_not_part_of_multimers, output_dir,n_seeds=n_seeds)
+            monomer_df = extract_monomer_jobs(df_dedup_dependent, output_dir, has_multimers=False)
         # write_fold_inputs(monomer_df, output_dir,n_seeds=n_seeds)
     elif mode == "all-vs-all":
         write_fold_inputs(df_dedup, output_dir, n_seeds=n_seeds)
@@ -1008,11 +1018,12 @@ def main(sample_sheet, output_dir, mode, predict_individual_components, n_seeds,
         cols_to_compare = df.columns.difference(['job_name'])
 
         df_dedup = remove_duplicate_jobs_scalable(df, cols_to_compare,log_file=os.path.join(metadata_dir,"duplicate_job_summary.json"))
-        has_multimers_ = has_multimers(df_dedup)
+        df_dedup_dependent, df_dedup_not_part_of_multimers = separate_to_dependent_and_independent_jobs(df_dedup, n_seeds, output_dir)
+        has_multimers_ = has_multimers(df_dedup_dependent)
 
-        write_fold_inputs(df_dedup, output_dir, n_seeds=n_seeds)
+        write_fold_inputs(df_dedup_dependent, output_dir, n_seeds=n_seeds)
 
-        combined_df = df_dedup
+        combined_df = df_dedup_dependent
         write_fold_inputs(combined_df, output_dir, n_seeds=n_seeds)
 
         multimer_df = extract_multimer_jobs(combined_df, output_dir)
@@ -1034,7 +1045,6 @@ def main(sample_sheet, output_dir, mode, predict_individual_components, n_seeds,
 
     if has_multimers_:
         write_fold_inputs(monomer_df, output_dir, n_seeds=n_seeds)
-        exit()
 
         multimer_to_monomer_df = pd.merge(
             multimer_df[["job_name", "id", "fold_input", "model_seeds"]],
@@ -1236,6 +1246,7 @@ def main(sample_sheet, output_dir, mode, predict_individual_components, n_seeds,
         f"Multimer to monomer map was saved to {metadata_dir}/inference_to_data_pipeline_map.tsv")
     logger.info(f"Data pipeline sample sheet was saved to {metadata_dir}/data_pipeline_samples.tsv")
     logger.info(f"Inference sample sheet was saved to {metadata_dir}/inference_samples.tsv")
+
 
 
 if __name__ == "__main__":
