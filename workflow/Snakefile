@@ -519,3 +519,11 @@ rule AGG_OST_REPORTS:
         cat {input} >> {output}
         """
 
+local_rule_options = {'run_data_pipeline_locally' : 'AF3_DATA_SPEEDY_PIPELINE', 'run_inference_locally' : 'AF3_INFERENCE'}
+_localrules = list(workflow._localrules) # get the local rules so far
+for option in local_rule_options:
+    if config.get(option, False):
+        _localrules.append(local_rule_options[option])
+
+
+workflow._localrules = set(_localrules) # set the updated local rules

@@ -11,7 +11,7 @@ default-resources:
     slurm_partition: "vds"
 
 set-resources:
-    AF3_DATA_PIPELINE:
+    AF3_DATA_SPEEDY_PIPELINE:
         nodes: 1
         runtime: 10000
         cpus_per_task: 16
