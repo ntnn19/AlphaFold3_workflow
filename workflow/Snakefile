@@ -207,8 +207,8 @@ def get_merge_inputs(wildcards):
             f"{mono}_data.json"
         )
         monomer_files.append(mono_file)
-
-
+    print("Multimers =", multimer_template)
+    print("Matched monomers =", monomer_files)
     return {
         'multimer_template': multimer_template,
         'monomer_files': monomer_files
@@ -319,16 +319,17 @@ rule MERGE_MONO_AND_MULTI_JSON: # TODO: PROBLEM IS THAT FOR EACH MULTIMER CREATE
     input:
         unpack(get_merge_inputs),
     params:
-        metdata_dir = os.path.join(OUTPUT_DIR,"rule_PREPROCESSING","metadata"),
+        inference_to_data_pipeline_map = os.path.join(OUTPUT_DIR,"rule_PREPROCESSING","metadata","inference_to_data_pipeline_map.tsv"),
+        inference_samples = os.path.join(OUTPUT_DIR,"rule_PREPROCESSING","metadata","inference_to_data_pipeline_map.tsv"),
     output:
         #data_pipeline_msa = expand(os.path.join(OUTPUT_DIR,"rule_MERGE_MONOMERS_TO_MULTIMERS","{{multi}}_seed-{seed}_data.json"),seed=SEEDS) if MODE in ["custom","all-vs-all","pulldown","virtual-drug-screen","stoichio-screen"] else [],
         os.path.join(OUTPUT_DIR,"rule_MERGE_MONOMERS_TO_MULTIMERS","{multi}_data.json") if MODE in ["custom","all-vs-all","pulldown","virtual-drug-screen","stoichio-screen"] else [],
     shell:
         """
-        python {WORKFLOW_DIR}/scripts/merge_mono_and_multi_jsons.py \
-        {params.metdata_dir}/inference_to_data_pipeline_map.tsv \
-        {params.metdata_dir}/inference_samples.tsv {wildcards.multi}
+        python {WORKFLOW_DIR}/scripts/merge_mono_and_multi_jsons_non_silly.py {input} {wildcards.multi}  {output}
         """
+#        {params.inference_to_data_pipeline_map} \
+#        {params.inference_samples} {wildcards.multi}
 
 
 rule CREATE_AF3_INFERENCE_JOBS_SPEEDY_AF3_PIPELINE:
