@@ -18,7 +18,7 @@ def main(inference_to_data_pipeline_map,inference_sample_sheet,job_name):
     job_inference_sample_sheet_df = inference_sample_sheet_df[inference_sample_sheet_df.job_name.str.contains(job_name)]
     input_multimer_file = job_map_df.inference_samples.unique()[0]
 
-    grouped = job_map_df.groupby('inference_samples')
+    grouped = job_map_df.groupby('multimer_file')
     for input_multimer_file_, group in grouped:
         with open(input_multimer_file, "r") as f:
             multimer_data = json.load(f)
@@ -34,7 +34,7 @@ def main(inference_to_data_pipeline_map,inference_sample_sheet,job_name):
 
         # 3. Process each mapping row
         for _, row in group.iterrows():
-            monomer_input_file = row["data_pipeline_samples"]
+            monomer_input_file = row["monomer_files"]
             target_chain_id = row["monomer_chain_id"]  # e.g., "B"
 
             with open(monomer_input_file, "r") as f:
