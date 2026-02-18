@@ -226,7 +226,6 @@ RAW_DATA_PATH, RAW_DATA_DF = load_sample_sheet("raw_data")
 DATA_PIPELINE_READY_PATH, DATA_PIPELINE_READY_DF = load_sample_sheet("data_pipeline_ready")
 INFERENCE_READY_PATH, INFERENCE_READY_DF = load_sample_sheet("inference_ready")
 MERGE_READY_PATH, MERGE_READY_DF = load_sample_sheet("merge_ready")
-
 OUTPUT_DIR = config["output_dir"]
 MODE = config.get("mode","custom")
 OST_CONTAINER = config.get("ost_container")

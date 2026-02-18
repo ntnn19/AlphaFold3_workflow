@@ -1,9 +1,10 @@
 # Disable the requirment to specifiy output directory in the sample tables - DONE
-# Don't ask the users for different lines of monomers/multimers. break it down your self when there is a multimer to predict. - DONE
+# Don't ask the users for different lines of monomers/multimers. break it down yourself when there is a multimer to predict. - DONE
 # Let the user configure alphafold using a flag for --extra-alphafold-params instead of speicfying each param. -  TESTING
-# Define gloabl flags that override job speficic configurations: template based, template free,  single seq mode (no templates, no msa), msa-free mode,
+# Define gloabl flags that override job speficic configurations: template based, template free,  single seq mode (no templates, no msa), msa-free mode, - TBD
+# Support custom tempalte mode with the option to disable msa. for each user specified template, run structural alignment and update the samplesheet with the indices
 # Entry points - start data-pipeline/inference based on sample sheet of jsons - TESTING
-# Make this branch as main. 
-# add schemas to check config, sample sheet, and profile
-# add a python wrapper to the workflow
+# Make this branch as main.  
+# add schemas to check config, sample sheet, and profile - TBD
+# add a python wrapper to the workflow - TBD
 

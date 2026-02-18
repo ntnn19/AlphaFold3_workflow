@@ -527,7 +527,7 @@ def extract_monomer_jobs(
     """
     From multimer jobs, create monomer jobs:
     - One polymer per job
-    - job_name becomes <multimer>.<chain_id>
+    - job_name becomes <multimer>_chain-<chain_id>
     """
     if multimer_df.empty:
         return pd.DataFrame()
@@ -549,7 +549,7 @@ def extract_monomer_jobs(
     monomers["job_name"] = monomers["job_name"].apply(lambda x: sanitised_name(x))
     monomers["fold_input"] = os.path.dirname(output_dir + "/rule_PREPROCESSING") + "/rule_AF3_DATA_PIPELINE/" + \
                              monomers["job_name"] + "_data.json"
-
+    monomers = monomers.drop(columns=["bonded_atom_pairs"])
     return monomers.reset_index(drop=True)
 
 
