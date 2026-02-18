@@ -8,7 +8,7 @@ use-singularity: true
 executor: slurm
 
 default-resources:
-    slurm_partition: "normal"
+    slurm_partition: "vds"
 
 set-resources:
     AF3_DATA_PIPELINE:

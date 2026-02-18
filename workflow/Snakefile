@@ -407,8 +407,13 @@ rule AF3_INFERENCE:
         AF3_CONTAINER
     shell:
         """
-        bash /scripts/parallel.sh /root/af_output/rule_SPLIT_INFERENCE_JOB_LIST/af3_inference_jobs_{wildcards.scatteritem}.txt
+        # Determine number of GPUs on the node we ended up on.
+        JOB_LIST={input.job_list}
+        NUM_GPUS=$(nvidia-smi -L | wc -l)
+        echo $NUM_GPUS
+        < $JOB_LIST parallel -j $NUM_GPUS 'eval CUDA_VISIBLE_DEVICES=$(({{%}} - 1)) {{}}'
         """
+#        bash /scripts/parallel.sh /root/af_output/rule_SPLIT_INFERENCE_JOB_LIST/af3_inference_jobs_{wildcards.scatteritem}.txt
 
 
 checkpoint GET_DONE_OUTPUTS:

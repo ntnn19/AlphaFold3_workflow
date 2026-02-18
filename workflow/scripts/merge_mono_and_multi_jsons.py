@@ -5,18 +5,19 @@ from pathlib import Path
 import pandas as pd
 import copy
 import click
+import pdb
 
 @click.command()
 @click.argument("inference_to_data_pipeline_map", type=click.Path())
 @click.argument("inference_sample_sheet", type=click.Path())
-@click.argument("job_name",  type=str)
-def main(inference_to_data_pipeline_map,inference_sample_sheet,job_name):
+@click.argument("sample_id",  type=str)
+def main(inference_to_data_pipeline_map,inference_sample_sheet,sample_id):
     # Separate monomeric and multimeric files
     inference_to_data_pipeline_map_df = pd.read_csv(inference_to_data_pipeline_map,sep="\t")
     inference_sample_sheet_df = pd.read_csv(inference_sample_sheet,sep="\t")
-    job_map_df  = inference_to_data_pipeline_map_df[inference_to_data_pipeline_map_df.inference_samples.str.contains(job_name)]
-    job_inference_sample_sheet_df = inference_sample_sheet_df[inference_sample_sheet_df.job_name.str.contains(job_name)]
-    input_multimer_file = job_map_df.inference_samples.unique()[0]
+    job_map_df  = inference_to_data_pipeline_map_df[inference_to_data_pipeline_map_df.multimer_file.str.contains(sample_id)]
+    job_inference_sample_sheet_df = inference_sample_sheet_df[inference_sample_sheet_df.sample_id.str.contains(sample_id)]
+    input_multimer_file = job_map_df.multimer_file.unique()[0]
 
     grouped = job_map_df.groupby('multimer_file')
     for input_multimer_file_, group in grouped:
@@ -34,7 +35,7 @@ def main(inference_to_data_pipeline_map,inference_sample_sheet,job_name):
 
         # 3. Process each mapping row
         for _, row in group.iterrows():
-            monomer_input_file = row["monomer_files"]
+            monomer_input_file = row["monomer_file"]
             target_chain_id = row["monomer_chain_id"]  # e.g., "B"
 
             with open(monomer_input_file, "r") as f:
@@ -55,8 +56,7 @@ def main(inference_to_data_pipeline_map,inference_sample_sheet,job_name):
     for s in merged_multimer["modelSeeds"]:
         seed_merged_multimer = copy.deepcopy(merged_multimer)
         seed_merged_multimer["modelSeeds"] = [s]
-        output_path_basename = f"{job_name}_seed-{s}"
-        merged_json_path = job_inference_sample_sheet_df.loc[job_inference_sample_sheet_df.job_name==output_path_basename,"inference_samples"].unique()
+        merged_json_path = job_inference_sample_sheet_df.loc[job_inference_sample_sheet_df.sample_id==sample_id,"file"].unique()
         os.makedirs(os.path.dirname(merged_json_path[0]), exist_ok=True)
         with open(merged_json_path[0], "w") as merged_json_path_:
             json.dump(seed_merged_multimer, merged_json_path_,indent=4)
