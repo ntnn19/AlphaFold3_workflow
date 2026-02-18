@@ -978,8 +978,13 @@ def main(sample_sheet, output_dir, mode, predict_individual_components, n_seeds,
             monomer_df = extract_monomer_jobs(multimer_df, output_dir, has_multimers=True)
         else:
             monomer_df = extract_monomer_jobs(df_dedup, output_dir, has_multimers=False)
+        counts = df_dedup['job_name'].value_counts()
+        job_name_not_part_of_multimers = counts[counts == 1].index
+        if not counts[counts == 1].empty:
+            df_dedup_not_part_of_multimers = df_dedup[df_dedup.job_name.isin(job_name_not_part_of_multimers)].reset_index(drop=True)
+            df_dedup_not_part_of_multimers["model_seeds"] = df_dedup_not_part_of_multimers["model_seeds"].apply(lambda x: ",".join(x))
+            write_fold_inputs(df_dedup_not_part_of_multimers, output_dir,n_seeds=n_seeds)
         # write_fold_inputs(monomer_df, output_dir,n_seeds=n_seeds)
-
     elif mode == "all-vs-all":
         write_fold_inputs(df_dedup, output_dir, n_seeds=n_seeds)
 
@@ -1029,7 +1034,7 @@ def main(sample_sheet, output_dir, mode, predict_individual_components, n_seeds,
 
     if has_multimers_:
         write_fold_inputs(monomer_df, output_dir, n_seeds=n_seeds)
-
+        exit()
 
         multimer_to_monomer_df = pd.merge(
             multimer_df[["job_name", "id", "fold_input", "model_seeds"]],
