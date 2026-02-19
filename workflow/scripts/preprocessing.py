@@ -1,5 +1,5 @@
 # Adapted from https://github.com/Hanziwww/AlphaFold3-GUI/blob/main/afusion/api.py
-
+# TODO monomer that are not part of a multimers are leading to app crashing.
 from collections import defaultdict
 import numpy as np
 import os
@@ -472,8 +472,21 @@ def write_fold_inputs(
                 fold_input = os.path.join(output_dir_, bname)
                 task["modelSeeds"] = [s]
                 task["name"] = original_name + f"_seed-{s}"  if not is_fold_independent else original_name + f"_seed-{s}_chain-{entity_id.lower()}" # Set from original, not append
-                with open(fold_input, "w") as f:
-                    json.dump(task, f, indent=4)
+                if not is_fold_independent:
+                    with open(fold_input, "w") as f:
+                        json.dump(task, f, indent=4)
+                else:
+                    output_dir_ = output_dir_.replace("monomers","multimers")
+                    if not os.path.exists(output_dir_):
+                        os.makedirs(output_dir_, exist_ok=True)
+                    bname = job_name + f"_seed-{s}.json"
+                    fold_input = os.path.join(output_dir_, bname)
+                    task["modelSeeds"] = [s]
+                    task["name"] = original_name + f"_seed-{s}"
+                    with open(fold_input, "w") as f:
+                        json.dump(task, f, indent=4)
+
+
 
         else:
             fold_input = os.path.join(output_dir_, f"{job_name}.json")
@@ -485,6 +498,7 @@ def extract_multimer_jobs(
         df: pd.DataFrame,
         output_dir: Union[str, Path],
         n_seeds: Optional[int] = None,
+        independent_monomers: bool = False
 ) -> pd.DataFrame:
     """
     Return rows belonging to multimeric jobs only.
@@ -515,31 +529,32 @@ def extract_multimer_jobs(
     df["fold_input"] = df["fold_input"]+ "_seed-" + df["seed"].astype(str) + ".json"
     return (
         df.groupby("job_name", group_keys=False)
-        .filter(is_multimer)
+        .filter(is_multimer if not independent_monomers else lambda x: True)
         .copy()
     )
 
 
 def extract_monomer_jobs(
-        multimer_df: pd.DataFrame,
+        monomer_df: pd.DataFrame,
         output_dir: Union[str, Path],
         has_multimers: bool = False,
+        independent_monomers: bool = False
 ) -> pd.DataFrame:
     """
     From multimer jobs, create monomer jobs:
     - One polymer per job
     - job_name becomes <multimer>_chain-<chain_id>
     """
-    if multimer_df.empty:
+    if monomer_df.empty:
         return pd.DataFrame()
 
     monomers = (
-        multimer_df
-        .loc[~multimer_df["type"].isin(["ligand", "dna"])]
+        monomer_df
+        .loc[~monomer_df["type"].isin(["ligand", "dna"])]
         .copy()
     )
 
-    monomers["original_job_name"] = monomers["job_name"]
+    monomers["original_job_name"] = monomers["job_name"] if not independent_monomers else monomers["job_name"].str.split("_chain-").str[0]
     monomers["original_id"] = monomers["id"]
 
     monomers["job_name"] = (
@@ -547,6 +562,11 @@ def extract_monomer_jobs(
         if has_multimers
         else monomers["job_name"]
     )
+    if independent_monomers:
+        monomers = monomers.assign(model_seeds=monomers.model_seeds.str.split(",")).explode("model_seeds")
+        monomers["job_name"] = monomers["job_name"] + "_seed-" + monomers["model_seeds"] + "_chain-" + monomers["id"]
+        monomers["original_job_name"] = monomers["job_name"].str.split("_chain-").str[0]
+
     monomers["job_name"] = monomers["job_name"].apply(lambda x: sanitised_name(x))
     monomers["fold_input"] = os.path.dirname(output_dir + "/rule_PREPROCESSING") + "/rule_AF3_DATA_PIPELINE/" + \
                              monomers["job_name"] + "_data.json"
@@ -918,14 +938,17 @@ def remove_duplicate_jobs_scalable(df, cols_to_compare, log_file=f'duplicate_job
 def separate_to_dependent_and_independent_jobs(df_dedup, n_seeds, output_dir):
     counts = df_dedup['job_name'].value_counts()
     job_name_not_part_of_multimers = counts[counts == 1].index
+    independent_monomers_df = pd.DataFrame([])
+    independent_monomers_as_multimers_df = pd.DataFrame([])
     if not counts[counts == 1].empty:
         df_dedup_not_part_of_multimers = df_dedup[
             df_dedup.job_name.isin(job_name_not_part_of_multimers)].reset_index(drop=True)
-        #df_dedup_not_part_of_multimers["model_seeds"] = df_dedup_not_part_of_multimers["model_seeds"].apply(
-        #    lambda x: ",".join(x))
         write_fold_inputs(df_dedup_not_part_of_multimers, output_dir, n_seeds=n_seeds, is_fold_independent=True)
+        independent_monomers_df = extract_monomer_jobs(df_dedup_not_part_of_multimers,output_dir,independent_monomers=True)
+        independent_monomers_as_multimers_df = extract_multimer_jobs(df_dedup_not_part_of_multimers,output_dir,n_seeds=n_seeds,independent_monomers=True)
+
     df_dedup_dependent = df_dedup[~df_dedup.job_name.isin(job_name_not_part_of_multimers)].reset_index(drop=True)
-    return df_dedup_dependent, df_dedup_not_part_of_multimers
+    return df_dedup_dependent, independent_monomers_df, independent_monomers_as_multimers_df
 
 
 
@@ -981,12 +1004,11 @@ def main(sample_sheet, output_dir, mode, predict_individual_components, n_seeds,
 
         df_dedup = remove_duplicate_jobs_scalable(df, cols_to_compare,log_file=os.path.join(metadata_dir,"duplicate_job_summary.json"))
         has_multimers_ = has_multimers(df_dedup)
-        df_dedup_dependent, df_dedup_not_part_of_multimers = separate_to_dependent_and_independent_jobs(df_dedup, n_seeds, output_dir)
+        df_dedup_dependent, df_dedup_independent_as_monomers, df_dedup_independent_as_multimers = separate_to_dependent_and_independent_jobs(df_dedup, n_seeds, output_dir)
     if mode == "custom":
         # write originals
 
         write_fold_inputs(df_dedup_dependent, output_dir, n_seeds=n_seeds)
-
         # derive + write monomers from multimers
         multimer_df = extract_multimer_jobs(df_dedup_dependent, output_dir,n_seeds=n_seeds)
 
@@ -1018,7 +1040,7 @@ def main(sample_sheet, output_dir, mode, predict_individual_components, n_seeds,
         cols_to_compare = df.columns.difference(['job_name'])
 
         df_dedup = remove_duplicate_jobs_scalable(df, cols_to_compare,log_file=os.path.join(metadata_dir,"duplicate_job_summary.json"))
-        df_dedup_dependent, df_dedup_not_part_of_multimers = separate_to_dependent_and_independent_jobs(df_dedup, n_seeds, output_dir)
+        df_dedup_dependent, df_dedup_independent_as_monomers, df_dedup_independent_as_multimers = separate_to_dependent_and_independent_jobs(df_dedup, n_seeds, output_dir)
         has_multimers_ = has_multimers(df_dedup_dependent)
 
         write_fold_inputs(df_dedup_dependent, output_dir, n_seeds=n_seeds)
@@ -1042,10 +1064,17 @@ def main(sample_sheet, output_dir, mode, predict_individual_components, n_seeds,
         multimer_df = extract_multimer_jobs(df_dedup, output_dir)
         monomer_df = extract_monomer_jobs(multimer_df, output_dir, has_multimers=True)
 
+    if not df_dedup_independent_as_monomers.empty and not df_dedup_independent_as_multimers.empty:
 
-    if has_multimers_:
+        multimer_df = pd.concat([multimer_df, df_dedup_independent_as_multimers], ignore_index=True)
+        monomer_df = pd.concat([monomer_df, df_dedup_independent_as_monomers], ignore_index=True)
+        #multimer_df["job_name"] = multimer_df["job_name"].str.split("_seed-").str[0]
+        #monomer_df["job_name"] = multimer_df["job_name"].str.split("_seed-").str[0]
+
+    if has_multimers_ or df_dedup_dependent.empty:
         write_fold_inputs(monomer_df, output_dir, n_seeds=n_seeds)
 
+        #multimer_df["job_name"] = multimer_df["job_name"].str.split("_seed-").str[0] #  if df_dedup_dependent.empty else multimer_df["job_name"]
         multimer_to_monomer_df = pd.merge(
             multimer_df[["job_name", "id", "fold_input", "model_seeds"]],
             monomer_df[
@@ -1102,14 +1131,14 @@ def main(sample_sheet, output_dir, mode, predict_individual_components, n_seeds,
         for mapping in inference_to_data_pipeline_map.values()
         for monomer_file in mapping.values()
     }
-
-    for monomer_path in os.listdir(f"{output_dir}/rule_PREPROCESSING/monomers"):
-        if (monomer_path.endswith(".json") and
-                os.path.join(f"{output_dir}/rule_AF3_DATA_PIPELINE",
-                             os.path.basename(monomer_path).replace(".json",
-                                                                    "_data.json")) not in referenced_monomer_files):
-            logger.info(f"Deleting redundant fold input: {monomer_path}")
-            Path(os.path.join(f"{output_dir}/rule_PREPROCESSING/monomers", monomer_path)).unlink()
+    if not df_dedup_dependent.empty:
+        for monomer_path in os.listdir(f"{output_dir}/rule_PREPROCESSING/monomers"):
+            if (monomer_path.endswith(".json") and
+                    os.path.join(f"{output_dir}/rule_AF3_DATA_PIPELINE",
+                                 os.path.basename(monomer_path).replace(".json",
+                                                                        "_data.json")) not in referenced_monomer_files):
+                logger.info(f"Deleting redundant fold input: {monomer_path}")
+                Path(os.path.join(f"{output_dir}/rule_PREPROCESSING/monomers", monomer_path)).unlink()
 
     inference_to_data_pipeline_df = pd.DataFrame.from_dict(inference_to_data_pipeline_map, orient="index")
     inference_to_data_pipeline_df = inference_to_data_pipeline_df.reset_index()
