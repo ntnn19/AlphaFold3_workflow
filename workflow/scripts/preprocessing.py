@@ -1,5 +1,6 @@
 # Adapted from https://github.com/Hanziwww/AlphaFold3-GUI/blob/main/afusion/api.py
-# TODO monomer that are not part of a multimers are leading to app crashing.
+
+
 from collections import defaultdict
 import numpy as np
 import os
@@ -222,8 +223,7 @@ def transform_stoichio_screen_to_af3(df: pd.DataFrame, n_seeds: Optional[int] = 
 
                     if n_seeds is not None:
                         model_seeds = ",".join([str(i) for i in list(range(1, n_seeds + 1))])
-                    #if not pd.notna(row.get('model_seeds')):
-                    #    model_seeds = "1"  # default seed
+
 
                     rows.append({
                         'job_name': specific_job_id,
@@ -1016,7 +1016,6 @@ def main(sample_sheet, output_dir, mode, predict_individual_components, n_seeds,
             monomer_df = extract_monomer_jobs(multimer_df, output_dir, has_multimers=True)
         else:
             monomer_df = extract_monomer_jobs(df_dedup_dependent, output_dir, has_multimers=False)
-        # write_fold_inputs(monomer_df, output_dir,n_seeds=n_seeds)
     elif mode == "all-vs-all":
         write_fold_inputs(df_dedup, output_dir, n_seeds=n_seeds)
 
@@ -1068,13 +1067,10 @@ def main(sample_sheet, output_dir, mode, predict_individual_components, n_seeds,
 
         multimer_df = pd.concat([multimer_df, df_dedup_independent_as_multimers], ignore_index=True)
         monomer_df = pd.concat([monomer_df, df_dedup_independent_as_monomers], ignore_index=True)
-        #multimer_df["job_name"] = multimer_df["job_name"].str.split("_seed-").str[0]
-        #monomer_df["job_name"] = multimer_df["job_name"].str.split("_seed-").str[0]
 
     if has_multimers_ or df_dedup_dependent.empty:
         write_fold_inputs(monomer_df, output_dir, n_seeds=n_seeds)
 
-        #multimer_df["job_name"] = multimer_df["job_name"].str.split("_seed-").str[0] #  if df_dedup_dependent.empty else multimer_df["job_name"]
         multimer_to_monomer_df = pd.merge(
             multimer_df[["job_name", "id", "fold_input", "model_seeds"]],
             monomer_df[
@@ -1108,8 +1104,6 @@ def main(sample_sheet, output_dir, mode, predict_individual_components, n_seeds,
         }
 
 
-        #multimer_to_monomer_df["fold_input_x"] = multimer_to_monomer_df["fold_input_x"].apply(lambda x: x.replace(".json",""))
-        #multimer_to_monomer_df["fold_input_x"] = multimer_to_monomer_df["fold_input_x"]+"_seed-"+multimer_to_monomer_df["model_seeds"]+".json"
 
         inference_to_data_pipeline_map = (
             multimer_to_monomer_df
@@ -1153,7 +1147,7 @@ def main(sample_sheet, output_dir, mode, predict_individual_components, n_seeds,
 
     #   Three sample sheets are generated:
     #   1. samples for data pipeline (i.e. everything in {output_dir}/rule_PREPROCESSING/monomers)
-    #   2. samples for merging (Done: {output_dir}/rule_PREPROCESSING/inference_to_data_pipeline_map.tsv)
+    #   2. samples for merging (i.e. : {output_dir}/rule_PREPROCESSING/inference_to_data_pipeline_map.tsv)
     #   3. samples for inference (i.e. everything in {output_dir}/rule_MERGE_MONOMERS_TO_MULTIMER)
 
     data_pipeline_df = pd.DataFrame(
@@ -1167,7 +1161,6 @@ def main(sample_sheet, output_dir, mode, predict_individual_components, n_seeds,
     data_pipeline_df["expected_output"] = data_pipeline_df["expected_output"].apply(
         lambda x: x.replace(".json", "_data.json"))
 
-    # tmp/rule_PREPROCESSING/monomers/job1_job1_chain-B.json
 
     inference_df = pd.DataFrame(set([k.replace(
         "rule_PREPROCESSING/multimers" if has_multimers_ else "rule_AF3_DATA_PIPELINE",
@@ -1220,11 +1213,7 @@ def main(sample_sheet, output_dir, mode, predict_individual_components, n_seeds,
 
     inference_df.columns = ["inference_samples", "n_seeds", "n_samples"]
     inference_df = expand_df(inference_df, "inference_samples")
-#    inference_df["inference_samples"] = inference_df.apply(
-#        lambda row: row["inference_samples"].replace("_data.json", f"_seed-{row['seed']}_data.json"),
-#        # TODO: Act differently
-#        axis=1
-#    )
+
     inference_df["expected_output"] = inference_df["inference_samples"].apply(
         lambda x: x.replace("rule_MERGE_MONOMERS_TO_MULTIMERS",
                             "rule_AF3_INFERENCE"))
@@ -1239,7 +1228,6 @@ def main(sample_sheet, output_dir, mode, predict_individual_components, n_seeds,
     inference_df.loc[inference_df["inference_samples"].str.match(pattern), "inference_samples"] = inference_df[
         inference_df["inference_samples"].str.match(pattern)].apply(
         lambda row: row["inference_samples"].replace(".json", f"_data.json"),
-        # TODO: Act differently
         axis=1
     )
     inference_df.loc[inference_df["expected_output"].str.match(pattern), "expected_output"] = inference_df.loc[
