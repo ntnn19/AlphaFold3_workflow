@@ -20,3 +20,4 @@ set-resources:
         nodes: 1
         runtime: 10000
         mem_mb: 256000
+        slurm_extra: "'--nodelist=max-cssbg[006-009]'"

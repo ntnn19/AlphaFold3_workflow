@@ -9,4 +9,3 @@ af3_flags:
   --af3_container: /gpfs/cssb/group/cssb-topf/natan/singularity_containers/alphafold3/alphafold3_parallel_a100_40gb_latest_template_free_.sif
 
 run_data_pipeline_locally: true
-exclusive_lock: true

@@ -416,20 +416,32 @@ rule AF3_INFERENCE:
         AF3_CONTAINER
     shell:
         """
+        CC=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -n1)
+        if [[ "$CC" == 7.* ]]; then
+            export XLA_FLAGS="--xla_disable_hlo_passes=custom-kernel-fusion-rewriter"
+            FLASH_ARG="--flash_attention_implementation=xla"
+        else
+            FLASH_ARG=""
+        fi
         if [  "{params.exclusive_lock}" == "true" ]; then
+            echo "CC = ${{CC}}"
+            echo "CC = ${{CC}}"
+            echo "XLA_FLAGS = ${{XLA_FLAGS}}"
+            echo "FLASH ARG = ${{FLASH_ARG}}"
             # Determine number of GPUs on the node we ended up on.
             JOB_LIST={input.data}
+            sed -Ei "s|/app/alphafold/run_alphafold.py\\b|/app/alphafold/run_alphafold.py ${{FLASH_ARG}}|" $JOB_LIST
             NUM_GPUS=$(nvidia-smi -L | wc -l)
-            echo $NUM_GPUS
+            echo "Number of GPUs = ${{NUM_GPUS}}"
             < $JOB_LIST parallel -j $NUM_GPUS 'eval CUDA_VISIBLE_DEVICES=$(({{%}} - 1)) {{}}'
         else
-            python /app/alphafold/run_alphafold.py --json_path={input.data} \
+            python /app/alphafold/run_alphafold.py $FLASH_ARG --json_path={input.data} \
             --model_dir=/root/models \
             --output_dir=/root/af_output/rule_AF3_INFERENCE \
             --db_dir=/root/public_databases \
             --run_data_pipeline=false \
             --run_inference=true \
-            {params.extra_af3_flags}
+            {params.extra_af3_flags} 
         fi
         """
 
