@@ -4,6 +4,7 @@ from pathlib import Path
 import pandas as pd
 import os
 import yaml
+from numpy.random import sample
 
 localrules: PREPROCESSING , MERGE_MONO_AND_MULTI_JSON, CREATE_AF3_INFERENCE_JOBS_SPEEDY_AF3_PIPELINE, AGG_AF3_INFERENCE_JOBS, SPLIT_INFERENCE_JOB_LIST
 
@@ -124,17 +125,23 @@ def get_multimeric_json_with_msas(wildcards):
     # Check if user provided this multimer in MERGE_READY_DF
     if not MERGE_READY_DF.empty:
         is_external = True
+        if EXCLUSIVE_LOCK:
         #return list(expand(os.path.join(OUTPUT_DIR,"rule_CREATE_AF3_INFERENCE_JOBS","{multi}_seed-{seed}_af3_inference_job.txt"), multi=JOB_NAMES_MULTIMERS,seed=SEEDS))
-        external =  MERGE_READY_DF["multimer_file"].apply(lambda x: f"{OUTPUT_DIR}/rule_CREATE_AF3_INFERENCE_JOBS/" + f"{Path(x).stem}_af3_inference_job.txt").unique().tolist()
+            external =  MERGE_READY_DF["multimer_file"].apply(lambda x: f"{OUTPUT_DIR}/rule_CREATE_AF3_INFERENCE_JOBS/" + f"{Path(x).stem}_af3_inference_job.txt").unique().tolist()
+
+        else:
+            external = MERGE_READY_DF[
+                "multimer_file"].apply(lambda x: f"{OUTPUT_DIR}/rule_AF3_INFERENCE/" + f"{Path(x).stem}/{Path(x).stem}_model.cif").unique().tolist()
 
     if not RAW_DATA_DF.empty:
         is_internal = True
         PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
         JOB_NAMES_MULTIMERS, = glob_wildcards(os.path.join(PREPROCESSING_DIR,"multimers","{multi}.json"))
-        #return list(expand(os.path.join(OUTPUT_DIR,"rule_CREATE_AF3_INFERENCE_JOBS","{multi}_seed-{seed}_af3_inference_job.txt"), multi=JOB_NAMES_MULTIMERS,seed=SEEDS))
-        internal =  list(expand(os.path.join(OUTPUT_DIR,"rule_CREATE_AF3_INFERENCE_JOBS","{multi}_af3_inference_job.txt"),multi=JOB_NAMES_MULTIMERS))
-
-
+        if EXCLUSIVE_LOCK:
+            internal =  list(expand(os.path.join(OUTPUT_DIR,"rule_CREATE_AF3_INFERENCE_JOBS","{multi}_af3_inference_job.txt"),multi=JOB_NAMES_MULTIMERS))
+        else:
+            internal = list(expand(os.path.join(OUTPUT_DIR,"rule_AF3_INFERENCE","{multi}","{multi}_model.cif"),multi=JOB_NAMES_MULTIMERS))
+    print(is_internal,is_external)
     if is_internal and is_external:
         return internal + external
     if is_internal and not is_external:
@@ -228,13 +235,13 @@ INFERENCE_READY_PATH, INFERENCE_READY_DF = load_sample_sheet("inference_ready")
 MERGE_READY_PATH, MERGE_READY_DF = load_sample_sheet("merge_ready")
 OUTPUT_DIR = config["output_dir"]
 MODE = config.get("mode","custom")
+EXCLUSIVE_LOCK = config.get("exclusive_lock",False)
 OST_CONTAINER = config.get("ost_container")
 GROUND_TRUTH =config.get("ground_truth")
 TASK = config.get("task", "")
 PREDICT_INDIVIDUAL_COMPONENTS = bool_flag("predict_individual_components",config.get("predict_individual_components",False))
 N_SEEDS = config.get("n_seeds") # See TODO
 N_SAMPLES = config.get("n_samples")
-
 
 
 
@@ -261,10 +268,7 @@ rule all:
     input:
         os.path.join(OUTPUT_DIR,"rule_AGG_OST_REPORTS","ost_report.csv") if MODE == "virtual-drug-screen" and TASK=="ost" else [],
         expand(os.path.join(OUTPUT_DIR,"rule_OST_COMAPRE_LIGAND_STRUCTURES","done_flags",f"job_{{s}}-of-{SPLIT_OST}.done.txt"),s=list(range(1,SPLIT_OST+1))) if MODE == "virtual-drug-screen" and TASK=="ost" else [],
-        expand(os.path.join(OUTPUT_DIR,"rule_AF3_INFERENCE","done_flags",f"af3_inference_jobs_{{s}}-of-{SPLIT_TOTAL}.done.txt"),s=list(range(1,SPLIT_TOTAL+1))),
-#        expand(os.path.join(OUTPUT_DIR,"rule_AF3_DATA_PIPELINE","{mono}","{mono}_data.json"),mono=DATA_PIPELINE_READY_DF["sample_id"]),
-#        get_monomeric_json_outputs if not RAW_DATA_DF.empty else [],
-#        get_multimeric_json_outputs if not RAW_DATA_DF.empty else [],
+        expand(os.path.join(OUTPUT_DIR,"rule_AF3_INFERENCE","done_flags",f"af3_inference_jobs_{{s}}-of-{SPLIT_TOTAL}.done.txt"),s=list(range(1,SPLIT_TOTAL+1))) if EXCLUSIVE_LOCK else get_multimeric_json_with_msas
 
 
 checkpoint PREPROCESSING:
@@ -298,7 +302,6 @@ rule AF3_DATA_SPEEDY_PIPELINE:
             otherwise=os.path.join(OUTPUT_DIR,"rule_PREPROCESSING","monomers","{mono}.json")
         ),
     params:
-        json_path = input.data,
         mode = MODE,
         extra_af3_flags = EXTRA_AF3_FLAGS
     output:
@@ -308,7 +311,7 @@ rule AF3_DATA_SPEEDY_PIPELINE:
         AF3_CONTAINER
     shell:
         """
-        python /app/alphafold/run_alphafold.py --json_path={params.json_path} \
+        python /app/alphafold/run_alphafold.py --json_path={input.data} \
         --model_dir=/root/models \
         --output_dir=/root/af_output/rule_AF3_DATA_PIPELINE \
         --db_dir=/root/public_databases \
@@ -324,7 +327,7 @@ rule MERGE_MONO_AND_MULTI_JSON:
         os.path.join(OUTPUT_DIR,"rule_MERGE_MONOMERS_TO_MULTIMERS","{multi}_data.json") if MODE in ["custom","all-vs-all","pulldown","virtual-drug-screen","stoichio-screen"] else [],
     shell:
         """
-        python {WORKFLOW_DIR}/scripts/merge_mono_and_multi_jsons_non_silly.py {input} {output}
+        python {WORKFLOW_DIR}/scripts/merge_mono_and_multi_jsons.py {input} {output}
         """
 
 
@@ -335,16 +338,15 @@ rule CREATE_AF3_INFERENCE_JOBS_SPEEDY_AF3_PIPELINE:
             lookup(query="sample_id == '{multi}'",within=INFERENCE_READY_DF,cols="file"),
             then=lookup(query="sample_id == '{multi}'",within=INFERENCE_READY_DF,cols="file"),
             otherwise=os.path.join(OUTPUT_DIR,"rule_MERGE_MONOMERS_TO_MULTIMERS","{multi}_data.json")
-        ),
+        ) if EXCLUSIVE_LOCK else [],
     params:
-        json_path = input.data,
         mode = MODE,
         extra_af3_flags = EXTRA_AF3_FLAGS
     output:
         multimers = os.path.join(OUTPUT_DIR,"rule_CREATE_AF3_INFERENCE_JOBS","{multi}_af3_inference_job.txt") if MODE in ["custom","all-vs-all","pulldown","virtual-drug-screen","stoichio-screen"]  else []
     shell:
         """
-        echo 'python /app/alphafold/run_alphafold.py --json_path={params.json_path} \
+        echo 'python /app/alphafold/run_alphafold.py --json_path={input.data} \
         --model_dir=/root/models \
         --output_dir=/root/af_output/rule_AF3_INFERENCE \
         --db_dir=/root/public_databases \
@@ -356,7 +358,8 @@ rule CREATE_AF3_INFERENCE_JOBS_SPEEDY_AF3_PIPELINE:
 
 rule AGG_AF3_INFERENCE_JOBS:
     input:
-        merged_multimer = get_multimeric_json_with_msas if not RAW_DATA_DF.empty else [],
+        merged_multimer = get_multimeric_json_with_msas if EXCLUSIVE_LOCK else []
+        #merged_multimer = get_multimeric_json_with_msas if not RAW_DATA_DF.empty else [], #this looks incorrect
     params:
         mode = MODE
     output:
@@ -368,7 +371,8 @@ rule AGG_AF3_INFERENCE_JOBS:
 
 rule SPLIT_INFERENCE_JOB_LIST:
     input:
-        inference_job_list = ancient(os.path.join(OUTPUT_DIR,"rule_AGG_AF3_INFERENCE_JOBS","af3_inference_jobs.txt"))
+        inference_job_list = ancient(os.path.join(OUTPUT_DIR,"rule_AGG_AF3_INFERENCE_JOBS","af3_inference_jobs.txt")) if
+        EXCLUSIVE_LOCK else []
     params:
         split_total = SPLIT_TOTAL
     output:
@@ -396,18 +400,37 @@ rule SPLIT_INFERENCE_JOB_LIST:
 
 rule AF3_INFERENCE:
     input:
-        job_list = ancient(os.path.join(OUTPUT_DIR,"rule_SPLIT_INFERENCE_JOB_LIST","af3_inference_jobs_{scatteritem}.txt")),
+        data = ancient(os.path.join(OUTPUT_DIR,"rule_SPLIT_INFERENCE_JOB_LIST","af3_inference_jobs_{scatteritem}.txt")) if
+        EXCLUSIVE_LOCK else branch(
+            lookup(query="sample_id == '{multi}'",within=INFERENCE_READY_DF,cols="file"),
+            then=lookup(query="sample_id == '{multi}'",within=INFERENCE_READY_DF,cols="file"),
+            otherwise=os.path.join(OUTPUT_DIR,"rule_MERGE_MONOMERS_TO_MULTIMERS","{multi}_data.json")
+        ),
     output:
-        touch(os.path.join(OUTPUT_DIR,"rule_AF3_INFERENCE","done_flags","af3_inference_jobs_{scatteritem}.done.txt")),
+        touch(os.path.join(OUTPUT_DIR,"rule_AF3_INFERENCE","done_flags","af3_inference_jobs_{scatteritem}.done.txt"))  if
+        EXCLUSIVE_LOCK else os.path.join(OUTPUT_DIR,"rule_AF3_INFERENCE","{multi}","{multi}_model.cif"),
+    params:
+        extra_af3_flags = EXTRA_AF3_FLAGS,
+        exclusive_lock = "true" if EXCLUSIVE_LOCK else "false"
     container:
         AF3_CONTAINER
     shell:
         """
-        # Determine number of GPUs on the node we ended up on.
-        JOB_LIST={input.job_list}
-        NUM_GPUS=$(nvidia-smi -L | wc -l)
-        echo $NUM_GPUS
-        < $JOB_LIST parallel -j $NUM_GPUS 'eval CUDA_VISIBLE_DEVICES=$(({{%}} - 1)) {{}}'
+        if [  "{params.exclusive_lock}" == "true" ]; then
+            # Determine number of GPUs on the node we ended up on.
+            JOB_LIST={input.data}
+            NUM_GPUS=$(nvidia-smi -L | wc -l)
+            echo $NUM_GPUS
+            < $JOB_LIST parallel -j $NUM_GPUS 'eval CUDA_VISIBLE_DEVICES=$(({{%}} - 1)) {{}}'
+        else
+            python /app/alphafold/run_alphafold.py --json_path={input.data} \
+            --model_dir=/root/models \
+            --output_dir=/root/af_output/rule_AF3_INFERENCE \
+            --db_dir=/root/public_databases \
+            --run_data_pipeline=false \
+            --run_inference=true \
+            {params.extra_af3_flags}
+        fi
         """
 
 checkpoint GET_DONE_OUTPUTS:
@@ -440,7 +463,7 @@ rule CREATE_OST_COMAPRE_LIGAND_STRUCTURES_JOBS:
         ground_truth_cif=lambda wildcards: get_ground_truth_files(wildcards)["cif"] if MODE == "virtual-drug-screen" and TASK=="ost" else [],
         ground_truth_sdf=lambda wildcards: get_ground_truth_files(wildcards)["sdf"] if MODE == "virtual-drug-screen" and TASK=="ost" else []
     output:
-        os.path.join(OUTPUT_DIR,"rule_CREATE_OST_COMAPRE_LIGAND_STRUCTURES_JOBS","{multi}_seed-{seed}_sample-{sample}_job.txt") if MODE == "virtual-drug-screen" and TASK=="ost" else [],
+        os.path.join(OUTPUT_DIR,"rule_CREATE_OST_COMAPRE_LIGAND_STRUCTURES_JOBS","{multi}_seed-{seed}_sample-{sample}_job.txt") if MODE == "virtual-drug-screen" and TASK=="ost" else []
     shell:
         """    
         json_path={OUTPUT_DIR}/rule_OST_COMAPRE_LIGAND_STRUCTURES/{wildcards.multi}_seed-{wildcards.seed}_sample-{wildcards.sample}_score.json
