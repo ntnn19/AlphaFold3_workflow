@@ -105,10 +105,10 @@ To run the workflow with test files using **singularity**, add a link to a conta
 Run the workflow with:
 
 ```bash
-snakemake --cores 2 --use-singularity --singularity-args "-B <LOCAL_AF3_SEQUENCE_DATABASE>:/root/public_databases -B <YOUR_AF3_PARAMETERS>:/root/models" --directory .test/config/custom
+snakemake --cores 2 --use-singularity --singularity-args "--nv -B <LOCAL_AF3_SEQUENCE_DATABASE>:/root/public_databases -B <YOUR_AF3_PARAMETERS>:/root/models" --directory .test/config/custom
 ```
 
-Other example JSON, TSV and configuration files (YAML format) files for testing other configurations are available in ```bash .test```
+Other example JSON, TSV and configuration files (YAML format) files for testing other configurations are available in ```bash .test```. Users with no access to GPU should remove the ```--nv```  flag.
 
 ## Workflow profiles
 
