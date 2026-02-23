@@ -3,15 +3,8 @@
 A Snakemake workflow for high-throughput AlphaFold 3 structure predictions
 ![Workflow DAG](dag.png)
 
-You are currently in branch **'parallel'**.
-
-Switch to the 'master' branch of this repository if you plan to execute this workflow in an HPC environment that supports 'consumable resources'.
-
-The workflow implemented in this branch is slightly different than the one in branch **'master'**.
-
-Similar to the workflow in branch **'master'**, this workflow supports separate execution of the **CPU** and **GPU** steps. 
-On top of that, it also distributes inference runs across multiple GPU devices using **GNU parallel**.
-This is particularly useful when your HPC setup has multi-GPU nodes, but does not support "consumable resources".   
+This workflow is also useful when your HPC setup has multi-GPU nodes, but does not support "consumable resources".
+See the configuration section for more details. 
 
 
 ### 🚀 What’s new?
@@ -19,12 +12,13 @@ This is particularly useful when your HPC setup has multi-GPU nodes, but does no
     📖 Better documentation to make setup & usage smoother
     🔄 Support for different running modes, including:
         🧲 Pulldown
-        💊 Virtual drug screening
+        💊 Virtual screening
         🔬 All-vs-all pairwise interactions
-    🛠️ Future plans: Adding stoichiometry screening support
-    
+        ⚖️  Stoichiometry screen
+        🎲  Massive sampling
+
 ### TO DO
-- Add steps for downstream analyses such as relaxation, assembly, binding site prediction, scoring etc. 
+- Add scoring report. 
 
 ## Steps to setup & execute
 
@@ -52,7 +46,7 @@ Make sure to download the required [AlphaFold3 databases](https://github.com/goo
 Clone this repository.
 
 ```bash
-git clone --branch parallel --single-branch https://github.com/ntnn19/AlphaFold3_workflow.git
+git clone https://github.com/ntnn19/AlphaFold3_workflow.git
 ```
 
 Go to the repository location
@@ -60,11 +54,10 @@ Go to the repository location
 cd AlphaFold3_workflow
 ```
 
-An example JSON and CSV files are available in the example directory:
-example/example.json
-example/all_vs_all.csv
-example/pulldown.csv
-example/virtual_drug_screen.csv
+An example JSON, TSV and configuration files (YAML format) files for testing the primary configurations are available in the test directory:
+```bash
+.test
+```
 
 ### 3. Create & activate the Snakemake environment
 
@@ -89,7 +82,7 @@ Or if using micromamba
 
 ```bash
 micromamba env create -p $(pwd)/venv -f environment.yml
-eval "$(micromamba shell hook --shell=bash)"
+eval "$(micromamba shell hook --shell=<YOUR SHELL>)"
 micromamba activate $(pwd)/venv
 ```
 ### 4. Configure the workflow
@@ -101,13 +94,14 @@ Edit the values to your needs.
 -   **output_dir**: <path_to_your_output_directory> # Stores the outputs of this workflow
 -   **af3_flags**: # configures AlphaFold 3
      -   **af3_container**: <path_to_your_alphafold3_container> 
+     -   **extra_af3_flags**: <extra AlphaFold3 flags>
 - **input_csv**: <path_to_your_csv_table>
 -   **tmp_dir**: <path_to_your_tmp_dir> 
 
 
-For running the default workflow, the user must provide a csv table such as the following:
+For running the workflow for a custom samplesheet, the user must provide a tsv table such as the following:
 
-**default**: example/default.csv
+**custom**: .test/config/custom/custom.tsv
 
 | job_name  | type    | id | sequence        |
 |-----------|--------|----|----------------|
@@ -119,14 +113,14 @@ For running the default workflow, the user must provide a csv table such as the 
 For explanation and full list of optional columns, see  [AlphaFold3-GUI api tutorial](https://alphafold3-gui.readthedocs.io/en/latest/tutorial.html)
 
 #### Optional workflow flags:
-The workflow supports running AlphaFold 3 in different modes:
-all-vs-all, pulldown, virtual-drug-screen, or stoichio-screen (TBD)
+The workflow supports running AlphaFold 5 in different modes:
+all-vs-all, pulldown, virtual-drug-screen, stoichio-screen, or massive sampling
 
 To run the workflow in a specific mode the user must provide the flag 'mode' in the config/config.yaml file.
 
 For example:
 ```bash
-input_csv: example/virtual_drug_screen_df.csv
+input_tsv: example/virtual_drug_screen_df.tsv
 output_dir: output
 tmp_dir: tmp
 mode: virtual-drug-screen
@@ -136,10 +130,10 @@ af3_flags:
 ```
 
 
-To run the workflow using a custom msa the user must provide the flag 'msa_option' in the config/config.yaml file and set it to 'custom', i.e. msa_option: custom. Setting 'msa_option' to 'custom' would require adding more columns to the input csv tables described below. For more information about this option, see [here](https://alphafold3-gui.readthedocs.io/en/latest/api.html).  
+To run the workflow using a custom msa the user must provide the flag 'msa_option' in the config/config.yaml file and set it to 'custom', i.e. msa_option: custom. Setting 'msa_option' to 'custom' would require adding more columns to the input tsv tables described below. For more information about this option, see [here](https://alphafold3-gui.readthedocs.io/en/latest/api.html).  
 
-**Examples for supported input_csv files for each mode**:
-##### all-vs-all: example/all_vs_all.csv 
+**Examples for supported input_tsv files for each mode**:
+##### all-vs-all: example/all_vs_all.tsv 
 
 | id  | type    | sequence          |
 |-----|--------|------------------|
@@ -153,7 +147,7 @@ To run the workflow using a custom msa the user must provide the flag 'msa_optio
 - **sequence**: The nucleotide or amino acid sequence.
 
 
-##### virtual drug screen: example/virtual_drug_screen.csv
+##### virtual drug screen: example/virtual_drug_screen.tsv
 
 | id  | type    | sequence                        | drug_or_target | target_id | drug_id |
 |-----|--------|---------------------------------|----------------|-----------|---------|
@@ -177,7 +171,7 @@ To run the workflow using a custom msa the user must provide the flag 'msa_optio
 **The optional columns can be used to screen single drugs against multimeric targets, multiple drugs against monomeric targets, or multiple drugs against multimeric targets.**
 
 
-##### pulldown: example/pulldown.csv
+##### pulldown: example/pulldown.tsv
 
 | id  | type    | sequence          | bait_or_target | target_id | bait_id |
 |-----|--------|------------------|----------------|-----------|---------|
@@ -268,7 +262,7 @@ The optional flags are:
 
 ##### Example for a config/config.yaml file with optional AlphaFold 3 flags: 
 ```bash
-input_csv: example/virtual_drug_screen_df.csv
+input_tsv: example/virtual_drug_screen_df.tsv
 output_dir: output
 mode: virtual-drug-screen 
 # n_splits: 4  # Optional, for running using the 'parallel' branch of this repo. To maximize resources utilization, the value of this flag should correspond to min(number_of_predictions, number_of_multi-GPU_nodes). 
