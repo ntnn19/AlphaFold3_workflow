@@ -44,7 +44,7 @@ git clone https://github.com/ntnn19/AlphaFold3_workflow.git
 cd path/to/AlphaFold3_workflow
 ```
 
-## Build the Singularity container (Optional)
+### Build the Singularity container (Optional)
 **Use this option if you prefer to have a copy of the sif file in a specific directory instead of letting snakemake automatically build it. Otherwise, you can skip it.**
 Install singularity. See [here](https://github.com/google-deepmind/alphafold3/blob/main/docs/installation.md#install-singularity) or [here](https://docs.sylabs.io/guides/3.3/user-guide/installation.html) for instructions.
 Run the following command to build the Singularity container that supports parallel inference runs:
@@ -59,7 +59,7 @@ Or
 singularity build alphafold3_parallel.sif docker://ntnn19/alphafold3:latest_parallel_a100_80gb
 ```
 
-## Create & activate the Snakemake environment
+### Create & activate the Snakemake environment
 
 Install [mamba](https://github.com/conda-forge/miniforge) or [micromamba](https://mamba.readthedocs.io/en/latest/installation/micromamba-installation.html) if not already installed.
 
@@ -86,12 +86,12 @@ eval "$(micromamba shell hook --shell=<YOUR SHELL>)"
 micromamba activate $(pwd)/venv
 ```
 
-## Notes
+### Notes
 
 Make sure to download the required [AlphaFold3 databases](https://github.com/google-deepmind/alphafold3/blob/main/docs/installation.md#obtaining-genetic-databases) and [weights](https://forms.gle/svvpY4u2jsHEwWYS6) before proceeding.
 
 
-## Run the workflow
+### Run the workflow
 
 Adjust options in the default config file `config/config.yaml`.
 Before running the complete workflow, you can perform a dry run using:
