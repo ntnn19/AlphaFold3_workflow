@@ -1,3 +1,4 @@
+TEST
 # AlphaFold 3 workflow
 
 A Snakemake workflow for high-throughput AlphaFold 3 structure predictions
