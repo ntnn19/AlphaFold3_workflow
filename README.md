@@ -6,7 +6,7 @@ This workflow has the following advantages over standard AlphaFold 3 runs:
 1. **Separated data and inference pipelines** for better resource utilization.
 2. **Implements the assemble-from-monomers technique** described in the official AlphaFold 3 documentation for predicting multimers. See [here](https://github.com/google-deepmind/alphafold3/blob/main/docs/performance.md#:~:text=Pre%2Dcomputing%20and%20reusing%20MSA%20and%20templates) for details.
 3. **Treats each random seed as a separate job when multiple seeds are used**, substantially increasing throughput for large-scale sampling campaigns.
-4. **Efficient on HPC systems with multi-GPU nodes** that lack support for consumable resources (i.e., nodes are allocated exclusively to a single user). See the coynfiguration section for details.
+4. **Efficient on HPC systems with multi-GPU nodes** that lack support for consumable resources (i.e., nodes are allocated exclusively to a single user). See the configuration documentation at  ```config/README.md``` for details.
 
 
 
