@@ -1,0 +1,29 @@
+{
+    "name": "job1_seed-10_chain-a",
+    "modelSeeds": [
+        10
+    ],
+    "sequences": [
+        {
+            "protein": {
+                "sequence": "GMRESYANENQFGFKTINSDIHKIVIVGGYGKLGGLFARYLRASGYPISILDREDWAVAESILANADVVIVSVPINLTLETIERLKPYLTENMLLADLTSVKREPLAKMLEVHTGAVLGLHPMFGADIASMAKQVVVRCDGRFPERYEWLLEQIQIWGAKIYQTNATEHDHNMTYIQALRHFSTFANGLHLSKQPINLANLLALSSPIYRLELAMIGRLFAQDAELYADIIMDKSENLAVIETLKQTYDEALTFFENNDRQGFIDAFHKVRDWFGDYSEQFLKESRQLLQQANDLKQG",
+                "modifications": [
+                    {
+                        "ptmType": "HY3",
+                        "ptmPosition": 1
+                    },
+                    {
+                        "ptmType": "P1L",
+                        "ptmPosition": 5
+                    }
+                ],
+                "unpairedMsa": "",
+                "pairedMsa": "",
+                "templates": [],
+                "id": "A"
+            }
+        }
+    ],
+    "dialect": "alphafold3",
+    "version": 1
+}

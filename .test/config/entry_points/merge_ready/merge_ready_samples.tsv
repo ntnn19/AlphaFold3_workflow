@@ -1,0 +1,7 @@
+multimer_file	monomer_chain_id	monomer_file	sample_id
+job1_seed-10.json	A	job1_seed-10_chain-a_data.json	job1_seed-10
+job1_seed-42.json	A	job1_seed-10_chain-a_data.json	job1_seed-42
+job3_test_seed-10.json	A	job3_test_seed-10_chain-a_data.json	job3_test_seed-10
+job3_test_seed-10.json	B	job3_test_seed-10_chain-a_data.json	job3_test_seed-10
+job3_test_seed-42.json	A	job3_test_seed-10_chain-a_data.json	job3_test_seed-42
+job3_test_seed-42.json	B	job3_test_seed-10_chain-a_data.json	job3_test_seed-42

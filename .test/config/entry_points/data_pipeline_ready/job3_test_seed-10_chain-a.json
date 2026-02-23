@@ -1,0 +1,29 @@
+{
+    "name": "job3_test_seed-10_chain-a",
+    "modelSeeds": [
+        10
+    ],
+    "sequences": [
+        {
+            "protein": {
+                "sequence": "MPTESKKVRFENTASDKGKNPSKVIKSYYGTMDIKKINEGLLDSKILSAFNTVIALLGSIVIIVMNIMIIQNYTRCTDNQAMIKDALQSIQQQIKGLADKIGTEIGPKVSLIDTSSTITIPANIGLLGSKISQSTASINENVNEKCKFTLPPLKIHECNISCPNPLPFREYKPQTEGVSNLVGLPNNICLQKTSNQILKPKLISYTLPVVGQSGTCITDPLLAMDEGYFAYSHLEKIGSCSRGVSKQRIIGVGEVLDRGDEVPSLFMTNVWTPSNPNTVYHCSAVYNNEFYYVLCAVSVVGDPILNSTYWSGSLMMTRLAVKPKNNGESYNQHQFALRNIEKGKYDKVMPYGPSGIKQGDTLYFPAVGFLVRTEFTYNDSNCPIAECQYSKPENCRLSMGIRPNSHYILRSGLLKYNLSDEENSKIVFIEISDQRLSIGSPSKIYDSLGQPVFYQASFSWDTMIKFGDVQTVNPLVVNWRDNTVISRPGQSQCPRFNKCPEVCWEGVYNDAFLIDRINWISAGVFLDSNQTAENPVFTVFKDNEVLYRAQLASEDTNAQKTITNCFLLKNKIWCISLVEIYDTGDNVIRPKLFAVKIPEQCT",
+                "modifications": [
+                    {
+                        "ptmType": "HY3",
+                        "ptmPosition": 1
+                    },
+                    {
+                        "ptmType": "P1L",
+                        "ptmPosition": 5
+                    }
+                ],
+                "unpairedMsa": "",
+                "pairedMsa": "",
+                "templates": [],
+                "id": "A"
+            }
+        }
+    ],
+    "dialect": "alphafold3",
+    "version": 1
+}

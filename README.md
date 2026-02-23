@@ -3,7 +3,7 @@
 A Snakemake workflow for high-throughput AlphaFold 3 structure predictions
 ![Workflow DAG](dag.png)
 
-This workflow is also useful when your HPC setup has multi-GPU nodes, but does not support "consumable resources".
+This workflow also runs efficiently on HPC systems with multi-GPU nodes that do not support consumable resources (i.e., nodes are allocated exclusively to a single user at a time).
 See the configuration section for more details. 
 
 
