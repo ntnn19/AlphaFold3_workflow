@@ -8,7 +8,6 @@ from numpy.random import sample
 
 localrules: PREPROCESSING , MERGE_MONO_AND_MULTI_JSON, CREATE_AF3_INFERENCE_JOBS_SPEEDY_AF3_PIPELINE, AGG_AF3_INFERENCE_JOBS, SPLIT_INFERENCE_JOB_LIST
 
-
 # Define expected schema for each sample sheet type
 SAMPLE_SHEET_SCHEMAS = {
     "raw_data": [
@@ -20,11 +19,6 @@ SAMPLE_SHEET_SCHEMAS = {
     "inference_ready": ["sample_id", "file"],
     "merge_ready_samples": ["sample_id", "multimer_file", "monomer_chain_id", "monomer_file"],
 }
-
-
-scattergather:
-    split=config.get("n_splits",1),
-    split_ost=config.get("n_splits_ost",1)
 
 def as_bool(val):
     if isinstance(val, bool):
@@ -38,6 +32,19 @@ def as_bool(val):
 def bool_flag(name, value):
     return f"--{name}" if as_bool(value) else ""
 
+
+
+def as_bool(val):
+    if isinstance(val, bool):
+        return val
+    if isinstance(val, (int, float)):
+        return bool(val)
+    if isinstance(val, str):
+        return val.strip().lower() in {"1", "true", "yes", "y", "on"}
+    return False
+
+def bool_flag(name, value):
+    return f"--{name}" if as_bool(value) else ""
 
 def load_sample_sheet(sheet_key):
     """Safely load a sample sheet, returns (path, dataframe)"""
@@ -67,17 +74,43 @@ def load_sample_sheet(sheet_key):
 
 
 
-def as_bool(val):
-    if isinstance(val, bool):
-        return val
-    if isinstance(val, (int, float)):
-        return bool(val)
-    if isinstance(val, str):
-        return val.strip().lower() in {"1", "true", "yes", "y", "on"}
-    return False
+# Load all sample sheets - get both paths and DataFrames
+# TODO fill the empty dataframes for all downstream rules if something other than raw_data/inference ready was provided
+RAW_DATA_PATH, RAW_DATA_DF = load_sample_sheet("raw_data")
+DATA_PIPELINE_READY_PATH, DATA_PIPELINE_READY_DF = load_sample_sheet("data_pipeline_ready")
+INFERENCE_READY_PATH, INFERENCE_READY_DF = load_sample_sheet("inference_ready")
+MERGE_READY_PATH, MERGE_READY_DF = load_sample_sheet("merge_ready")
+OUTPUT_DIR = config["output_dir"]
 
-def bool_flag(name, value):
-    return f"--{name}" if as_bool(value) else ""
+if not DATA_PIPELINE_READY_DF.empty and MERGE_READY_DF.empty: # Create dummy merging table
+    MERGE_READY_DF = DATA_PIPELINE_READY_DF.copy()
+    MERGE_READY_DF = MERGE_READY_DF.rename(columns={"file": "multimer_file"})
+    MERGE_READY_DF["monomer_file"] = MERGE_READY_DF["multimer_file"].apply(lambda x: os.path.join(OUTPUT_DIR, "rule_AF3_DATA_PIPELINE", Path(x).stem, Path(x).stem + "_data.json"))
+    MERGE_READY_DF["monomer_chain_id"] = "A"
+    DATA_PIPELINE_OUTPUTS = MERGE_READY_DF["monomer_file"].tolist() 
+
+MODE = config.get("mode","custom")
+EXCLUSIVE_LOCK = config.get("exclusive_lock",False)
+OST_CONTAINER = config.get("ost_container")
+GROUND_TRUTH =config.get("ground_truth")
+TASK = config.get("task", "")
+PREDICT_INDIVIDUAL_COMPONENTS = bool_flag("predict_individual_components",config.get("predict_individual_components",False))
+N_SEEDS = config.get("n_seeds") # See TODO
+N_SAMPLES = config.get("n_samples")
+
+
+WORKFLOW_DIR = os.path.dirname(os.path.abspath(workflow.snakefile))
+
+
+EXTRA_AF3_FLAGS = config.get('alphafold3_flags', {}).get("--extra_af3_flags", '')
+
+
+
+
+scattergather:
+    split=config.get("n_splits",1),
+    split_ost=config.get("n_splits_ost",1)
+
 
 def sanitised_name(name):
     """Returns sanitised version of the name that can be used as a filename."""
@@ -120,35 +153,56 @@ def get_multi_to_monomeric_dict(wildcards):
     return map_df
 
 def get_multimeric_json_with_msas(wildcards):
-    is_internal = False
-    is_external = False
+    internal = []
+    external = []
     # Check if user provided this multimer in MERGE_READY_DF
-    if not MERGE_READY_DF.empty:
-        is_external = True
+    if not DATA_PIPELINE_READY_DF.empty:
+#        is_external = True
         if EXCLUSIVE_LOCK:
         #return list(expand(os.path.join(OUTPUT_DIR,"rule_CREATE_AF3_INFERENCE_JOBS","{multi}_seed-{seed}_af3_inference_job.txt"), multi=JOB_NAMES_MULTIMERS,seed=SEEDS))
-            external =  MERGE_READY_DF["multimer_file"].apply(lambda x: f"{OUTPUT_DIR}/rule_CREATE_AF3_INFERENCE_JOBS/" + f"{Path(x).stem}_af3_inference_job.txt").unique().tolist()
+            external.append(DATA_PIPELINE_READY_DF["file"].apply(lambda x: f"{OUTPUT_DIR}/rule_CREATE_AF3_INFERENCE_JOBS/" + f"{Path(x).stem}_af3_inference_job.txt").unique().tolist())
 
         else:
-            external = MERGE_READY_DF[
-                "multimer_file"].apply(lambda x: f"{OUTPUT_DIR}/rule_AF3_INFERENCE/" + f"{Path(x).stem}/{Path(x).stem}_model.cif").unique().tolist()
+            external.append(DATA_PIPELINE_READY_DF[
+                "file"].apply(lambda x: f"{OUTPUT_DIR}/rule_AF3_INFERENCE/" + f"{Path(x).stem}/{Path(x).stem}_model.cif").unique().tolist())
+
+
+    if not MERGE_READY_DF.empty:
+ #       is_external = True
+        if EXCLUSIVE_LOCK:
+        #return list(expand(os.path.join(OUTPUT_DIR,"rule_CREATE_AF3_INFERENCE_JOBS","{multi}_seed-{seed}_af3_inference_job.txt"), multi=JOB_NAMES_MULTIMERS,seed=SEEDS))
+            external.append(MERGE_READY_DF["multimer_file"].apply(lambda x: f"{OUTPUT_DIR}/rule_CREATE_AF3_INFERENCE_JOBS/" + f"{Path(x).stem}_af3_inference_job.txt").unique().tolist())
+
+        else:
+            external.append(MERGE_READY_DF[
+                "multimer_file"].apply(lambda x: f"{OUTPUT_DIR}/rule_AF3_INFERENCE/" + f"{Path(x).stem}/{Path(x).stem}_model.cif").unique().tolist())
+
+    if not INFERENCE_READY_DF.empty:
+#        is_external = True
+        if EXCLUSIVE_LOCK:
+        #return list(expand(os.path.join(OUTPUT_DIR,"rule_CREATE_AF3_INFERENCE_JOBS","{multi}_seed-{seed}_af3_inference_job.txt"), multi=JOB_NAMES_MULTIMERS,seed=SEEDS))
+            external.append(INFERENCE_READY_DF["file"].apply(lambda x: f"{OUTPUT_DIR}/rule_CREATE_AF3_INFERENCE_JOBS/" + f"{Path(x).stem}_af3_inference_job.txt").unique().tolist())
+
+        else:
+            external.append(INFERENCE_READY_DF[
+                "multimer_file"].apply(lambda x: f"{OUTPUT_DIR}/rule_AF3_INFERENCE/" + f"{Path(x).stem}/{Path(x).stem}_model.cif").unique().tolist())
 
     if not RAW_DATA_DF.empty:
-        is_internal = True
+#        is_internal = True
         PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
         JOB_NAMES_MULTIMERS, = glob_wildcards(os.path.join(PREPROCESSING_DIR,"multimers","{multi}.json"))
         if EXCLUSIVE_LOCK:
-            internal =  list(expand(os.path.join(OUTPUT_DIR,"rule_CREATE_AF3_INFERENCE_JOBS","{multi}_af3_inference_job.txt"),multi=JOB_NAMES_MULTIMERS))
+            internal.append(list(expand(os.path.join(OUTPUT_DIR,"rule_CREATE_AF3_INFERENCE_JOBS","{multi}_af3_inference_job.txt"),multi=JOB_NAMES_MULTIMERS)))
         else:
-            internal = list(expand(os.path.join(OUTPUT_DIR,"rule_AF3_INFERENCE","{multi}","{multi}_model.cif"),multi=JOB_NAMES_MULTIMERS))
-    print(is_internal,is_external)
-    if is_internal and is_external:
-        return internal + external
-    if is_internal and not is_external:
-        return internal
-    if not is_internal and is_external:
-        return external
-    if not is_internal and not is_external:
+            internal.append(list(expand(os.path.join(OUTPUT_DIR,"rule_AF3_INFERENCE","{multi}","{multi}_model.cif"),multi=JOB_NAMES_MULTIMERS)))
+
+    if internal and external:
+        return flatten(internal) + flatten(external)
+    if internal and not external:
+        return flatten(internal)
+    if not internal and external:
+        return flatten(external)
+    if not internal and not external:
         return []
 
 def get_collect_predictions(wildcards):
@@ -227,27 +281,6 @@ SPLIT_OST = workflow._scatter["split_ost"]
 
 
 
-# Load all sample sheets - get both paths and DataFrames
-# TODO fill the empty dataframes for all downstream rules if something other than raw_data/inference ready was provided
-RAW_DATA_PATH, RAW_DATA_DF = load_sample_sheet("raw_data")
-DATA_PIPELINE_READY_PATH, DATA_PIPELINE_READY_DF = load_sample_sheet("data_pipeline_ready")
-INFERENCE_READY_PATH, INFERENCE_READY_DF = load_sample_sheet("inference_ready")
-MERGE_READY_PATH, MERGE_READY_DF = load_sample_sheet("merge_ready")
-OUTPUT_DIR = config["output_dir"]
-MODE = config.get("mode","custom")
-EXCLUSIVE_LOCK = config.get("exclusive_lock",False)
-OST_CONTAINER = config.get("ost_container")
-GROUND_TRUTH =config.get("ground_truth")
-TASK = config.get("task", "")
-PREDICT_INDIVIDUAL_COMPONENTS = bool_flag("predict_individual_components",config.get("predict_individual_components",False))
-N_SEEDS = config.get("n_seeds") # See TODO
-N_SAMPLES = config.get("n_samples")
-
-
-
-WORKFLOW_DIR = os.path.dirname(os.path.abspath(workflow.snakefile))
-
-
 
 if "model_seeds" in RAW_DATA_DF.columns:
     RAW_DATA_DF["model_seeds"] = RAW_DATA_DF["model_seeds"] = RAW_DATA_DF.model_seeds.astype(str)
@@ -260,7 +293,6 @@ AF3_CONTAINER = config["af3_flags"]["--af3_container"]
 
 
 
-EXTRA_AF3_FLAGS = config.get('alphafold3_flags', {}).get("--extra_af3_flags", '')
 
 
 
@@ -268,7 +300,8 @@ rule all:
     input:
         os.path.join(OUTPUT_DIR,"rule_AGG_OST_REPORTS","ost_report.csv") if MODE == "virtual-drug-screen" and TASK=="ost" else [],
         expand(os.path.join(OUTPUT_DIR,"rule_OST_COMAPRE_LIGAND_STRUCTURES","done_flags",f"job_{{s}}-of-{SPLIT_OST}.done.txt"),s=list(range(1,SPLIT_OST+1))) if MODE == "virtual-drug-screen" and TASK=="ost" else [],
-        expand(os.path.join(OUTPUT_DIR,"rule_AF3_INFERENCE","done_flags",f"af3_inference_jobs_{{s}}-of-{SPLIT_TOTAL}.done.txt"),s=list(range(1,SPLIT_TOTAL+1))) if EXCLUSIVE_LOCK else get_multimeric_json_with_msas
+        expand(os.path.join(OUTPUT_DIR,"rule_AF3_INFERENCE","done_flags",f"af3_inference_jobs_{{s}}-of-{SPLIT_TOTAL}.done.txt"),s=list(range(1,SPLIT_TOTAL+1))) if EXCLUSIVE_LOCK else get_multimeric_json_with_msas,
+        DATA_PIPELINE_OUTPUTS if not DATA_PIPELINE_READY_DF.empty and MERGE_READY_DF.empty else []
 
 
 checkpoint PREPROCESSING:
@@ -305,8 +338,10 @@ rule AF3_DATA_SPEEDY_PIPELINE:
         mode = MODE,
         extra_af3_flags = EXTRA_AF3_FLAGS
     output:
-        data_pipeline_monomers=temp(os.path.join(OUTPUT_DIR,"rule_AF3_DATA_PIPELINE","{mono}","{mono}_data.json")) if MODE in [
+        data_pipeline_monomers=os.path.join(OUTPUT_DIR,"rule_AF3_DATA_PIPELINE","{mono}","{mono}_data.json") if MODE in [
             "custom","stoichio-screen","all-vs-all", "pulldown","virtual-drug-screen"] else [],
+#        data_pipeline_monomers=temp(os.path.join(OUTPUT_DIR,"rule_AF3_DATA_PIPELINE","{mono}","{mono}_data.json")) if MODE in [
+#            "custom","stoichio-screen","all-vs-all", "pulldown","virtual-drug-screen"] else [],
     container:
         AF3_CONTAINER
     shell:
