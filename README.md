@@ -8,7 +8,7 @@ This workflow has the following advantages over standard AlphaFold 3 runs:
 3. **Treats each random seed as a separate job when multiple seeds are used**, substantially increasing throughput for large-scale sampling campaigns.
 4. **Efficient on HPC systems with multi-GPU nodes** that lack support for consumable resources (i.e., nodes are allocated exclusively to a single user). See the configuration documentation at  ```config/README.md``` for details.
 
-
+![Workflow DAG](graphviz.png)
 
 ### 🚀 What’s new?
 
