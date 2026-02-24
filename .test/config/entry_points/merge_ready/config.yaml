@@ -1,3 +1,4 @@
+exclusive_lock: true
 sample_sheets:
   merge_ready: merge_ready_samples.tsv
 mode: custom 

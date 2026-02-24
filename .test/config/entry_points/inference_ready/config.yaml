@@ -1,3 +1,4 @@
+exclusive_lock: true
 sample_sheets:
   inference_ready: inference_ready_samples.tsv
 mode: custom 

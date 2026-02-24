@@ -1,3 +1,4 @@
+exclusive_lock: true
 sample_sheets:
   raw_data: raw_data_samples.tsv
   data_pipeline_ready: data_pipeline_ready_samples.tsv

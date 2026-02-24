@@ -20,4 +20,6 @@ set-resources:
         nodes: 1
         runtime: 10000
         mem_mb: 256000
-        slurm_extra: "'--nodelist=max-cssbg[006-009]'"
+        slurm_partition: "allgpu"
+#        slurm_extra: "'--nodelist=max-p3ag014'"
+#        slurm_extra: "'--nodelist=max-cssbg[006-009]'"

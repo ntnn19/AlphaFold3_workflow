@@ -1,6 +1,6 @@
 # Adapted from https://github.com/Hanziwww/AlphaFold3-GUI/blob/main/afusion/api.py
 
-
+import pdb
 from collections import defaultdict
 import numpy as np
 import os
@@ -570,7 +570,7 @@ def extract_monomer_jobs(
     monomers["job_name"] = monomers["job_name"].apply(lambda x: sanitised_name(x))
     monomers["fold_input"] = os.path.dirname(output_dir + "/rule_PREPROCESSING") + "/rule_AF3_DATA_PIPELINE/" + \
                              monomers["job_name"] + "_data.json"
-    monomers = monomers.drop(columns=["bonded_atom_pairs"])
+    monomers = monomers.drop(columns=["bonded_atom_pairs"]) if "bonded_atom_pairs" in monomers.columns.tolist() else monomers
     return monomers.reset_index(drop=True)
 
 
@@ -991,7 +991,7 @@ def main(sample_sheet, output_dir, mode, predict_individual_components, n_seeds,
     logger.info(f"OUTPUT_DIR = {output_dir}")
     logger.info(f"MODE = {mode}")
     logger.info(f"PREDICT_INDIVIDUAL_COMPONENTS = {predict_individual_components}")
-    logger.info(f"#SEEDS = {predict_individual_components}")
+    logger.info(f"#SEEDS = {n_seeds}")
     metadata_dir = os.path.join(f"{output_dir}","rule_PREPROCESSING","metadata")
     os.makedirs(metadata_dir, exist_ok=True)
 
@@ -999,11 +999,15 @@ def main(sample_sheet, output_dir, mode, predict_individual_components, n_seeds,
     df["job_name"] = df["job_name"].apply(lambda x: sanitised_name(x))
 
     cols_to_compare = df.columns.difference(['job_name'])
+    df_dedup = remove_duplicate_jobs_scalable(df, cols_to_compare,log_file=os.path.join(metadata_dir,"duplicate_job_summary.json"))
+    has_multimers_ = has_multimers(df_dedup)
+    df_dedup_dependent, df_dedup_independent_as_monomers, df_dedup_independent_as_multimers = (
+        pd.DataFrame([]),
+        pd.DataFrame([]),
+        pd.DataFrame([])
+    )
+    if mode != 'virtual-drug-screen' and mode != 'stoichio-screen' and mode != "pulldown":
 
-    if mode != 'virtual-drug-screen' and mode != 'stoichio-screen':
-
-        df_dedup = remove_duplicate_jobs_scalable(df, cols_to_compare,log_file=os.path.join(metadata_dir,"duplicate_job_summary.json"))
-        has_multimers_ = has_multimers(df_dedup)
         df_dedup_dependent, df_dedup_independent_as_monomers, df_dedup_independent_as_multimers = separate_to_dependent_and_independent_jobs(df_dedup, n_seeds, output_dir)
     if mode == "custom":
         # write originals
@@ -1026,12 +1030,9 @@ def main(sample_sheet, output_dir, mode, predict_individual_components, n_seeds,
         monomer_df = extract_monomer_jobs(multimer_df, output_dir, has_multimers=True)
 
     elif mode == "pulldown":
-        write_fold_inputs(df_dedup, output_dir, n_seeds=n_seeds)
-
         combined_df = create_pulldown_df(df_dedup)
         write_fold_inputs(combined_df, output_dir, n_seeds=n_seeds)
-
-        multimer_df = extract_multimer_jobs(combined_df, output_dir)
+        multimer_df = extract_multimer_jobs(combined_df, output_dir,n_seeds=n_seeds)
         monomer_df = extract_monomer_jobs(multimer_df, output_dir, has_multimers=True)
 
     elif mode == "virtual-drug-screen":

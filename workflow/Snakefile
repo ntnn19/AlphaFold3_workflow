@@ -89,6 +89,7 @@ if not DATA_PIPELINE_READY_DF.empty and MERGE_READY_DF.empty: # Create dummy mer
     MERGE_READY_DF["monomer_chain_id"] = "A"
     DATA_PIPELINE_OUTPUTS = MERGE_READY_DF["monomer_file"].tolist() 
 
+# Workflow flags
 MODE = config.get("mode","custom")
 EXCLUSIVE_LOCK = config.get("exclusive_lock",False)
 OST_CONTAINER = config.get("ost_container")
@@ -97,14 +98,32 @@ TASK = config.get("task", "")
 PREDICT_INDIVIDUAL_COMPONENTS = bool_flag("predict_individual_components",config.get("predict_individual_components",False))
 N_SEEDS = config.get("n_seeds") # See TODO
 N_SAMPLES = config.get("n_samples")
+MSA_OPTION = config.get("msa_option","auto")
+
 
 
 WORKFLOW_DIR = os.path.dirname(os.path.abspath(workflow.snakefile))
 
 
+# AlphaFold 3 Flags
+AF3_CONTAINER = config["af3_flags"]["--af3_container"]
 EXTRA_AF3_FLAGS = config.get('alphafold3_flags', {}).get("--extra_af3_flags", '')
 
 
+
+has_seeds = (
+    "model_seeds" in RAW_DATA_DF.columns
+    and RAW_DATA_DF["model_seeds"].notna().any()
+    and RAW_DATA_DF["model_seeds"].astype(str).str.strip().ne("").any()
+)
+
+
+if N_SEEDS:
+    n_seeds = f"--n-seeds={N_SEEDS}"   # explicit override wins
+elif has_seeds:
+    n_seeds = ""                      # sample sheet drives it, don't pass the flag
+else:
+    n_seeds = "--n-seeds=1"            # fallback default
 
 
 scattergather:
@@ -284,12 +303,7 @@ SPLIT_OST = workflow._scatter["split_ost"]
 
 if "model_seeds" in RAW_DATA_DF.columns:
     RAW_DATA_DF["model_seeds"] = RAW_DATA_DF["model_seeds"] = RAW_DATA_DF.model_seeds.astype(str)
-if RAW_DATA_DF.empty:
-    SEEDS =  [1]
-else:
-    SEEDS= RAW_DATA_DF["model_seeds"].str.split(",").values[0] if "model_seeds" in RAW_DATA_DF.columns else [1] # TODO: ONLY WORKS IF EVERY JOB HAS THE SAME SEEDS
-MSA_OPTION = config.get("msa_option","auto")
-AF3_CONTAINER = config["af3_flags"]["--af3_container"]
+
 
 
 
@@ -314,8 +328,8 @@ checkpoint PREPROCESSING:
          # template_option = TEMPLATE_OPTION, # implement this as a global option: template-based/free. for custom templates, use the mmcif path to
         # run structural alignment and write the indices map in the samplesheet before conversion to json
         mode = MODE,
-        n_seeds = f"--n-seeds {N_SEEDS}" if N_SEEDS else "",
-        n_samples = f"--n-samples {N_SAMPLES}" if N_SAMPLES else "",
+        n_seeds = n_seeds,
+        n_samples = f"--n-samples={N_SAMPLES}" if N_SAMPLES else "",
         predict_individual_components = PREDICT_INDIVIDUAL_COMPONENTS
     shell:
         """
@@ -433,6 +447,7 @@ rule SPLIT_INFERENCE_JOB_LIST:
             start = end
 
 
+#CC=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -n1)
 rule AF3_INFERENCE:
     input:
         data = ancient(os.path.join(OUTPUT_DIR,"rule_SPLIT_INFERENCE_JOB_LIST","af3_inference_jobs_{scatteritem}.txt")) if
@@ -451,12 +466,12 @@ rule AF3_INFERENCE:
         AF3_CONTAINER
     shell:
         """
-        CC=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -n1)
-        if [[ "$CC" == 7.* ]]; then
+        CC=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader,nounits | head -n 1 | cut -d'.' -f1)
+        if [[ "$CC" -ge 7 ]]; then
+            FLASH_ARG=""
+        else
             export XLA_FLAGS="--xla_disable_hlo_passes=custom-kernel-fusion-rewriter"
             FLASH_ARG="--flash_attention_implementation=xla"
-        else
-            FLASH_ARG=""
         fi
         if [  "{params.exclusive_lock}" == "true" ]; then
             echo "CC = ${{CC}}"
