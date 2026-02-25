@@ -424,7 +424,7 @@ rule AF3_INFERENCE:
     shell:
         """
         CC=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader,nounits | head -n 1 | cut -d'.' -f1)
-        if [[ "$CC" -ge 7 ]]; then
+        if [[ "$CC" -ge 8 ]]; then
             FLASH_ARG=""
         else
             export XLA_FLAGS="--xla_disable_hlo_passes=custom-kernel-fusion-rewriter"
