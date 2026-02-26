@@ -393,6 +393,7 @@ def write_fold_inputs(
             msa_option = row.get('msa_option', 'auto')
             unpaired_msa = row.get('unpaired_msa')
             paired_msa = row.get('paired_msa')
+
             templates = parse_json_field(row.get('templates'))
 
             # Create sequence data based on entity type
@@ -731,14 +732,20 @@ def create_protein_sequence_data(
         # Custom MSA provided
         # Both unpairedMsa and pairedMsa must be set (non-null)
         # Typically: unpairedMsa = custom A3M, pairedMsa = ""
-        protein_entry["unpairedMsaPath"] = unpaired_msa if unpaired_msa is not None else ""
-        protein_entry["pairedMsaPath"] = paired_msa if paired_msa is not None else ""
+        protein_entry["unpairedMsaPath"] =     "" if pd.isna(unpaired_msa) else unpaired_msa #unpaired_msa if unpaired_msa is not None else ""
+        protein_entry["pairedMsaPath"] =     "" if pd.isna(paired_msa) else paired_msa  #paired_msa if paired_msa is not None else ""
+        protein_entry["pairedMsa"] =     "" if pd.isna(paired_msa) else paired_msa  #paired_msa if paired_msa is not None else ""
         # Templates can be:
         # - Unset (null) to let AF3 search for templates using the provided MSA
         # - [] for template-free with custom MSA
         # - List of template dicts for custom templates
-        if templates is not None:
-            protein_entry["templates"] = templates
+        if pd.isna(templates):
+            protein_entry["templates"] =  None
+        elif templates == []:
+            protein_entry["templates"] =  []
+        else:
+            protein_entry["templates"] =  templates
+
     else:
         logger.error(f"Invalid msa_option: {msa_option}")
 
