@@ -1105,7 +1105,7 @@ def main(sample_sheet, output_dir, mode, predict_individual_components, n_seeds,
 
         replicate_monomer_groups = (
             multimer_to_monomer_df.fillna("not_specified")
-            .groupby(["sequence", "templates", "paired_msa","unpaired_msa"])["fold_input_mono"]
+            .groupby(["sequence", *optional_columns] if optional_columns in existing_columns else ["sequence"])["fold_input_mono"]
             .apply(set)
             .tolist()
         )
