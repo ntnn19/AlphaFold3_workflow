@@ -739,7 +739,7 @@ def create_protein_sequence_data(
         # - Unset (null) to let AF3 search for templates using the provided MSA
         # - [] for template-free with custom MSA
         # - List of template dicts for custom templates
-        if pd.isna(templates):
+        if templates is None:
             protein_entry["templates"] =  None
         elif templates == []:
             protein_entry["templates"] =  []
@@ -1082,7 +1082,7 @@ def main(sample_sheet, output_dir, mode, predict_individual_components, n_seeds,
         multimer_to_monomer_df = pd.merge(
             multimer_df[["job_name", "id", "fold_input", "model_seeds"]],
             monomer_df[
-                ["job_name", "id", "sequence", "fold_input",
+                ["job_name", "id", "sequence", "templates", "paired_msa","unpaired_msa","fold_input",
                  "original_job_name", "original_id"]
             ],
             left_on="job_name",
@@ -1098,8 +1098,8 @@ def main(sample_sheet, output_dir, mode, predict_individual_components, n_seeds,
         )
 
         replicate_monomer_groups = (
-            multimer_to_monomer_df
-            .groupby("sequence")["fold_input_mono"]
+            multimer_to_monomer_df.fillna("not_specified")
+            .groupby(["sequence", "templates", "paired_msa","unpaired_msa"])["fold_input_mono"]
             .apply(set)
             .tolist()
         )

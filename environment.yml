@@ -8,7 +8,7 @@ dependencies:
   - click>=8.1.7
   - biopython>=1.83
   - pandas>=2.2.2
-  - snakemake>=8.14.0
+  - snakemake>=9.16.3
   - snakemake-executor-plugin-slurm
   - numpy>=1.26.4
   - gemmi=0.6.7
