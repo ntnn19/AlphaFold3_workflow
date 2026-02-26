@@ -7,6 +7,10 @@ from numpy.random import sample
 
 localrules: PREPROCESSING , MERGE_MONO_AND_MULTI_JSON, CREATE_AF3_INFERENCE_JOBS_SPEEDY_AF3_PIPELINE, AGG_AF3_INFERENCE_JOBS, SPLIT_INFERENCE_JOB_LIST
 
+scattergather:
+    split=config.get("n_splits",1),
+    split_ost=config.get("n_splits_ost",1)
+
 SAMPLE_SHEET_SCHEMAS = {
     "raw_data": [
         "job_name", "type", "id", "sequence", "modifications", "ccd_codes",
@@ -87,6 +91,8 @@ PREDICT_INDIVIDUAL_COMPONENTS = bool_flag("predict_individual_components",config
 N_SEEDS = config.get("n_seeds") # See TODO
 N_SAMPLES = config.get("n_samples")
 MSA_OPTION = config.get("msa_option","auto")
+SPLIT_TOTAL = workflow._scatter["split"]
+SPLIT_OST = workflow._scatter["split_ost"]
 
 
 
@@ -113,9 +119,6 @@ else:
     n_seeds = "--n-seeds=1"            # fallback default
 
 
-scattergather:
-    split=config.get("n_splits",1),
-    split_ost=config.get("n_splits_ost",1)
 
 
 def sanitised_name(name):
@@ -221,6 +224,7 @@ def get_merge_inputs(wildcards):
     """
 
     if not MERGE_READY_DF.empty and wildcards.multi in MERGE_READY_DF['sample_id'].values:
+        print("HERE")
         multimer_rows = MERGE_READY_DF[MERGE_READY_DF['sample_id'] == wildcards.multi]
 
         multimer_template = multimer_rows.iloc[0]['multimer_file']
@@ -232,12 +236,14 @@ def get_merge_inputs(wildcards):
             'monomer_files': monomer_files
         }
     checkpoint_output = os.path.join(checkpoints.PREPROCESSING.get(**wildcards).output[0],"metadata","inference_to_data_pipeline_map.tsv")
-
+    print("NO, HERE")
     mapping = pd.read_csv(checkpoint_output,sep="\t")
 
-    multimer_rows = mapping[mapping['multimer_file'] == wildcards.multi]
+    multimer_rows = mapping[mapping['multimer_file'].str.contains(wildcards.multi)]
     monomers = multimer_rows['monomer_file'].tolist()
-
+    print("wildcards.multi", wildcards.multi)
+    print("multimer rows", multimer_rows)
+    print("monomer rows", monomers)
     multimer_template = os.path.join(
         OUTPUT_DIR,
         "rule_PREPROCESSING",
@@ -245,23 +251,24 @@ def get_merge_inputs(wildcards):
         f"{wildcards.multi}.json"
     )
 
-    monomer_files = get_monomeric_json_outputs(wildcards)
-    for mono in monomers:
-        mono_file = os.path.join(
-            OUTPUT_DIR,
-            "rule_AF3_DATA_PIPELINE",
-            mono,
-            f"{mono}_data.json"
-        )
-        monomer_files.append(mono_file)
+ #   all_monomers = get_monomeric_json_outputs(wildcards)
+ #   print(all_monomers)
+ #   exit()
+#    for mono in monomers:
+ #       mono_file = os.path.join(
+ #           OUTPUT_DIR,
+ #           "rule_AF3_DATA_PIPELINE",
+ #           mono,
+ #           f"{mono}_data.json"
+ #       )
+        
+#        monomer_files.append(mono_file)
     return {
         'multimer_template': multimer_template,
-        'monomer_files': monomer_files
+        'monomer_files': monomers
     }
 
 
-SPLIT_TOTAL = workflow._scatter["split"]
-SPLIT_OST = workflow._scatter["split_ost"]
 
 
 
