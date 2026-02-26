@@ -718,8 +718,7 @@ def create_protein_sequence_data(
         # Templates can be:
         # - Unset (null/omitted) for auto template search
         # - [] for template-free with auto MSA
-        if templates is not None:
-            protein_entry["templates"] = templates
+        protein_entry["templates"] = templates if templates is not None else []
 
     elif msa_option == 'none':
         # Both MSAs set to empty string - completely MSA-free
