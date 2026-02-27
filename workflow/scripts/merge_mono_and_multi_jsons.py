@@ -69,7 +69,16 @@ def main(multimer_file, monomer_file, output_file, inference_to_data_map):
         t["multimer_chain_id"] = chain2seq_multimer.keys()
         t["multimer_chain_seq"] = chain2seq_multimer.values()
         t["monomer_chain_seq"] = t["monomer_file"].apply(lambda x: (s := next(iter(json.load(open(x))["sequences"][0].values())))["sequence"])
-        chain_map = {(row["multimer_file"], row["multimer_chain_id"]): (row["monomer_file"], row["monomer_chain_id"]) for _, row in t[t["multimer_chain_seq"] == t["monomer_chain_seq"]].iterrows()}
+#        chain_map = {(row["multimer_file"], row["multimer_chain_id"]): (row["monomer_file"], row["monomer_chain_id"]) for _, row in t[t["multimer_chain_seq"] == t["monomer_chain_seq"]].iterrows()}
+        monomer_lookup = (
+             t.drop_duplicates("monomer_chain_seq")
+            .set_index("monomer_chain_seq")[["monomer_file", "monomer_chain_id"]]
+        )
+        chain_map = {
+            (row.multimer_file, row.multimer_chain_id):
+            tuple(monomer_lookup.loc[row.multimer_chain_seq])
+            for row in t.itertuples()
+        }
         for seq in merged_multimer["sequences"]:
             s = next(iter(seq.values()))
             for k in MSA_KEYS:

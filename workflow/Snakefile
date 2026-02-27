@@ -340,6 +340,8 @@ rule AF3_DATA_SPEEDY_PIPELINE:
 rule MERGE_MONO_AND_MULTI_JSON:
     input:
         unpack(get_merge_inputs)
+    params:
+        map_multi_to_mono = os.path.join(OUTPUT_DIR,"rule_PREPROCESSING","metadata","inference_to_data_pipeline_map.tsv") # POSSIBBLY REMOVE THIS
     output:
         os.path.join(OUTPUT_DIR,"rule_MERGE_MONOMERS_TO_MULTIMERS","{multi}_data.json") if MODE in ["custom","all-vs-all","pulldown","virtual-drug-screen","stoichio-screen"] else [],
     shell:
