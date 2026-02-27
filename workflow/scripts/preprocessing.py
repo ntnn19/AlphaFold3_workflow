@@ -1004,8 +1004,13 @@ def main(sample_sheet, output_dir, mode, predict_individual_components, n_seeds,
     os.makedirs(metadata_dir, exist_ok=True)
 
     df = pd.read_csv(sample_sheet, sep="\t")
+
     optional_columns = ["templates", "paired_msa", "unpaired_msa"]
-    existing_columns = [c for c in optional_columns if c in df.columns]
+
+    # Select only columns that exist
+    existing_optional_cols = [c for c in optional_columns if c in df.columns]
+
+
 
     df["job_name"] = df["job_name"].apply(lambda x: sanitised_name(x))
 
@@ -1086,9 +1091,7 @@ def main(sample_sheet, output_dir, mode, predict_individual_components, n_seeds,
         multimer_to_monomer_df = pd.merge(
             multimer_df[["job_name", "id", "fold_input", "model_seeds"]],
             monomer_df[
-                ["job_name", "id", "sequence", "templates", "paired_msa","unpaired_msa","fold_input",
-                 "original_job_name", "original_id"] if optional_columns in existing_columns else
-                ["job_name", "id", "sequence", "fold_input",
+                ["job_name", "id", "sequence", *existing_optional_cols,"fold_input",
                  "original_job_name", "original_id"]
             ],
             left_on="job_name",
@@ -1105,7 +1108,7 @@ def main(sample_sheet, output_dir, mode, predict_individual_components, n_seeds,
 
         replicate_monomer_groups = (
             multimer_to_monomer_df.fillna("not_specified")
-            .groupby(["sequence", *optional_columns] if optional_columns in existing_columns else ["sequence"])["fold_input_mono"]
+            .groupby(["sequence", *existing_optional_cols])["fold_input_mono"]
             .apply(set)
             .tolist()
         )
