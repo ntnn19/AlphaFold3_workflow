@@ -6,6 +6,16 @@ from pathlib import Path
 import copy
 import click
 
+MSA_KEYS = {"unpairedMsa", "unpairedMsaPath", "pairedMsa", "pairedMsaPath", "templates"}
+IDENTITY_KEYS = ["sequence", "ccdCodes", "smiles"]
+
+def get_chain_identity(s: dict):
+    for k in IDENTITY_KEYS:
+        if k in s:
+            v = s[k]
+            return (k, tuple(v) if isinstance(v, list) else v)
+    raise KeyError(f"No identity key found in sequence entry: {s.keys()}")
+
 @click.command()
 @click.argument("multimer_file", type=click.Path(exists=True))
 @click.argument("monomer_file", type=click.Path(exists=True), nargs=-1)
@@ -15,7 +25,7 @@ def main(multimer_file, monomer_file, output_file, inference_to_data_map):
     """
     Merge monomer JSONs into a multimer JSON for a given sample.
     """
-    MSA_KEYS = {"unpairedMsa", "unpairedMsaPath", "pairedMsa", "pairedMsaPath", "templates"}
+
     if inference_to_data_map:
         inference_to_data_map_df = pd.read_csv(inference_to_data_map,sep="\t")
         job_map_df  = inference_to_data_pipeline_map_df[inference_to_data_pipeline_map_df.multimer_file.str.contains(Path(multimer_file).stem)]
@@ -57,48 +67,48 @@ def main(multimer_file, monomer_file, output_file, inference_to_data_map):
 
     # 1️⃣ Load multimer JSON
     else:
-        
-        with open(multimer_file, "r") as f:
-            multimer_data = json.load(f)
+            with open(multimer_file, "r") as f:
+                multimer_data = json.load(f)
     
-        merged_multimer = copy.deepcopy(multimer_data)
-        t=pd.DataFrame([multimer_file]*len(monomer_file),columns= ["multimer_file"])
-        t["monomer_file"] = monomer_file
-        chain2seq_multimer = {list(s.values())[0]['id']: list(s.values())[0]['sequence'] for s in merged_multimer['sequences']}
-        t["monomer_chain_id"] = t["monomer_file"].apply(lambda x: (s := next(iter(json.load(open(x))["sequences"][0].values())))["id"])
-        t["multimer_chain_id"] = chain2seq_multimer.keys()
-        t["multimer_chain_seq"] = chain2seq_multimer.values()
-        t["monomer_chain_seq"] = t["monomer_file"].apply(lambda x: (s := next(iter(json.load(open(x))["sequences"][0].values())))["sequence"])
-#        chain_map = {(row["multimer_file"], row["multimer_chain_id"]): (row["monomer_file"], row["monomer_chain_id"]) for _, row in t[t["multimer_chain_seq"] == t["monomer_chain_seq"]].iterrows()}
-        monomer_lookup = (
-             t.drop_duplicates("monomer_chain_seq")
-            .set_index("monomer_chain_seq")[["monomer_file", "monomer_chain_id"]]
-        )
-        chain_map = {
-            (row.multimer_file, row.multimer_chain_id):
-            tuple(monomer_lookup.loc[row.multimer_chain_seq])
-            for row in t.itertuples()
-        }
-        for seq in merged_multimer["sequences"]:
-            s = next(iter(seq.values()))
-            for k in MSA_KEYS:
-                s.pop(k, None)
-            chain_id = s["id"]
-            monomer_file, _ = chain_map[(multimer_file, chain_id)]
-            monomer_seq = next(iter(json.load(open(monomer_file))["sequences"][0].values()))
-            s.update({k: monomer_seq[k] for k in MSA_KEYS if k in monomer_seq})
+            merged_multimer = copy.deepcopy(multimer_data)
+    
+            # Build identity -> (monomer_file, monomer_chain_id) lookup from all monomer files
+            # Build identity -> (monomer_file, monomer_chain_id, monomer_seq_dict) lookup
+            monomer_lookup = {}
+            for mf in monomer_file:
+                for entry in json.load(open(mf))["sequences"]:
+                    s = next(iter(entry.values()))
+                    _, identity = get_chain_identity(s)
+                    monomer_lookup[identity] = (mf, s["id"], s)
+            
+            # Map each multimer chain to its matching monomer entry
+            chain_map = {}
+            for entry in merged_multimer["sequences"]:
+                s = next(iter(entry.values()))
+                _, identity = get_chain_identity(s)
+                if identity in monomer_lookup:
+                    chain_map[(multimer_file, s["id"])] = monomer_lookup[identity]
+            
+            # Merge MSA keys from matched monomer into each multimer chain
+            for seq in merged_multimer["sequences"]:
+                s = next(iter(seq.values()))
+                for k in MSA_KEYS:
+                    s.pop(k, None)
+                chain_id = s["id"]
+                if (multimer_file, chain_id) not in chain_map:
+                    continue
+                _, _, monomer_s = chain_map[(multimer_file, chain_id)]
+                s.update({k: monomer_s[k] for k in MSA_KEYS if k in monomer_s})
 
-    # 4️⃣ For each model seed, write a separate merged JSON
+    
+        # 4️⃣ For each model seed, write a separate merged JSON
     for s in merged_multimer["modelSeeds"]:
         seed_merged_multimer = copy.deepcopy(merged_multimer)
         seed_merged_multimer["modelSeeds"] = [s]
-
         os.makedirs(os.path.dirname(output_file), exist_ok=True)
         with open(output_file, "w") as f:
             json.dump(seed_merged_multimer, f, indent=4)
-
     print(f"Merged JSON written to {output_file}")
-
 
 if __name__ == "__main__":
     main()
