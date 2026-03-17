@@ -22,4 +22,4 @@ set-resources:
         mem_mb: 256000
         slurm_partition: "vds"
 #        slurm_extra: "'--nodelist=max-p3ag014'"
-#        slurm_extra: "'--nodelist=max-cssbg[006-009]'"
+        slurm_extra: "'--nodelist=max-cssbg[011-014,024-027]'"

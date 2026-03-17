@@ -87,7 +87,7 @@ def main(multimer_file, monomer_file, output_file, inference_to_data_map):
                 s = next(iter(entry.values()))
                 _, identity = get_chain_identity(s)
                 if identity in monomer_lookup:
-                    chain_map[(multimer_file, s["id"])] = monomer_lookup[identity]
+                    chain_map[(multimer_file, tuple(s["id"]))] = monomer_lookup[identity]
             
             # Merge MSA keys from matched monomer into each multimer chain
             for seq in merged_multimer["sequences"]:
@@ -95,9 +95,9 @@ def main(multimer_file, monomer_file, output_file, inference_to_data_map):
                 for k in MSA_KEYS:
                     s.pop(k, None)
                 chain_id = s["id"]
-                if (multimer_file, chain_id) not in chain_map:
+                if (multimer_file, tuple(chain_id)) not in chain_map:
                     continue
-                _, _, monomer_s = chain_map[(multimer_file, chain_id)]
+                _, _, monomer_s = chain_map[(multimer_file, tuple(chain_id))]
                 s.update({k: monomer_s[k] for k in MSA_KEYS if k in monomer_s})
 
     
