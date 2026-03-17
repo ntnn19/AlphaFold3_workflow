@@ -2,6 +2,7 @@
 
 import pdb
 from collections import defaultdict
+from copy import deepcopy
 import numpy as np
 import os
 import json
@@ -726,14 +727,14 @@ def create_protein_sequence_data(
         # Templates can be:
         # - Unset (null/omitted) for auto template search
         # - [] for template-free with auto MSA
-        set_templates(protein_entry, templates)
+        protein_entry = set_templates(protein_entry, templates)
 
     elif msa_option == 'none':
         # Both MSAs set to empty string - completely MSA-free
         protein_entry["unpairedMsa"] = ""
         protein_entry["pairedMsa"] = ""
         # Templates defaults to [] if not provided (template-free)
-        set_templates(protein_entry, templates)
+        protein_entry = set_templates(protein_entry, templates)
 
 
     elif msa_option == 'upload':
@@ -747,7 +748,7 @@ def create_protein_sequence_data(
         # - Unset (null) to let AF3 search for templates using the provided MSA
         # - [] for template-free with custom MSA
         # - List of template dicts for custom templates
-        set_templates(protein_entry, templates)
+        protein_entry = set_templates(protein_entry, templates)
 
     else:
         logger.error(f"Invalid msa_option: {msa_option}")
@@ -782,10 +783,16 @@ def set_templates(protein_entry: dict[str, str], templates: str | None):
         if is_template_path(templates):
             template_path=templates.split(",")[0]
             template_chain=templates.split(",")[1]
-            af3_json = run_custom_template(protein_entry,protein_entry["id"], template_path,template_chain,output_json=None,to_file=False)
+            pdb.set_trace()
+            protein_entry_ = deepcopy(protein_entry)
+            run_custom_template(protein_entry_,protein_entry_["id"], template_path,template_chain,output_json=None,to_file=False)
+            protein_entry["templates"] = protein_entry_["protein"]["templates"]
+#            protein_entry["templates"] = af3_json =
+            #print(af3_json["name"])
         else:
             protein_entry["templates"] = templates
 
+    return protein_entry
 
 def create_dna_sequence_data(sequence, modifications=None):
     """

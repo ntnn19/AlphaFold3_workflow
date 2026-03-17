@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # Credit for https://github.com/hlasimpk/af3_mmseqs_scripts
-
+import pdb
 import os
 import json
 from io import StringIO
@@ -48,12 +48,8 @@ def run_custom_template(
             ))
     else:
         # If input_json was a single sequence dict
-        af3_json = get_custom_template(
-            af3_json,
-            target_id,
-            custom_template,
-            custom_template_chain,
-        )
+        #pdb.set_trace()
+        af3_json = get_custom_template(            af3_json,            target_id,            custom_template,            custom_template_chain,        )
 
     # Handle writing output if requested
     if to_file:
