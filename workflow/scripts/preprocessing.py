@@ -783,7 +783,6 @@ def set_templates(protein_entry: dict[str, str], templates: str | None):
         if is_template_path(templates):
             template_path=templates.split(",")[0]
             template_chain=templates.split(",")[1]
-            pdb.set_trace()
             protein_entry_ = deepcopy(protein_entry)
             run_custom_template(protein_entry_,protein_entry_["id"], template_path,template_chain,output_json=None,to_file=False)
             protein_entry["templates"] = protein_entry_["protein"]["templates"]
