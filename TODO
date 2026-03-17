@@ -1,10 +1,39 @@
-# Disable the requirment to specifiy output directory in the sample tables - DONE
-# Don't ask the users for different lines of monomers/multimers. break it down yourself when there is a multimer to predict. - DONE
 # Let the user configure alphafold using a flag for --extra-alphafold-params instead of speicfying each param. -  TESTING
-# Define gloabl flags that override job speficic configurations: template based, template free,  single seq mode (no templates, no msa), msa-free mode, - TBD
-# Support custom tempalte mode with the option to disable msa. for each user specified template, run structural alignment and update the samplesheet with the indices
+# Define gloabl flags that override job speficic configurations: template based, template free,  single seq mode (no templates, no msa), msa-free mode, - TESTING
+# Support custom tempalte mode with the option to disable msa. for each user specified template, run structural alignment and update the samplesheet with the indices -TBD
+# create a report with confidence scores:
+  multimers - use ipsae.py script -TBD
+  monomers - check if ipsae.py is compatible, if not parse directly from the json files
+  Basically, for multimeric structures, we want the chain_pair iptm and color code each such pair according to its multimer. perhaps clustered heatmap? the individual components are of a complex are labeled similarly:
+  - total iptm high/low, individual pairs high/low - pairs cluster together
+  - total iptm high/low, individual pairs mixed - pairs cluster separately
+  pair members identity should be annotated by its type (protein/rna/dna/ligand) and chain id
+
+  for testing, need a general output, with:
+  monomer protein
+  monomer protein + one ligand
+  monomer protein + many ligand
+  multimer protein
+  multimer protein + one ligand
+  multimer protein + many ligand
+
+# benchmark - the user provide ground truth data
+ # for structure prediction - the use provide sample sheet for experimental structures -> workflow reports tm and dockq scores
+ # for docking - the user provide sample sheet pointing to data structured as in runs-and-poses -> lddt_pli, rmsd, and sucesses, are reported in addition to tm and dockq scores
+
+# add ensemble generation mode - the user provide a sample sheet of jobs, and can select:
+  - massive_sampling - 1000 seeds for structure prediction
+  ONLY FOR MONOMERS:
+  - af_cluster
+  - conformix - creates structures than can be used as templates:
+        - the workflow generates conformers
+        - the conformers are aligned to the target sequence
+        - alpahfold uses these conformers as templates in msa-free mode
+            - af_unmasked
+            - standard alphafold
+
 # Entry points - start data-pipeline/inference based on sample sheet of jsons - TESTING
-# Make this branch as main.  
 # add schemas to check config, sample sheet, and profile - TBD
 # add a python wrapper to the workflow - TBD
+
 

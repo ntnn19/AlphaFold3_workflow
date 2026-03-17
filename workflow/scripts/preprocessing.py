@@ -21,7 +21,7 @@ from typing import (
     Literal,
     Tuple
 )
-
+from add_custom_template import run_custom_template
 
 
 def has_multimers(df: pd.DataFrame) -> bool:
@@ -400,6 +400,7 @@ def write_fold_inputs(
             if entity_type == 'protein':
                 sequence_data = create_protein_sequence_data(
                     sequence=sequence,
+                    sequence_id=entity_id,
                     modifications=modifications,
                     msa_option=msa_option,
                     unpaired_msa=unpaired_msa,
@@ -681,6 +682,7 @@ def create_rna_sequence_data(
 # modify the following function to be compatible with the following documentation:
 def create_protein_sequence_data(
         sequence: str,
+        sequence_id: str,
         modifications: Optional[Sequence[Mapping[str, Any]]] = None,
         msa_option: Literal["auto", "none", "custom"] = "auto",
         unpaired_msa: Optional[str] = None,
@@ -706,8 +708,14 @@ def create_protein_sequence_data(
     :rtype: dict
     """
     protein_entry = {
-        "sequence": sequence
+        "sequence": sequence,
+        "id": sequence_id,
     }
+
+    # python /gpfs/cssb/group/cssb-topf/natan/tools/af3_mmseqs_scripts/af3_mmseqs2/add_custom_template.py
+    #    --input_json json_files_fixed/no_templates/2fybA-P15291_126_398.json # remove
+    #    --output_json json_files_fixed/with_templates/2fybA-P15291_126_398.json # remove
+    #    --target_id A         --custom_template data/structures/rcsb_cif/2fyb.cif         --custom_template_chain A
 
     if modifications:
         protein_entry["modifications"] = modifications
@@ -718,24 +726,15 @@ def create_protein_sequence_data(
         # Templates can be:
         # - Unset (null/omitted) for auto template search
         # - [] for template-free with auto MSA
-        if templates is None:
-            protein_entry["templates"] = None
-        elif templates == []:
-            protein_entry["templates"] = []
-        else:
-            protein_entry["templates"] = templates
+        set_templates(protein_entry, templates)
 
     elif msa_option == 'none':
         # Both MSAs set to empty string - completely MSA-free
         protein_entry["unpairedMsa"] = ""
         protein_entry["pairedMsa"] = ""
         # Templates defaults to [] if not provided (template-free)
-        if templates is None:
-            protein_entry["templates"] = None
-        elif templates == []:
-            protein_entry["templates"] = []
-        else:
-            protein_entry["templates"] = templates
+        set_templates(protein_entry, templates)
+
 
     elif msa_option == 'upload':
         # Custom MSA provided
@@ -748,17 +747,44 @@ def create_protein_sequence_data(
         # - Unset (null) to let AF3 search for templates using the provided MSA
         # - [] for template-free with custom MSA
         # - List of template dicts for custom templates
-        if templates is None:
-            protein_entry["templates"] =  None
-        elif templates == []:
-            protein_entry["templates"] =  []
-        else:
-            protein_entry["templates"] =  templates
+        set_templates(protein_entry, templates)
 
     else:
         logger.error(f"Invalid msa_option: {msa_option}")
-
+    protein_entry.pop("id")
     return protein_entry
+
+
+
+def is_json_like(value):
+    if not isinstance(value, str):
+        return isinstance(value, (list, dict))
+    try:
+        parsed = json.loads(value)
+        return isinstance(parsed, (list, dict))
+    except Exception:
+        return False
+
+def is_template_path(value):
+    return (
+        isinstance(value, str)
+        and "," in value
+        and not is_json_like(value)
+    )
+
+def set_templates(protein_entry: dict[str, str], templates: str | None):
+    #pdb.set_trace()
+    if templates is None:
+        protein_entry["templates"] = None
+    elif templates == []:
+        protein_entry["templates"] = []
+    else:
+        if is_template_path(templates):
+            template_path=templates.split(",")[0]
+            template_chain=templates.split(",")[1]
+            af3_json = run_custom_template(protein_entry,protein_entry["id"], template_path,template_chain,output_json=None,to_file=False)
+        else:
+            protein_entry["templates"] = templates
 
 
 def create_dna_sequence_data(sequence, modifications=None):
@@ -820,13 +846,17 @@ def parse_json_field(value):
     :return: Parsed Python object or None.
     :rtype: object or None
     """
+    logger.debug(f"Parsing JSON field: {value}")
     if pd.isna(value) or value == '':
         return None
-    try:
-        return json.loads(value)
-    except json.JSONDecodeError as e:
-        logger.error(f"JSON decode error: {e}")
-        return None
+    if is_json_like(value):
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON decode error: {e}")
+            return None
+    else:
+        return value
 
 
 def parse_list_field(value, data_type=str):
