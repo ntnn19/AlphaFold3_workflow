@@ -1,0 +1,3 @@
+job_name	ground_truth
+job1	/home/nadmin/repos/AlphaFold3_workflow/.test/config/custom_ground_truth/ground_truth/2PV7.cif
+job3_test	/home/nadmin/repos/af3_docking_poc/data/runs_and_poses/ground_truth/8g69__1__1.A__1.C

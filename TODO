@@ -37,3 +37,6 @@
 # add a python wrapper to the workflow - TBD
 
 
+
+
+# BUG identical monomers with different custom templates/msas should be treated as unique.

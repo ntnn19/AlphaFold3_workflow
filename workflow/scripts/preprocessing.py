@@ -25,13 +25,23 @@ from typing import (
 from add_custom_template import run_custom_template
 
 
-def has_multimers(df: pd.DataFrame) -> bool:
-    has_multimers_ = (
-            df.job_name.duplicated().any()
-            and not df.empty
-    )
-    return has_multimers_
+def is_multimer(types):
+    return len(types) > 1 and sum(t in ["protein", "rna"] for t in types) >= 2
 
+def has_multimers(df: pd.DataFrame) -> bool:
+    if df.empty:
+        return False
+
+    # Group by job_name
+    grouped = df.groupby("job_name")["type"]
+
+    # Check for each job if it has >1 row and at least 2 protein/rna rows
+
+
+    # Filter jobs that meet the criterion
+    multimers = grouped.filter(is_multimer)
+
+    return not multimers.empty
 
 def expand_df(df: pd.DataFrame, column: str) -> pd.DataFrame:
     df = df.copy()
@@ -58,7 +68,7 @@ def expand_df(df: pd.DataFrame, column: str) -> pd.DataFrame:
     })
 
 def sanitised_name(name: str) -> str:
-    """Returns sanitised version of the name that can be used as a filename."""
+    """Returns sanitized version of the name that can be used as a filename."""
     name = str(name)
     lower_spaceless_name = name.lower().replace(' ', '_')
     allowed_chars = set(string.ascii_lowercase + string.digits + '_-.')
@@ -541,7 +551,8 @@ def extract_monomer_jobs(
         monomer_df: pd.DataFrame,
         output_dir: Union[str, Path],
         has_multimers: bool = False,
-        independent_monomers: bool = False
+        independent_monomers: bool = False,
+        n_seeds: int = None
 ) -> pd.DataFrame:
     """
     From multimer jobs, create monomer jobs:
@@ -566,7 +577,7 @@ def extract_monomer_jobs(
         else monomers["job_name"]
     )
     if independent_monomers:
-        monomers = monomers.assign(model_seeds=monomers.model_seeds.str.split(",")).explode("model_seeds")
+        monomers = monomers.assign(model_seeds=monomers.model_seeds.str.split(",") if not n_seeds else [[str(i) for i in range(1, n_seeds + 1)]] * len(monomers)).explode("model_seeds")
         monomers["job_name"] = monomers["job_name"] + "_seed-" + monomers["model_seeds"] + "_chain-" + monomers["id"]
         monomers["original_job_name"] = monomers["job_name"].str.split("_chain-").str[0]
 
@@ -774,7 +785,6 @@ def is_template_path(value):
     )
 
 def set_templates(protein_entry: dict[str, str], templates: str | None):
-    #pdb.set_trace()
     if templates is None:
         protein_entry["templates"] = None
     elif templates == []:
@@ -988,15 +998,18 @@ def remove_duplicate_jobs_scalable(df, cols_to_compare, log_file=f'duplicate_job
     return df[df['job_name'].isin(unique_job_names)]
 
 def separate_to_dependent_and_independent_jobs(df_dedup, n_seeds, output_dir):
-    counts = df_dedup['job_name'].value_counts()
-    job_name_not_part_of_multimers = counts[counts == 1].index
+    #pdb.set_trace()
+    grouped = df_dedup.groupby("job_name")["type"]
+    multimer_jobs = grouped.filter(is_multimer).index.unique()
+    job_name_not_part_of_multimers = df_dedup.loc[~df_dedup['job_name'].isin(multimer_jobs), 'job_name'].unique()
+
     independent_monomers_df = pd.DataFrame([])
     independent_monomers_as_multimers_df = pd.DataFrame([])
-    if not counts[counts == 1].empty:
+    if not pd.DataFrame(job_name_not_part_of_multimers).empty:
         df_dedup_not_part_of_multimers = df_dedup[
             df_dedup.job_name.isin(job_name_not_part_of_multimers)].reset_index(drop=True)
         write_fold_inputs(df_dedup_not_part_of_multimers, output_dir, n_seeds=n_seeds, is_fold_independent=True)
-        independent_monomers_df = extract_monomer_jobs(df_dedup_not_part_of_multimers,output_dir,independent_monomers=True)
+        independent_monomers_df = extract_monomer_jobs(df_dedup_not_part_of_multimers,output_dir,n_seeds=n_seeds,independent_monomers=True)
         independent_monomers_as_multimers_df = extract_multimer_jobs(df_dedup_not_part_of_multimers,output_dir,n_seeds=n_seeds,independent_monomers=True)
 
     df_dedup_dependent = df_dedup[~df_dedup.job_name.isin(job_name_not_part_of_multimers)].reset_index(drop=True)
@@ -1063,25 +1076,29 @@ def main(sample_sheet, output_dir, mode, predict_individual_components, n_seeds,
     cols_to_compare = df.columns.difference(['job_name'])
     df_dedup = remove_duplicate_jobs_scalable(df, cols_to_compare,log_file=os.path.join(metadata_dir,"duplicate_job_summary.json"))
     has_multimers_ = has_multimers(df_dedup)
+    pdb.set_trace()
     df_dedup_dependent, df_dedup_independent_as_monomers, df_dedup_independent_as_multimers = (
         pd.DataFrame([]),
         pd.DataFrame([]),
         pd.DataFrame([])
     )
     if mode != 'virtual-drug-screen' and mode != 'stoichio-screen' and mode != "pulldown":
-
+        pdb.set_trace()
         df_dedup_dependent, df_dedup_independent_as_monomers, df_dedup_independent_as_multimers = separate_to_dependent_and_independent_jobs(df_dedup, n_seeds, output_dir)
     if mode == "custom":
         # write originals
 
         write_fold_inputs(df_dedup_dependent, output_dir, n_seeds=n_seeds)
+        pdb.set_trace()
         # derive + write monomers from multimers
-        multimer_df = extract_multimer_jobs(df_dedup_dependent, output_dir,n_seeds=n_seeds)
+        multimer_df = extract_multimer_jobs(df_dedup_dependent, output_dir,n_seeds=n_seeds) if not df_dedup_dependent.empty else pd.DataFrame([])
 
         if has_multimers_:
             monomer_df = extract_monomer_jobs(multimer_df, output_dir, has_multimers=True)
         else:
+            pdb.set_trace()
             monomer_df = extract_monomer_jobs(df_dedup_dependent, output_dir, has_multimers=False)
+
     elif mode == "all-vs-all":
         write_fold_inputs(df_dedup, output_dir, n_seeds=n_seeds)
 
@@ -1132,6 +1149,7 @@ def main(sample_sheet, output_dir, mode, predict_individual_components, n_seeds,
         monomer_df = pd.concat([monomer_df, df_dedup_independent_as_monomers], ignore_index=True)
 
     if has_multimers_ or df_dedup_dependent.empty:
+        pdb.set_trace()
         write_fold_inputs(monomer_df, output_dir, n_seeds=n_seeds)
 
         multimer_to_monomer_df = pd.merge(

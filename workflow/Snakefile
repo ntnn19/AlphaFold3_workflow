@@ -75,6 +75,7 @@ INFERENCE_READY_PATH, INFERENCE_READY_DF = load_sample_sheet("inference_ready")
 MERGE_READY_PATH, MERGE_READY_DF = load_sample_sheet("merge_ready")
 OUTPUT_DIR = config.get("output_dir","results")
 
+
 if not DATA_PIPELINE_READY_DF.empty and MERGE_READY_DF.empty: # Create dummy merging table
     MERGE_READY_DF = DATA_PIPELINE_READY_DF.copy()
     MERGE_READY_DF = MERGE_READY_DF.rename(columns={"file": "multimer_file"})
