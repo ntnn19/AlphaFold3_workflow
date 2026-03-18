@@ -998,7 +998,7 @@ def remove_duplicate_jobs_scalable(df, cols_to_compare, log_file=f'duplicate_job
     return df[df['job_name'].isin(unique_job_names)]
 
 def separate_to_dependent_and_independent_jobs(df_dedup, n_seeds, output_dir):
-    #pdb.set_trace()
+    #
     grouped = df_dedup.groupby("job_name")["type"]
     multimer_jobs = grouped.filter(is_multimer).index.unique()
     job_name_not_part_of_multimers = df_dedup.loc[~df_dedup['job_name'].isin(multimer_jobs), 'job_name'].unique()
@@ -1076,27 +1076,27 @@ def main(sample_sheet, output_dir, mode, predict_individual_components, n_seeds,
     cols_to_compare = df.columns.difference(['job_name'])
     df_dedup = remove_duplicate_jobs_scalable(df, cols_to_compare,log_file=os.path.join(metadata_dir,"duplicate_job_summary.json"))
     has_multimers_ = has_multimers(df_dedup)
-    pdb.set_trace()
+
     df_dedup_dependent, df_dedup_independent_as_monomers, df_dedup_independent_as_multimers = (
         pd.DataFrame([]),
         pd.DataFrame([]),
         pd.DataFrame([])
     )
     if mode != 'virtual-drug-screen' and mode != 'stoichio-screen' and mode != "pulldown":
-        pdb.set_trace()
+
         df_dedup_dependent, df_dedup_independent_as_monomers, df_dedup_independent_as_multimers = separate_to_dependent_and_independent_jobs(df_dedup, n_seeds, output_dir)
     if mode == "custom":
         # write originals
 
         write_fold_inputs(df_dedup_dependent, output_dir, n_seeds=n_seeds)
-        pdb.set_trace()
+
         # derive + write monomers from multimers
         multimer_df = extract_multimer_jobs(df_dedup_dependent, output_dir,n_seeds=n_seeds) if not df_dedup_dependent.empty else pd.DataFrame([])
 
         if has_multimers_:
             monomer_df = extract_monomer_jobs(multimer_df, output_dir, has_multimers=True)
         else:
-            pdb.set_trace()
+
             monomer_df = extract_monomer_jobs(df_dedup_dependent, output_dir, has_multimers=False)
 
     elif mode == "all-vs-all":
@@ -1149,7 +1149,7 @@ def main(sample_sheet, output_dir, mode, predict_individual_components, n_seeds,
         monomer_df = pd.concat([monomer_df, df_dedup_independent_as_monomers], ignore_index=True)
 
     if has_multimers_ or df_dedup_dependent.empty:
-        pdb.set_trace()
+
         write_fold_inputs(monomer_df, output_dir, n_seeds=n_seeds)
 
         multimer_to_monomer_df = pd.merge(
