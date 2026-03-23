@@ -102,6 +102,8 @@ def do_align(ref_seq, query_seq, alignment_type="blast"): # credit to @clami66: 
         aligner.open_gap_score = -0.5
         # aligner.extend_gap_score = -0.5
         aln = aligner.align(ref_seq, query_seq)[0]
+        print(aln[0])
+        print(aln[1])
         try:  # compatibility between versions of Biopython
             ref_aligned = aln[0]
             query_aligned = aln[1]
