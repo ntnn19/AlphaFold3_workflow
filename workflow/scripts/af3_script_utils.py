@@ -101,6 +101,8 @@ def align_and_map(query_seq, template_seq):
     # Perform pairwise alignment
     alignments = pairwise2.align.globalxx(query_seq, template_seq)
     alignment = alignments[0]  # Take the best alignment
+    print("ALIGNMENT")
+    print(pairwise2.format_alignment(*alignment))
     query_aligned, template_aligned, _, _, _ = alignment
 
     # Map the aligned sequences
@@ -281,7 +283,6 @@ contain chain {custom_template_chain}"
 
     template["mmcif"] = cif_str
     template_seq = extract_sequence_from_mmcif(StringIO(cif_str))
-    print("TEMPLATE SEQ=", template_seq)
     query_indices, template_indices = align_and_map(input_sequence, template_seq)
 
     template["queryIndices"] = query_indices
