@@ -108,6 +108,10 @@ def align_and_map(query_seq, template_seq,
     query_aligned, template_aligned, _, _, _ = alignments[0]
 
     # Map the aligned sequences
+
+    print("ALIGNMENT")
+    print(pairwise2.format_alignment(*alignments[0]))
+
     aligned_mapping = query_to_hit_mapping(query_aligned, template_aligned)
     
     query_indices = []
