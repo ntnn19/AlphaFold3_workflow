@@ -836,6 +836,8 @@ def set_templates(protein_entry: dict[str, str], templates: str | None, extra_al
             template_path=templates.split(",")[0]
             template_chain=templates.split(",")[1]
             protein_entry_ = deepcopy(protein_entry)
+            with open("temp.fasta","w") as temp:
+                temp.write(">"+protein_entry_["id"]+"\n"+protein_entry_["sequence"]+"\n")
             #
             sys.argv = [
                 "prepare_templates_af3.py",
