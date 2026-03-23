@@ -1098,6 +1098,7 @@ def main(sample_sheet, output_dir, mode, predict_individual_components, n_seeds,
     logger.info(f"MODE = {mode}")
     logger.info(f"PREDICT_INDIVIDUAL_COMPONENTS = {predict_individual_components}")
     logger.info(f"#SEEDS = {n_seeds}")
+    logger.info(f"#SAMPLES = {n_samples}")
 
 
     metadata_dir = os.path.join(f"{output_dir}","rule_PREPROCESSING","metadata")

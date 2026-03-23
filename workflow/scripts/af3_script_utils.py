@@ -281,6 +281,7 @@ contain chain {custom_template_chain}"
 
     template["mmcif"] = cif_str
     template_seq = extract_sequence_from_mmcif(StringIO(cif_str))
+    print("TEMPLATE SEQ=", template_seq)
     query_indices, template_indices = align_and_map(input_sequence, template_seq)
 
     template["queryIndices"] = query_indices
