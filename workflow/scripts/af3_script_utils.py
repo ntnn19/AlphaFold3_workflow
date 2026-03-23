@@ -9,7 +9,9 @@ import configparser
 import logging
 import os
 import time
+from Bio.Align import substitution_matrices
 
+BLOSUM62 = substitution_matrices.load("BLOSUM62")
 
 # Custom formatter for colored logging
 class ColoredFormatter(logging.Formatter):
@@ -96,14 +98,14 @@ def query_to_hit_mapping(query_aligned: str, template_aligned: str) -> Mapping[i
     return query_to_hit_mapping_out
 
 
-def align_and_map(query_seq, template_seq):
+def align_and_map(query_seq, template_seq,
+                  gap_open=-10.0, gap_extend=-0.5):
     """Align two sequences and map the indices."""
-    # Perform pairwise alignment
-    alignments = pairwise2.align.globalxx(query_seq, template_seq)
-    alignment = alignments[0]  # Take the best alignment
-    print("ALIGNMENT")
-    print(pairwise2.format_alignment(*alignment))
-    query_aligned, template_aligned, _, _, _ = alignment
+    alignments = pairwise2.align.globalds(
+        query_seq, template_seq, BLOSUM62, gap_open, gap_extend,
+        penalize_end_gaps=(False, True)
+    )
+    query_aligned, template_aligned, _, _, _ = alignments[0]
 
     # Map the aligned sequences
     aligned_mapping = query_to_hit_mapping(query_aligned, template_aligned)
