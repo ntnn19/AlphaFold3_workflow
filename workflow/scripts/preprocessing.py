@@ -846,7 +846,7 @@ def set_templates(protein_entry: dict[str, str], templates: str | None, extra_al
                 "--target_chains", protein_entry_["id"],
                 "--template_chains", template_chain,
                 "--align",
-                "--output_dir", "tmp",
+                "--output_dir", "tmp", "--noinpaint_clashes",
                 *extra_align_flags.split()
             ]
             # python /app/alphafold/prepare_templates_af3.py --target ns5_tom.fasta --template input/modeller_models/5qj0_A_natan.pdb --target_chains A --template_chains A --output_dir test_del --align --noinpaint_clashes
@@ -857,7 +857,6 @@ def set_templates(protein_entry: dict[str, str], templates: str | None, extra_al
             #print(af3_json["name"])
         else:
             protein_entry["templates"] = templates
-    print(protein_entry)
     return protein_entry
 
 def create_dna_sequence_data(sequence, modifications=None):
