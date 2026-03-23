@@ -101,7 +101,7 @@ def query_to_hit_mapping(query_aligned: str, template_aligned: str) -> Mapping[i
 def align_and_map(query_seq, template_seq,
                   gap_open=-10.0, gap_extend=-0.5):
     """Align two sequences and map the indices."""
-    alignments = pairwise2.align.globalds(
+    alignments = pairwise2.align.localds(
         query_seq, template_seq, BLOSUM62, gap_open, gap_extend,
         penalize_end_gaps=(False, True)
     )
