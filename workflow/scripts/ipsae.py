@@ -55,10 +55,14 @@ if len(sys.argv) < 5:
 
     sys.exit(1)
 
-pae_file_path = snakemake.input[0]
-pdb_path = snakemake.input[1]
-pae_cutoff = snakemake.params["pae_cutoff"]
-dist_cutoff = snakemake.params["dist_cutoff"]
+#pae_file_path = snakemake.input[0]
+pae_file_path = sys.argv[1]
+#pdb_path = snakemake.input[1]
+pdb_path = sys.argv[2]
+#pae_cutoff = snakemake.params["pae_cutoff"]
+pae_cutoff = int(sys.argv[3])
+#dist_cutoff = snakemake.params["dist_cutoff"]
+dist_cutoff = int(sys.argv[4])
 pae_string = str(int(pae_cutoff))
 if pae_cutoff < 10:  pae_string = "0" + pae_string
 dist_string = str(int(dist_cutoff))
