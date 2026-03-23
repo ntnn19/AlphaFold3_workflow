@@ -1,6 +1,6 @@
 # Credit for https://github.com/hlasimpk/af3_mmseqs_scripts
 from Bio.PDB import MMCIFParser, MMCIFIO
-from Bio import pairwise2
+from Bio import Align
 from colorama import Fore, Style
 from io import StringIO
 from typing import Mapping
@@ -95,23 +95,28 @@ def query_to_hit_mapping(query_aligned: str, template_aligned: str) -> Mapping[i
             hit_index += 1
     return query_to_hit_mapping_out
 
+def do_align(ref_seq, query_seq, alignment_type="blast"): # credit to @clami66: https://github.com/clami66/AF_unmasked/blob/af3/prepare_templates_af3.py
+    if alignment_type == "blast":  # ref and query are sequences rather than structures
+        aligner = Align.PairwiseAligner()
+        aligner.substitution_matrix = Align.substitution_matrices.load("BLOSUM62")
+        aligner.open_gap_score = -0.5
+        # aligner.extend_gap_score = -0.5
+        aln = aligner.align(ref_seq, query_seq)[0]
+        try:  # compatibility between versions of Biopython
+            ref_aligned = aln[0]
+            query_aligned = aln[1]
+        except:
+            ref_aligned = aln.format().split("\n")[0]
+            query_aligned = aln.format().split("\n")[2]
+
+        return ref_aligned, query_aligned
 
 def align_and_map(query_seq, template_seq):
-    """Align two sequences using PyMOL's align engine."""
-    import pymol
-    with pymol.PyMOL() as pymol:
-        # Load sequences as fake single-residue-chain objects
-        pymol.cmd.fab(query_seq,    'query')
-        pymol.cmd.fab(template_seq, 'template')
+    """Align two sequences and map the indices."""
+    # Perform pairwise alignment
+    # Perform pairwise alignment using do_align
+    query_aligned, template_aligned = do_align(template_seq, query_seq)
 
-        result = pymol.cmd.align('query', 'template')
-        # result = (RMSD, n_atoms, n_cycles, RMSD_before, n_atoms_before,
-        #           n_residues, n_residues_aligned)
-
-        query_aligned    = pymol.cmd.get_fastastr('query')
-        template_aligned = pymol.cmd.get_fastastr('template')
-
-    print(f"RMSD: {result[0]:.3f} over {result[1]} atoms")
     # Map the aligned sequences
     aligned_mapping = query_to_hit_mapping(query_aligned, template_aligned)
     
