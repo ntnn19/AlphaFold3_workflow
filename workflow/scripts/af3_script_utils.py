@@ -9,9 +9,7 @@ import configparser
 import logging
 import os
 import time
-from Bio.Align import substitution_matrices
 
-BLOSUM62 = substitution_matrices.load("BLOSUM62")
 
 # Custom formatter for colored logging
 class ColoredFormatter(logging.Formatter):
@@ -98,20 +96,23 @@ def query_to_hit_mapping(query_aligned: str, template_aligned: str) -> Mapping[i
     return query_to_hit_mapping_out
 
 
-def align_and_map(query_seq, template_seq,
-                  gap_open=-10.0, gap_extend=-0.5):
-    """Align two sequences and map the indices."""
-    alignments = pairwise2.align.localds(
-        query_seq, template_seq, BLOSUM62, gap_open, gap_extend,
-        penalize_end_gaps=(False, True)
-    )
-    query_aligned, template_aligned, _, _, _ = alignments[0]
+def align_and_map(query_seq, template_seq):
+    """Align two sequences using PyMOL's align engine."""
+    import pymol
+    with pymol.PyMOL() as pymol:
+        # Load sequences as fake single-residue-chain objects
+        pymol.cmd.fab(query_seq,    'query')
+        pymol.cmd.fab(template_seq, 'template')
 
+        result = pymol.cmd.align('query', 'template')
+        # result = (RMSD, n_atoms, n_cycles, RMSD_before, n_atoms_before,
+        #           n_residues, n_residues_aligned)
+
+        query_aligned    = pymol.cmd.get_fastastr('query')
+        template_aligned = pymol.cmd.get_fastastr('template')
+
+    print(f"RMSD: {result[0]:.3f} over {result[1]} atoms")
     # Map the aligned sequences
-
-    print("ALIGNMENT")
-    print(pairwise2.format_alignment(*alignments[0]))
-
     aligned_mapping = query_to_hit_mapping(query_aligned, template_aligned)
     
     query_indices = []
