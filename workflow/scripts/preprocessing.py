@@ -826,7 +826,7 @@ def is_template_path(value):
         and not is_json_like(value)
     )
 
-def set_templates(protein_entry: dict[str, str], templates: str | None, extra_align_flags: str | None = None) -> dict[str, Any]:
+def set_templates(protein_entry: dict[str, str], templates: str | None, extra_align_flags: str  = "") -> dict[str, Any]:
     if templates is None:
         protein_entry["templates"] = None
     elif templates == []:
