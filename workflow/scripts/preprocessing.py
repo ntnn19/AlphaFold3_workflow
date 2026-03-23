@@ -852,7 +852,7 @@ def set_templates(protein_entry: dict[str, str], templates: str | None, extra_al
             # python /app/alphafold/prepare_templates_af3.py --target ns5_tom.fasta --template input/modeller_models/5qj0_A_natan.pdb --target_chains A --template_chains A --output_dir test_del --align --noinpaint_clashes
             protein_entry_ = prepare_af3_templates.main()
             #run_custom_template(protein_entry_,protein_entry_["id"], template_path,template_chain,output_json=None,to_file=False)
-            protein_entry["templates"] = protein_entry_["protein"]["templates"]
+            protein_entry["templates"] = protein_entry_["sequences"][0]["protein"]["templates"]
 #            protein_entry["templates"] = af3_json =
             #print(af3_json["name"])
         else:
