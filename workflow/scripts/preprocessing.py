@@ -1,6 +1,7 @@
 # Adapted from https://github.com/Hanziwww/AlphaFold3-GUI/blob/main/afusion/api.py
 
 import pdb
+import sys
 from collections import defaultdict
 from copy import deepcopy
 import numpy as np
@@ -23,7 +24,7 @@ from typing import (
     Tuple
 )
 from add_custom_template import run_custom_template
-
+import prepare_af3_templates
 from typing import Optional
 
 
@@ -825,7 +826,7 @@ def is_template_path(value):
         and not is_json_like(value)
     )
 
-def set_templates(protein_entry: dict[str, str], templates: str | None):
+def set_templates(protein_entry: dict[str, str], templates: str | None, extra_align_flags: str | None = None) -> dict[str, Any]:
     if templates is None:
         protein_entry["templates"] = None
     elif templates == []:
@@ -835,7 +836,20 @@ def set_templates(protein_entry: dict[str, str], templates: str | None):
             template_path=templates.split(",")[0]
             template_chain=templates.split(",")[1]
             protein_entry_ = deepcopy(protein_entry)
-            run_custom_template(protein_entry_,protein_entry_["id"], template_path,template_chain,output_json=None,to_file=False)
+            #
+            sys.argv = [
+                "prepare_templates_af3.py",
+                "--target", "temp.fasta",
+                "--template", template_path,
+                "--target_chains", protein_entry_["id"],
+                "--template_chains", template_chain,
+                "--align",
+                "--output_dir", "tmp",
+                *extra_align_flags.split()
+            ]
+            # python /app/alphafold/prepare_templates_af3.py --target ns5_tom.fasta --template input/modeller_models/5qj0_A_natan.pdb --target_chains A --template_chains A --output_dir test_del --align --noinpaint_clashes
+            protein_entry_ = prepare_af3_templates.main()
+            #run_custom_template(protein_entry_,protein_entry_["id"], template_path,template_chain,output_json=None,to_file=False)
             protein_entry["templates"] = protein_entry_["protein"]["templates"]
 #            protein_entry["templates"] = af3_json =
             #print(af3_json["name"])

@@ -105,6 +105,7 @@ def align_and_map(query_seq, template_seq):
     query_aligned, template_aligned, _, _, _ = alignment
 
     # Map the aligned sequences
+
     aligned_mapping = query_to_hit_mapping(query_aligned, template_aligned)
     
     query_indices = []
