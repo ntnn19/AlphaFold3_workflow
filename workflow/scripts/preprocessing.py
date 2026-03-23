@@ -24,6 +24,45 @@ from typing import (
 )
 from add_custom_template import run_custom_template
 
+from typing import Optional
+
+
+def slice_sequence_by_range(seq: str, roi: Optional[str], seq_type: str) -> str:
+    """
+    Slice a sequence based on a 1-based start,end ROI.
+
+    Parameters:
+        seq: The sequence string.
+        roi: "start,end" (1-based inclusive). If None or empty, returns original sequence.
+        seq_type: Type of sequence ("rna", "dna", or "protein").
+
+    Returns:
+        The sliced sequence.
+
+    Raises:
+        TypeError: If seq_type is not "rna", "dna", or "protein".
+        IndexError: If start/end indices are out of bounds.
+        ValueError: If ROI is malformed.
+    """
+    if seq_type.lower() not in {"rna", "dna", "protein"}:
+        raise TypeError(f"Invalid sequence type '{seq_type}'. Must be 'rna', 'dna', or 'protein'.")
+
+    if not roi:
+        return seq
+
+    try:
+        start_str, end_str = roi.split(",")
+        start, end = int(start_str), int(end_str)
+    except Exception as e:
+        raise ValueError(f"ROI must be in 'start,end' format. Got '{roi}'") from e
+
+    start_idx = start - 1
+    end_idx = end
+
+    if start_idx < 0 or end_idx > len(seq):
+        raise IndexError(f"ROI indices {start}-{end} out of range for sequence of length {len(seq)}")
+
+    return seq[start_idx:end_idx]
 
 def is_multimer(types):
     return len(types) > 1 and sum(t in ["protein", "rna"] for t in types) >= 2
@@ -1065,6 +1104,7 @@ def main(sample_sheet, output_dir, mode, predict_individual_components, n_seeds,
     os.makedirs(metadata_dir, exist_ok=True)
 
     df = pd.read_csv(sample_sheet, sep="\t")
+    df["sequence"] = df.apply(lambda row: slice_sequence_by_range(row["sequence"], row["roi"], row["type"]), axis=1)
 
     optional_columns = ["templates", "paired_msa", "unpaired_msa"]
 
