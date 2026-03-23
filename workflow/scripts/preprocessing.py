@@ -857,7 +857,7 @@ def set_templates(protein_entry: dict[str, str], templates: str | None, extra_al
             #print(af3_json["name"])
         else:
             protein_entry["templates"] = templates
-
+    print(protein_entry)
     return protein_entry
 
 def create_dna_sequence_data(sequence, modifications=None):
