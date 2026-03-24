@@ -27,16 +27,23 @@ from add_custom_template import run_custom_template
 import prepare_af3_templates
 from typing import Optional
 
+import math
+
 
 def slice_sequence_by_range(seq: str, roi: Optional[str], seq_type: str) -> str:
     if seq_type.lower() not in {"rna", "dna", "protein"}:
         raise TypeError(f"Invalid sequence type '{seq_type}'. Must be 'rna', 'dna', or 'protein'.")
 
-    if not roi or not roi.strip():
+    # pandas empty cells come in as float NaN
+    if roi is None or (isinstance(roi, float) and math.isnan(roi)):
+        return seq
+
+    roi = str(roi).strip()
+    if not roi:
         return seq
 
     try:
-        start_str, end_str = roi.strip().split(",")
+        start_str, end_str = roi.split(",")
         start, end = int(start_str), int(end_str)
     except Exception as e:
         raise ValueError(f"ROI must be in 'start,end' format. Got '{roi}'") from e
