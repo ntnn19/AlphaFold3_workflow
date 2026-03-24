@@ -32,9 +32,8 @@ import math
 
 def slice_sequence_by_range(seq: str, roi: Optional[str], seq_type: str) -> str:
     if seq_type.lower() not in {"rna", "dna", "protein"}:
-        raise TypeError(f"Invalid sequence type '{seq_type}'. Must be 'rna', 'dna', or 'protein'.")
+        return seq  # skip ligands and other non-sequence types
 
-    # pandas empty cells come in as float NaN
     if roi is None or (isinstance(roi, float) and math.isnan(roi)):
         return seq
 
