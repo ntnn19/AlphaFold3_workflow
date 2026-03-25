@@ -8,7 +8,8 @@ use-singularity: true
 executor: slurm
 
 default-resources:
-    slurm_partition: "allcpu"
+    slurm_partition: "normal"
+    slurm_account: "topf"
 
 set-resources:
     AF3_DATA_SPEEDY_PIPELINE:
@@ -19,7 +20,9 @@ set-resources:
     AF3_INFERENCE:
         nodes: 1
         runtime: 10000
-        mem_mb: 256000
-        slurm_partition: "vds"
-#        slurm_extra: "'--nodelist=max-p3ag014'"
-        slurm_extra: "'--nodelist=max-cssbg[011-014,024-027]'"
+        mem_mb: 16000
+        tasks_per_gpu: 0
+        gpu: 1
+#        slurm_extra: "'--gpus=1'"
+#        slurm_extra: "'--nodelist=cssbhpiuke[012,032,035,037],cssblivuke081'"
+#        slurm_extra: "'--nodelist=cssbhpiuke[012,032,035,037],cssblivuke081' '--gpus=1'"
