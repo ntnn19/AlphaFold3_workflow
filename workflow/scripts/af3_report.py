@@ -451,7 +451,7 @@ def plot_iptm_interactive(
     html_path.write_text(html, encoding="utf-8")
     return str(html_path.relative_to(output_dir))
 
-def plot_pae_with_chain_breaks(conf: dict, outpath: Path, pred_id: str, title: str = "PAE") -> bool:
+def plot_pae_with_chain_breaks(conf: dict, outpath: Path, title: str = "PAE") -> bool:
     pae = conf.get("pae", None)
     tchains = conf.get("token_chain_ids", None)
     if pae is None or tchains is None:
@@ -480,9 +480,7 @@ def plot_pae_with_chain_breaks(conf: dict, outpath: Path, pred_id: str, title: s
         ax.axhline(x, color="white", lw=1.0)
         ax.axvline(x, color="white", lw=1.0)
 
-    # Use full pred_id in title
-    ax.set_title(f"PAE (with chain breaks) - {pred_id}")
-
+    ax.set_title(title)
     ax.set_xlabel("token index")
     ax.set_ylabel("token index")
 
@@ -514,29 +512,16 @@ def pick_conf_for_plot(df_pred: pd.DataFrame) -> Path | None:
     p = row.get("confidences_path", None)
     return Path(p) if isinstance(p, str) and p else None
 
-def parse_prediction_id(summary_path: Path) -> tuple[int | None, int | None, str, str]:
-    """
-    Returns: (seed, sample, prediction_id, sample_id)
-    """
+def parse_prediction_id(summary_path: Path) -> tuple[int | None, int | None, str]:
     seed = sample = None
-    sample_id = summary_path.parent.name  # e.g., "7wr6_template_based_afdb"
-
-    # Try to extract seed/sample from path
+    pred_id = "top"
     for part in summary_path.parts:
         m = SEED_SAMPLE_RE.fullmatch(part)
         if m:
             seed, sample = int(m.group(1)), int(m.group(2))
-            # Create full prediction_id: seed-<seed>_sample-<sample>_<sample_id>
-            pred_id = f"seed-{seed}_sample-{sample}_{sample_id}"
-            return seed, sample, pred_id, sample_id
-
-    # If no seed/sample found, it's top-level
-    # Use "top" + seed/sample from parent dir if possible
-    # But we don't have seed/sample — so we can't.
-    # So use: top_<sample_id>
-    pred_id = f"top_{sample_id}"
-    return None, None, pred_id, sample_id
-
+            pred_id = part
+            break
+    return seed, sample, pred_id
 
 
 def resolve_confidences_path(summary_path: Path, layout: str) -> Path | None:
@@ -609,7 +594,7 @@ def summarize_job(output_dir: Path, layout: str):
     pair_rows = []
 
     for sp in summary_files:
-        seed, sample, pred_id, sample_id = parse_prediction_id(sp)
+        seed, sample, pred_id = parse_prediction_id(sp)
         summ = load_json(sp)
 
         cp = resolve_confidences_path(sp, layout)
@@ -617,10 +602,9 @@ def summarize_job(output_dir: Path, layout: str):
 
         # ---- complex-wide ----
         pred_rows.append({
-            "prediction_id": pred_id,  # e.g., seed-1_sample-0_7wr6_template_based_afdb
+            "prediction_id": pred_id,
             "seed": seed,
             "sample": sample,
-            "sample_id": sample_id,  # ← new column
             "ranking_score": summ.get("ranking_score"),
             "ptm": summ.get("ptm"),
             "iptm": summ.get("iptm"),
@@ -635,6 +619,7 @@ def summarize_job(output_dir: Path, layout: str):
         chain_ptm = summ.get("chain_ptm", [])
         chain_iptm = summ.get("chain_iptm", [])
 
+        # label chains using atom_chain_ids if present
         chain_ids = sorted({str(x) for x in conf.get("atom_chain_ids", [])})
         n = max(len(chain_ptm), len(chain_iptm), len(chain_ids))
 
@@ -648,7 +633,6 @@ def summarize_job(output_dir: Path, layout: str):
                 "prediction_id": pred_id,
                 "seed": seed,
                 "sample": sample,
-                "sample_id": sample_id,
                 "chain_id": cid,
                 "chain_ptm": chain_ptm[i] if i < len(chain_ptm) else None,
                 "chain_iptm": chain_iptm[i] if i < len(chain_iptm) else None,
@@ -662,6 +646,7 @@ def summarize_job(output_dir: Path, layout: str):
             mat_iptm = np.asarray(cp_iptm, dtype=float)
             mat_pae = np.asarray(cp_pae_min, dtype=float) if cp_pae_min is not None else None
 
+            # fall back if chain labels don't match
             if len(chain_ids) != mat_iptm.shape[0]:
                 chain_ids_pair = [str(i) for i in range(mat_iptm.shape[0])]
             else:
@@ -669,11 +654,12 @@ def summarize_job(output_dir: Path, layout: str):
 
             for i, ci in enumerate(chain_ids_pair):
                 for j, cj in enumerate(chain_ids_pair):
+                    #if i == j:
+                    #    continue
                     pair_rows.append({
                         "prediction_id": pred_id,
                         "seed": seed,
                         "sample": sample,
-                        "sample_id": sample_id,
                         "chain_i": ci,
                         "chain_j": cj,
                         "pair_iptm": float(mat_iptm[i, j]),
@@ -726,6 +712,10 @@ def plot_chain_bars_per_prediction(
     outdir: Path,
     pred_id: str
 ) -> str:
+    """
+    Generate a per-chain pLDDT bar plot for a single prediction.
+    Returns relative path to saved plot.
+    """
     d = df_chain[df_chain["prediction_id"] == pred_id].copy()
     if d.empty:
         return ""
@@ -921,7 +911,6 @@ def main(af3_output_dir: Path, outdir: Path, html_name: str, max_rows: int, writ
             plots[f"pair_iptm_heatmap_{pred_id}"] = path
 
     # 4. Per-prediction PAE plots
-    # 4. Per-prediction PAE plots
     for pred_id in df_pred["prediction_id"].unique():
         conf_path = df_pred[df_pred["prediction_id"] == pred_id]["confidences_path"].iloc[0]
         if not conf_path or not Path(conf_path).exists():
@@ -931,7 +920,7 @@ def main(af3_output_dir: Path, outdir: Path, html_name: str, max_rows: int, writ
 
         # PAE matrix
         pae_png = outdir / "plots" / f"pae_{pred_id}.png"
-        ok_pae = plot_pae_with_chain_breaks(conf, pae_png, pred_id=pred_id)
+        ok_pae = plot_pae_with_chain_breaks(conf, pae_png, title=f"PAE (with chain breaks) - {pred_id}")
         if ok_pae:
             plots[f"pae_{pred_id}"] = str(pae_png.relative_to(outdir))
 
