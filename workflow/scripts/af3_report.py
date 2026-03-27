@@ -319,13 +319,13 @@ def plot_iptm_interactive(
     output_dir: Path
 ) -> str:
     """
-    Generate an interactive pairwise ipTM matrix with dropdown to select prediction.
+    Generate an interactive ipTM matrix with dropdown to select prediction.
 
-    Metadata such as top-ranked sample and global ipTM are taken from df_pred.
-    Styling:
-    - high ipTM = blue
-    - low ipTM = white
-    - no chain borders (cleaner rendering in Plotly)
+    Keeps the simple Plotly heatmap style of the old version, but:
+    - builds matrices correctly from long-form df_pair
+    - uses white->blue colormap (high = good = blue)
+    - labels the top-ranked prediction
+    - shows global ipTM below the plot using df_pred
     """
     plots_dir = output_dir / "plots"
     plots_dir.mkdir(parents=True, exist_ok=True)
@@ -336,6 +336,7 @@ def plot_iptm_interactive(
         html_path.write_text("<p><em>No ipTM data available.</em></p>", encoding="utf-8")
         return str(html_path.relative_to(output_dir))
 
+    # ---- metadata from df_pred ----
     pred_meta = {}
     top_pred_id = None
 
@@ -378,13 +379,14 @@ def plot_iptm_interactive(
                 "global_iptm": global_iptm,
             }
 
+    # ---- collect matrices ----
     data = {}
     prediction_ids = []
 
-    for pred_id, g in df_pair.groupby("prediction_id"):
+    for pred_id, group in df_pair.groupby("prediction_id"):
         pred_id = str(pred_id)
 
-        piv = g.pivot(index="chain_i", columns="chain_j", values="pair_iptm")
+        piv = group.pivot(index="chain_i", columns="chain_j", values="pair_iptm")
         chains = sorted(set(piv.index.astype(str)).union(set(piv.columns.astype(str))))
         piv = piv.reindex(index=chains, columns=chains)
 
@@ -406,6 +408,7 @@ def plot_iptm_interactive(
         html_path.write_text("<p><em>No ipTM data available.</em></p>", encoding="utf-8")
         return str(html_path.relative_to(output_dir))
 
+    # sort with top first, then ranking_score desc, then prediction_id
     def _sort_key(pid: str):
         d = data[pid]
         is_top = d.get("is_top", False)
@@ -415,143 +418,7 @@ def plot_iptm_interactive(
 
     prediction_ids = sorted(prediction_ids, key=_sort_key)
 
-    options_html = "".join(
-        f'<option value="{pid}">{"TOP: " if data[pid]["is_top"] else ""}{pid}</option>'
-        for pid in prediction_ids
-    )
-
-    html = f"""<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <title>Interactive ipTM Matrices</title>
-    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
-    <style>
-        body {{ font-family: Arial, sans-serif; margin: 24px; }}
-        .container {{ max-width: 1200px; margin: 0 auto; }}
-        .dropdown {{ margin-bottom: 20px; padding: 8px; font-size: 16px; }}
-        .plot {{ margin-top: 20px; }}
-        .meta {{ margin-top: 10px; font-size: 15px; }}
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h2>Interactive ipTM Matrices</h2>
-        <select id="prediction-select" class="dropdown">
-            {options_html}
-        </select>
-        <div id="plot" class="plot"></div>
-        <div id="meta" class="meta"></div>
-    </div>
-
-    <script>
-    const data = {json.dumps(data)};
-
-    function updatePlot(predId) {{
-        const entry = data[predId];
-        const iptm = entry.iptm;
-        const chain_ids = entry.chain_ids;
-        const n = chain_ids.length;
-        const isTop = entry.is_top;
-        const globalIptm = entry.global_iptm;
-        const rankingScore = entry.ranking_score;
-
-        const customdata = [];
-        for (let i = 0; i < n; i++) {{
-            const row = [];
-            for (let j = 0; j < n; j++) {{
-                row.push([chain_ids[i], chain_ids[j]]);
-            }}
-            customdata.push(row);
-        }}
-
-        const trace = {{
-            z: iptm,
-            x: [...Array(n).keys()],
-            y: [...Array(n).keys()],
-            type: 'heatmap',
-            colorscale: [
-                [0.00, '#ffffff'],
-                [0.20, '#eff3ff'],
-                [0.40, '#bdd7e7'],
-                [0.60, '#6baed6'],
-                [0.80, '#3182bd'],
-                [1.00, '#08519c']
-            ],
-            zmin: 0,
-            zmax: 1,
-            colorbar: {{ title: "ipTM" }},
-            hovertemplate:
-                'Chain i: %{{customdata[0]}}<br>' +
-                'Chain j: %{{customdata[1]}}<br>' +
-                'pair ipTM: %{{z:.3f}}<extra></extra>',
-            customdata: customdata
-        }};
-
-        const titleText = isTop
-            ? `ipTM Matrix - TOP: ${{predId}}`
-            : `ipTM Matrix - ${{predId}}`;
-
-        const layout = {{
-            title: {{text: titleText}},
-            xaxis: {{
-                title: "Chain",
-                tickmode: "array",
-                tickvals: [...Array(n).keys()],
-                ticktext: chain_ids,
-                side: "bottom",
-                range: [-0.5, n - 0.5],
-                showgrid: false,
-                zeroline: false
-            }},
-            yaxis: {{
-                title: "Chain",
-                tickmode: "array",
-                tickvals: [...Array(n).keys()],
-                ticktext: chain_ids,
-                autorange: "reversed",
-                range: [n - 0.5, -0.5],
-                showgrid: false,
-                zeroline: false,
-                scaleanchor: "x",
-                scaleratio: 1
-            }},
-            margin: {{ l: 60, r: 30, t: 60, b: 60 }},
-            paper_bgcolor: "white",
-            plot_bgcolor: "white"
-        }};
-
-        Plotly.newPlot('plot', [trace], layout, {{responsive: true}});
-
-        const parts = [];
-        if (globalIptm !== null && globalIptm !== undefined && !Number.isNaN(globalIptm)) {{
-            parts.push(`<strong>Global ipTM:</strong> ${{Number(globalIptm).toFixed(3)}}`);
-        }} else {{
-            parts.push(`<strong>Global ipTM:</strong> n/a`);
-        }}
-
-        if (rankingScore !== null && rankingScore !== undefined && !Number.isNaN(rankingScore)) {{
-            parts.push(`<strong>Ranking score:</strong> ${{Number(rankingScore).toFixed(3)}}`);
-        }}
-
-        if (isTop) {{
-            parts.push(`<strong>Top-ranked sample</strong>`);
-        }}
-
-        document.getElementById('meta').innerHTML = parts.join(" &nbsp;&nbsp; ");
-    }}
-
-    document.getElementById('prediction-select').addEventListener('change', function() {{
-        updatePlot(this.value);
-    }});
-
-    updatePlot('{prediction_ids[0]}');
-    </script>
-</body>
-</html>
-"""
-    html_path.write_text(html, encoding="utf-8")
-    return str(html_path.relative_to(output_dir))
+    options
 
 def _chain_boundaries_from_token_chain_ids(tchains: np.ndarray) -> list[int]:
     if tchains.size == 0:
