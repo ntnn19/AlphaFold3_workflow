@@ -418,7 +418,112 @@ def plot_iptm_interactive(
 
     prediction_ids = sorted(prediction_ids, key=_sort_key)
 
-    options
+    options_html = "".join(
+        f'<option value="{pid}">{"TOP: " if data[pid]["is_top"] else ""}{pid}</option>'
+        for pid in prediction_ids
+    )
+
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <title>Interactive ipTM Matrices</title>
+        <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+        <style>
+            body {{ font-family: Arial, sans-serif; margin: 24px; }}
+            .container {{ max-width: 1200px; margin: 0 auto; }}
+            .dropdown {{ margin-bottom: 20px; padding: 8px; font-size: 16px; }}
+            .plot {{ margin-top: 20px; }}
+            .meta {{ margin-top: 10px; font-size: 15px; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h2>Interactive ipTM Matrices</h2>
+            <select id="prediction-select" class="dropdown">
+                {options_html}
+            </select>
+            <div id="plot" class="plot"></div>
+            <div id="meta" class="meta"></div>
+        </div>
+
+        <script>
+        const data = {json.dumps(data)};
+
+        function updatePlot(predId) {{
+            const entry = data[predId];
+            const iptm = entry.iptm;
+            const chain_ids = entry.chain_ids;
+            const isTop = entry.is_top;
+            const globalIptm = entry.global_iptm;
+            const rankingScore = entry.ranking_score;
+
+            const trace = {{
+                z: iptm,
+                x: chain_ids,
+                y: chain_ids,
+                type: 'heatmap',
+                colorscale: [
+                    [0.00, '#ffffff'],
+                    [0.20, '#eff3ff'],
+                    [0.40, '#bdd7e7'],
+                    [0.60, '#6baed6'],
+                    [0.80, '#3182bd'],
+                    [1.00, '#08519c']
+                ],
+                zmin: 0,
+                zmax: 1,
+                colorbar: {{ title: "ipTM" }},
+                hovertemplate:
+                    'Chain i: %{{y}}<br>' +
+                    'Chain j: %{{x}}<br>' +
+                    'pair ipTM: %{{z:.3f}}<extra></extra>'
+            }};
+
+            const titleText = isTop
+                ? `ipTM Matrix - TOP: ${{predId}}`
+                : `ipTM Matrix - ${{predId}}`;
+
+            const layout = {{
+                title: titleText,
+                xaxis: {{ title: "Chain" }},
+                yaxis: {{ title: "Chain" }},
+                margin: {{ l: 50, r: 50, t: 50, b: 50 }}
+            }};
+
+            Plotly.newPlot('plot', [trace], layout, {{responsive: true}});
+
+            const parts = [];
+            if (globalIptm !== null && globalIptm !== undefined && !Number.isNaN(globalIptm)) {{
+                parts.push(`<strong>Global ipTM:</strong> ${{Number(globalIptm).toFixed(3)}}`);
+            }} else {{
+                parts.push(`<strong>Global ipTM:</strong> n/a`);
+            }}
+
+            if (rankingScore !== null && rankingScore !== undefined && !Number.isNaN(rankingScore)) {{
+                parts.push(`<strong>Ranking score:</strong> ${{Number(rankingScore).toFixed(3)}}`);
+            }}
+
+            if (isTop) {{
+                parts.push(`<strong>Top-ranked sample</strong>`);
+            }}
+
+            document.getElementById('meta').innerHTML = parts.join(" &nbsp;&nbsp; ");
+        }}
+
+        document.getElementById('prediction-select').addEventListener('change', function() {{
+            updatePlot(this.value);
+        }});
+
+        updatePlot('{prediction_ids[0]}');
+        </script>
+    </body>
+    </html>
+    """
+
+    html_path.write_text(html, encoding="utf-8")
+    return str(html_path.relative_to(output_dir))
 
 def _chain_boundaries_from_token_chain_ids(tchains: np.ndarray) -> list[int]:
     if tchains.size == 0:
