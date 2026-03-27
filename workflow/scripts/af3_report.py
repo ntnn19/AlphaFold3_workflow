@@ -909,9 +909,9 @@ def main(af3_output_dir: Path, outdir: Path, html_name: str, max_rows: int, writ
     df_pred, df_chain, df_pair = summarize_job(af3_output_dir, layout=layout.lower())
 
     if write_csv:
-        df_pred.to_csv(outdir / "predictions.csv", sep="\t", index=False)
-        df_chain.to_csv(outdir / "chains.csv", sep="\t", index=False)
-        df_pair.to_csv(outdir / "chain_pairs.csv", sep="\t", index=False)
+        df_pred.to_csv(outdir / "predictions.tsv", sep="\t", index=False)
+        df_chain.to_csv(outdir / "chains.tsv", sep="\t", index=False)
+        df_pair.to_csv(outdir / "chain_pairs.tsv", sep="\t", index=False)
 
     # --- Generate all plots per prediction ---
     # --- Generate all plots per prediction ---
