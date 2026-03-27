@@ -594,7 +594,8 @@ def find_summary_files(output_dir: Path, layout: str) -> list[Path]:
 
 
 def summarize_job(output_dir: Path, layout: str):
-    sample_id = get_sample_id_from_output_dir(output_dir)
+
+    sample_id = output_dir.name   # <-- add this line
 
     summary_files = find_summary_files(output_dir, layout)
 
@@ -604,7 +605,6 @@ def summarize_job(output_dir: Path, layout: str):
 
     for sp in summary_files:
         seed, sample, pred_id = parse_prediction_id(sp)
-        pred_id_with_sample = f"{sample_id}__{pred_id}"
         summ = load_json(sp)
 
         cp = resolve_confidences_path(sp, layout)
@@ -612,8 +612,8 @@ def summarize_job(output_dir: Path, layout: str):
 
         # ---- complex-wide ----
         pred_rows.append({
-            "sample_id": sample_id,
-            "prediction_id": pred_id_with_sample,
+            "sample_id": sample_id,          # <-- add
+            "prediction_id": pred_id,        # <-- unchanged
             "seed": seed,
             "sample": sample,
             "ranking_score": summ.get("ranking_score"),
@@ -630,10 +630,8 @@ def summarize_job(output_dir: Path, layout: str):
         chain_ptm = summ.get("chain_ptm", [])
         chain_iptm = summ.get("chain_iptm", [])
 
-        # label chains using atom_chain_ids if present
         chain_ids = sorted({str(x) for x in conf.get("atom_chain_ids", [])})
         n = max(len(chain_ptm), len(chain_iptm), len(chain_ids))
-
         if not chain_ids and n:
             chain_ids = [str(i) for i in range(n)]
 
@@ -641,8 +639,8 @@ def summarize_job(output_dir: Path, layout: str):
 
         for i, cid in enumerate(chain_ids):
             chain_rows.append({
-                "sample_id": sample_id,
-                "prediction_id": pred_id_with_sample,
+                "sample_id": sample_id,      # <-- add
+                "prediction_id": pred_id,    # <-- unchanged
                 "seed": seed,
                 "sample": sample,
                 "chain_id": cid,
@@ -658,7 +656,6 @@ def summarize_job(output_dir: Path, layout: str):
             mat_iptm = np.asarray(cp_iptm, dtype=float)
             mat_pae = np.asarray(cp_pae_min, dtype=float) if cp_pae_min is not None else None
 
-            # fall back if chain labels don't match
             if len(chain_ids) != mat_iptm.shape[0]:
                 chain_ids_pair = [str(i) for i in range(mat_iptm.shape[0])]
             else:
@@ -666,11 +663,9 @@ def summarize_job(output_dir: Path, layout: str):
 
             for i, ci in enumerate(chain_ids_pair):
                 for j, cj in enumerate(chain_ids_pair):
-                    #if i == j:
-                    #    continue
                     pair_rows.append({
-                        "sample_id": sample_id,
-                        "prediction_id": pred_id_with_sample,
+                        "sample_id": sample_id,      # <-- add
+                        "prediction_id": pred_id,    # <-- unchanged
                         "seed": seed,
                         "sample": sample,
                         "chain_i": ci,
@@ -681,7 +676,6 @@ def summarize_job(output_dir: Path, layout: str):
                     })
 
     return pd.DataFrame(pred_rows), pd.DataFrame(chain_rows), pd.DataFrame(pair_rows)
-
 
 def save_fig(path: Path):
     path.parent.mkdir(parents=True, exist_ok=True)
