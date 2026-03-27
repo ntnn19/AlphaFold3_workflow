@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-
+import math
 import json
 import re
 from pathlib import Path
@@ -387,6 +387,146 @@ def plot_iptm_interactive(
 
     html_path.write_text(html, encoding="utf-8")
     return str(html_path.relative_to(output_dir))
+
+
+def _chain_boundaries_from_token_chain_ids(tchains: np.ndarray) -> list[int]:
+    """Return boundary indices including 0 and N."""
+    if tchains.size == 0:
+        return [0]
+    change_idx = np.nonzero(tchains[:-1] != tchains[1:])[0] + 1
+    return [0, *change_idx.tolist(), int(tchains.size)]
+
+
+def plot_pae_multipanel_best_labeled(
+    df_pred: pd.DataFrame,
+    outpath: Path,
+    ncols: int = 3,
+    max_panels: int | None = None,
+    vmax_percentile: float = 99.0,
+) -> bool:
+    """
+    Create one multi-panel PNG with one PAE matrix per prediction.
+    The best prediction (max ranking_score among non-top samples) is labeled "Top".
+    """
+    if df_pred.empty:
+        return False
+
+    d = df_pred.copy()
+
+    # pick best non-top by ranking_score; fall back to best overall if needed
+    d_rankable = d[(d["prediction_id"] != "top") & d["ranking_score"].notna()].copy()
+    if d_rankable.empty:
+        d_rankable = d[d["ranking_score"].notna()].copy()
+
+    best_pred_id = None
+    if not d_rankable.empty:
+        best_pred_id = d_rankable.sort_values("ranking_score", ascending=False).iloc[0]["prediction_id"]
+
+    # decide which predictions to plot (exclude "top")
+    d_plot = d[d["prediction_id"] != "top"].copy()
+    if d_plot.empty:
+        # if only "top" exists, plot it
+        d_plot = d.copy()
+
+    # optional cap
+    if max_panels is not None and len(d_plot) > max_panels:
+        # keep best + top-N others by ranking_score (descending)
+        if "ranking_score" in d_plot.columns:
+            d_plot = d_plot.sort_values("ranking_score", ascending=False).head(max_panels)
+        else:
+            d_plot = d_plot.head(max_panels)
+
+    # stable ordering: best first, then by ranking_score desc, then prediction_id
+    if "ranking_score" in d_plot.columns:
+        d_plot = d_plot.sort_values(["ranking_score", "prediction_id"], ascending=[False, True])
+    else:
+        d_plot = d_plot.sort_values(["prediction_id"])
+
+    if best_pred_id in set(d_plot["prediction_id"]):
+        d_plot = pd.concat([
+            d_plot[d_plot["prediction_id"] == best_pred_id],
+            d_plot[d_plot["prediction_id"] != best_pred_id]
+        ], ignore_index=True)
+
+    # load all PAE matrices first; compute global vmax for consistent scaling
+    entries: list[tuple[str, np.ndarray, list[int]]] = []
+    all_vals = []
+
+    for _, row in d_plot.iterrows():
+        pid = str(row["prediction_id"])
+        conf_path = row.get("confidences_path", None)
+        if not conf_path:
+            continue
+        p = Path(conf_path)
+        if not p.exists():
+            continue
+
+        conf = load_json(p)
+        pae = np.asarray(conf.get("pae", []), dtype=float)
+        tchains = np.asarray(conf.get("token_chain_ids", []), dtype=str)
+
+        if pae.size == 0 or tchains.size == 0:
+            continue
+
+        bounds = _chain_boundaries_from_token_chain_ids(tchains)
+        entries.append((pid, pae, bounds))
+        all_vals.append(pae[np.isfinite(pae)])
+
+    if not entries:
+        return False
+
+    all_vals = np.concatenate(all_vals) if all_vals else np.asarray([], dtype=float)
+    vmax = float(np.nanpercentile(all_vals, vmax_percentile)) if all_vals.size else None
+
+    n = len(entries)
+    ncols = max(1, int(ncols))
+    nrows = int(math.ceil(n / ncols))
+
+    # size heuristics: matrices can be large; keep panels readable
+    fig_w = 4.0 * ncols
+    fig_h = 4.0 * nrows
+    fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=(fig_w, fig_h), squeeze=False)
+
+    # plot panels
+    last_im = None
+    for k, (pid, pae, bounds) in enumerate(entries):
+        r, c = divmod(k, ncols)
+        ax = axes[r][c]
+
+        last_im = ax.imshow(pae, cmap="magma", vmin=0, vmax=vmax, origin="upper", interpolation="nearest")
+
+        # chain breaks
+        for x in bounds[1:-1]:
+            ax.axhline(x, color="white", lw=0.8)
+            ax.axvline(x, color="white", lw=0.8)
+
+        title = pid
+        if best_pred_id is not None and pid == str(best_pred_id):
+            title = f"Top: {pid}"
+        ax.set_title(title, fontsize=9)
+
+        ax.set_xlabel("")
+        ax.set_ylabel("")
+        ax.set_xticks([])
+        ax.set_yticks([])
+
+    # hide unused axes
+    for k in range(n, nrows * ncols):
+        r, c = divmod(k, ncols)
+        axes[r][c].axis("off")
+
+    # shared colorbar
+    if last_im is not None:
+        cbar = fig.colorbar(last_im, ax=axes, fraction=0.02, pad=0.02)
+        cbar.set_label("PAE (Å)")
+
+    fig.suptitle("PAE matrices (best sample labeled by ranking_score)", fontsize=12)
+    fig.tight_layout(rect=[0, 0, 1, 0.96])
+
+    outpath.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(outpath, dpi=180)
+    plt.close(fig)
+    return True
 
 def plot_pae_with_chain_breaks(conf: dict, outpath: Path, title: str = "PAE") -> bool:
     pae = conf.get("pae", None)
@@ -857,33 +997,37 @@ def main(af3_output_dir: Path, outdir: Path, html_name: str, max_rows: int, writ
         if path:
             plots[f"chain_plddt_{pred_id}"] = path
 
-    # 3. Per-prediction pair heatmap plots
-    for pred_id in df_pred["prediction_id"].unique():
-        path = plot_pair_heatmap_per_prediction(df_pair, outdir, pred_id)
-        if path:
-            plots[f"pair_iptm_heatmap_{pred_id}"] = path
+#    # 3. Per-prediction pair heatmap plots
+#    for pred_id in df_pred["prediction_id"].unique():
+#        path = plot_pair_heatmap_per_prediction(df_pair, outdir, pred_id)
+#        if path:
+#            plots[f"pair_iptm_heatmap_{pred_id}"] = path
 
     # 4. Per-prediction PAE plots
-    for pred_id in df_pred["prediction_id"].unique():
-        conf_path = df_pred[df_pred["prediction_id"] == pred_id]["confidences_path"].iloc[0]
-        if not conf_path or not Path(conf_path).exists():
-            continue
+    pae_multi = outdir / "plots" / "pae_multipanel.png"
+    if plot_pae_multipanel_best_labeled(df_pred, pae_multi, ncols=3):
+        plots["pae_multipanel"] = str(pae_multi.relative_to(outdir))
 
-        conf = load_json(Path(conf_path))
+    #for pred_id in df_pred["prediction_id"].unique():
+    #    conf_path = df_pred[df_pred["prediction_id"] == pred_id]["confidences_path"].iloc[0]
+    #    if not conf_path or not Path(conf_path).exists():
+    #        continue#
+
+        #conf = load_json(Path(conf_path))
 
         # PAE matrix
-        pae_png = outdir / "plots" / f"pae_{pred_id}.png"
-        ok_pae = plot_pae_with_chain_breaks(conf, pae_png, title=f"PAE (with chain breaks) - {pred_id}")
-        if ok_pae:
-            plots[f"pae_{pred_id}"] = str(pae_png.relative_to(outdir))
+        #pae_png = outdir / "plots" / f"pae_{pred_id}.png"
+        #ok_pae = plot_pae_with_chain_breaks(conf, pae_png, title=f"PAE (with chain breaks) - {pred_id}")
+        #if ok_pae:
+        #    plots[f"pae_{pred_id}"] = str(pae_png.relative_to(outdir))
 
     # 5. Generate **one interactive combined pLDDT plot** for all predictions
     combined_plot_path = plot_plddt_combined_interactive(df_pred, outdir, max_rows=max_rows)
     plots["plddt_combined"] = combined_plot_path
 
     # 6. Generate **interactive PAE matrix** (dropdown)
-    pae_interactive_path = plot_pae_interactive(df_pred, outdir)
-    plots["pae_interactive"] = pae_interactive_path
+    #pae_interactive_path = plot_pae_interactive(df_pred, outdir)
+    #plots["pae_interactive"] = pae_interactive_path
 
     # 7. Generate **interactive ipTM matrix** (dropdown)
     iptm_interactive_path = plot_iptm_interactive(df_pair, outdir)
@@ -894,6 +1038,6 @@ def main(af3_output_dir: Path, outdir: Path, html_name: str, max_rows: int, writ
 
     #click.echo(str(out_html))
 
-
+    
 if __name__ == "__main__":
     main()
