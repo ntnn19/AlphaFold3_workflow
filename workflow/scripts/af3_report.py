@@ -19,6 +19,13 @@ from plotly.subplots import make_subplots
 
 SEED_SAMPLE_RE = re.compile(r"seed-(\d+)_sample-(\d+)")
 
+def get_sample_id_from_output_dir(output_dir: Path) -> str:
+    """
+    Use the AF3 output directory name as sample identifier.
+    Example: reports/7wr6_template_based_afdb_seed-1  ->  7wr6_template_based_afdb_seed-1
+    """
+    return output_dir.name
+
 def plot_plddt_with_chain_breaks(
     conf: Dict[str, Any],
     outpath: Path,
@@ -585,7 +592,9 @@ def find_summary_files(output_dir: Path, layout: str) -> list[Path]:
         return sorted(output_dir.rglob("*_summary_confidences.json"))
     raise ValueError(f"Unknown layout: {layout}")
 
+
 def summarize_job(output_dir: Path, layout: str):
+    sample_id = get_sample_id_from_output_dir(output_dir)
 
     summary_files = find_summary_files(output_dir, layout)
 
@@ -595,6 +604,7 @@ def summarize_job(output_dir: Path, layout: str):
 
     for sp in summary_files:
         seed, sample, pred_id = parse_prediction_id(sp)
+        pred_id_with_sample = f"{sample_id}__{pred_id}"
         summ = load_json(sp)
 
         cp = resolve_confidences_path(sp, layout)
@@ -602,7 +612,8 @@ def summarize_job(output_dir: Path, layout: str):
 
         # ---- complex-wide ----
         pred_rows.append({
-            "prediction_id": pred_id,
+            "sample_id": sample_id,
+            "prediction_id": pred_id_with_sample,
             "seed": seed,
             "sample": sample,
             "ranking_score": summ.get("ranking_score"),
@@ -630,7 +641,8 @@ def summarize_job(output_dir: Path, layout: str):
 
         for i, cid in enumerate(chain_ids):
             chain_rows.append({
-                "prediction_id": pred_id,
+                "sample_id": sample_id,
+                "prediction_id": pred_id_with_sample,
                 "seed": seed,
                 "sample": sample,
                 "chain_id": cid,
@@ -657,7 +669,8 @@ def summarize_job(output_dir: Path, layout: str):
                     #if i == j:
                     #    continue
                     pair_rows.append({
-                        "prediction_id": pred_id,
+                        "sample_id": sample_id,
+                        "prediction_id": pred_id_with_sample,
                         "seed": seed,
                         "sample": sample,
                         "chain_i": ci,
