@@ -530,6 +530,18 @@ def parse_prediction_id(summary_path: Path) -> tuple[int | None, int | None, str
             break
     return seed, sample, pred_id
 
+def make_sample_pred_id(sample_id: str, prediction_id: str, sample: int | None) -> str:
+    """
+    Create a globally unique per-prediction identifier without duplicating seed info.
+      - top                -> <sample_id>_sample-top
+      - seed-*_sample-N    -> <sample_id>_sample-N  (N from parsed sample index)
+    """
+    if prediction_id == "top":
+        return f"{sample_id}_sample-top"
+    if sample is None:
+        # Fallback (shouldn't normally happen for non-top predictions)
+        return f"{sample_id}_sample-unknown"
+    return f"{sample_id}_sample-{int(sample)}"
 
 def resolve_confidences_path(summary_path: Path, layout: str) -> Path | None:
     """
@@ -595,7 +607,7 @@ def find_summary_files(output_dir: Path, layout: str) -> list[Path]:
 
 def summarize_job(output_dir: Path, layout: str):
 
-    sample_id = output_dir.name   # <-- add this line
+    sample_id = output_dir.name  # e.g. 7wr6_template_based_afdb_seed-1
 
     summary_files = find_summary_files(output_dir, layout)
 
@@ -605,6 +617,7 @@ def summarize_job(output_dir: Path, layout: str):
 
     for sp in summary_files:
         seed, sample, pred_id = parse_prediction_id(sp)
+        sample_pred_id = make_sample_pred_id(sample_id, pred_id, sample)
         summ = load_json(sp)
 
         cp = resolve_confidences_path(sp, layout)
@@ -612,8 +625,9 @@ def summarize_job(output_dir: Path, layout: str):
 
         # ---- complex-wide ----
         pred_rows.append({
-            "sample_id": sample_id,          # <-- add
-            "prediction_id": pred_id,        # <-- unchanged
+            "sample_id": sample_id,
+            "sample_pred_id": sample_pred_id,
+            "prediction_id": pred_id,
             "seed": seed,
             "sample": sample,
             "ranking_score": summ.get("ranking_score"),
@@ -639,8 +653,9 @@ def summarize_job(output_dir: Path, layout: str):
 
         for i, cid in enumerate(chain_ids):
             chain_rows.append({
-                "sample_id": sample_id,      # <-- add
-                "prediction_id": pred_id,    # <-- unchanged
+                "sample_id": sample_id,
+                "sample_pred_id": sample_pred_id,
+                "prediction_id": pred_id,
                 "seed": seed,
                 "sample": sample,
                 "chain_id": cid,
@@ -664,8 +679,9 @@ def summarize_job(output_dir: Path, layout: str):
             for i, ci in enumerate(chain_ids_pair):
                 for j, cj in enumerate(chain_ids_pair):
                     pair_rows.append({
-                        "sample_id": sample_id,      # <-- add
-                        "prediction_id": pred_id,    # <-- unchanged
+                        "sample_id": sample_id,
+                        "sample_pred_id": sample_pred_id,
+                        "prediction_id": pred_id,
                         "seed": seed,
                         "sample": sample,
                         "chain_i": ci,
