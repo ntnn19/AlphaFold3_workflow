@@ -16,6 +16,19 @@ from typing import Dict, Optional, Tuple, Any
 import seaborn as sns
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from matplotlib.colors import LinearSegmentedColormap
+
+BLUE_WHITE_CMAP = LinearSegmentedColormap.from_list(
+    "blue_white_good",
+    [
+        "#08519c",  # dark blue
+        "#3182bd",
+        "#6baed6",
+        "#bdd7e7",
+        "#eff3ff",
+        "#ffffff",  # white
+    ]
+)
 
 SEED_SAMPLE_RE = re.compile(r"seed-(\d+)_sample-(\d+)")
 
@@ -306,11 +319,13 @@ def plot_iptm_interactive(
 ) -> str:
     """
     Generate an interactive ipTM matrix with dropdown to select prediction.
-    Builds matrices from df_pair (chain_pairs.csv-style long table).
 
-    Styling:
-    - blue-good colormap (low = light/white, high = dark blue)
-    - black borders between cells via xgap/ygap + black plot background
+    Features:
+    - ipTM pair matrix per prediction
+    - high ipTM = blue, low ipTM = white
+    - black borders between cells
+    - top sample by ranking_score labeled as TOP
+    - global ipTM shown below the plot
     """
     import json
     import numpy as np
@@ -321,11 +336,23 @@ def plot_iptm_interactive(
     plots_dir.mkdir(parents=True, exist_ok=True)
     html_path = plots_dir / "iptm_interactive.html"
 
-    if df_pair.empty or "pair_iptm" not in df_pair.columns:
+    required = {"prediction_id", "chain_i", "chain_j", "pair_iptm"}
+    if df_pair.empty or not required.issubset(df_pair.columns):
         html_path.write_text("<p><em>No ipTM data available.</em></p>", encoding="utf-8")
         return str(html_path.relative_to(output_dir))
 
-    # Collect pivoted matrices per prediction_id
+    # Determine top prediction by ranking_score, if available
+    top_pred_id = None
+    if "ranking_score" in df_pair.columns:
+        score_df = (
+            df_pair[["prediction_id", "ranking_score"]]
+            .dropna()
+            .drop_duplicates()
+            .sort_values(["ranking_score", "prediction_id"], ascending=[False, True])
+        )
+        if not score_df.empty:
+            top_pred_id = str(score_df.iloc[0]["prediction_id"])
+
     data = {}
     prediction_ids = []
 
@@ -333,9 +360,10 @@ def plot_iptm_interactive(
         if not {"chain_i", "chain_j", "pair_iptm"}.issubset(g.columns):
             continue
 
+        pred_id = str(pred_id)
+
         piv = g.pivot(index="chain_i", columns="chain_j", values="pair_iptm")
 
-        # Stable square ordering
         chains = sorted(set(piv.index.astype(str)).union(set(piv.columns.astype(str))))
         piv = piv.reindex(index=chains, columns=chains)
 
@@ -343,9 +371,24 @@ def plot_iptm_interactive(
         if np.isnan(mat).all():
             continue
 
+        global_iptm = None
+        if "iptm" in g.columns:
+            vals = pd.to_numeric(g["iptm"], errors="coerce").dropna()
+            if not vals.empty:
+                global_iptm = float(vals.iloc[0])
+
+        ranking_score = None
+        if "ranking_score" in g.columns:
+            vals = pd.to_numeric(g["ranking_score"], errors="coerce").dropna()
+            if not vals.empty:
+                ranking_score = float(vals.iloc[0])
+
         data[pred_id] = {
             "iptm": mat.tolist(),
-            "chain_ids": chains
+            "chain_ids": chains,
+            "global_iptm": global_iptm,
+            "ranking_score": ranking_score,
+            "is_top": (pred_id == top_pred_id),
         }
         prediction_ids.append(pred_id)
 
@@ -353,110 +396,175 @@ def plot_iptm_interactive(
         html_path.write_text("<p><em>No ipTM data available.</em></p>", encoding="utf-8")
         return str(html_path.relative_to(output_dir))
 
-    prediction_ids.sort()
+    # Sort: TOP first, then by ranking_score desc if available, else prediction_id
+    def _sort_key(pid):
+        d = data[pid]
+        is_top = d.get("is_top", False)
+        rs = d.get("ranking_score")
+        rs_sort = -(rs if rs is not None else -np.inf)
+        return (0 if is_top else 1, rs_sort, pid)
+
+    prediction_ids = sorted(prediction_ids, key=_sort_key)
 
     html = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="utf-8">
-        <title>Interactive ipTM Matrices</title>
-        <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
-        <style>
-            body {{ font-family: Arial, sans-serif; margin: 24px; }}
-            .container {{ max-width: 1200px; margin: 0 auto; }}
-            .dropdown {{ margin-bottom: 20px; padding: 8px; font-size: 16px; }}
-            .plot {{ margin-top: 20px; }}
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <h2>Interactive ipTM Matrices</h2>
-            <select id="prediction-select" class="dropdown">
-                {"".join(f'<option value="{pid}">{pid}</option>' for pid in prediction_ids)}
-            </select>
-            <div id="plot" class="plot"></div>
-        </div>
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Interactive ipTM Matrices</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        body {{ font-family: Arial, sans-serif; margin: 24px; }}
+        .container {{ max-width: 1200px; margin: 0 auto; }}
+        .dropdown {{ margin-bottom: 20px; padding: 8px; font-size: 16px; }}
+        .plot {{ margin-top: 20px; }}
+        .meta {{
+            margin-top: 10px;
+            font-size: 15px;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Interactive ipTM Matrices</h2>
+        <select id="prediction-select" class="dropdown">
+            {"".join(
+                f'<option value="{pid}">{"TOP: " if data[pid]["is_top"] else ""}{pid}</option>'
+                for pid in prediction_ids
+            )}
+        </select>
+        <div id="plot" class="plot"></div>
+        <div id="meta" class="meta"></div>
+    </div>
 
-        <script>
-        const data = {json.dumps(data)};
+    <script>
+    const data = {json.dumps(data)};
 
-        function updatePlot(predId) {{
-            const iptm = data[predId].iptm;
-            const chain_ids = data[predId].chain_ids;
+    function makeBorderShapes(n) {{
+        const shapes = [];
 
-            const trace = {{
-                z: iptm,
-                x: chain_ids,
-                y: chain_ids,
-                type: 'heatmap',
-
-                // Blue-good colormap: low values light, high values dark blue
-                colorscale: [
-                    [0.00, '#f7fbff'],
-                    [0.20, '#deebf7'],
-                    [0.40, '#c6dbef'],
-                    [0.60, '#9ecae1'],
-                    [0.75, '#6baed6'],
-                    [0.90, '#3182bd'],
-                    [1.00, '#08519c']
-                ],
-
-                zmin: 0,
-                zmax: 1,
-                colorbar: {{ title: "ipTM" }},
-
-                // Creates visible borders between cells when plot_bgcolor is black
-                xgap: 2,
-                ygap: 2,
-
-                hovertemplate:
-                    'Chain i: %{{y}}<br>' +
-                    'Chain j: %{{x}}<br>' +
-                    'ipTM: %{{z:.3f}}<extra></extra>'
-            }};
-
-            const layout = {{
-                title: `ipTM Matrix - ${{predId}}`,
-                xaxis: {{
-                    title: "Chain",
-                    side: "bottom",
-                    tickmode: "array",
-                    tickvals: chain_ids,
-                    ticktext: chain_ids,
-                    showgrid: false,
-                    zeroline: false
+        for (let i = 0.5; i < n - 0.5; i += 1) {{
+            shapes.push(
+                {{
+                    type: 'line',
+                    x0: i, x1: i,
+                    y0: -0.5, y1: n - 0.5,
+                    line: {{color: 'black', width: 1}}
                 }},
-                yaxis: {{
-                    title: "Chain",
-                    autorange: "reversed",
-                    tickmode: "array",
-                    tickvals: chain_ids,
-                    ticktext: chain_ids,
-                    showgrid: false,
-                    zeroline: false,
-                    scaleanchor: "x",
-                    scaleratio: 1
-                }},
-                margin: {{ l: 60, r: 30, t: 50, b: 60 }},
-
-                // Black background shows through gaps, appearing as black cell borders
-                plot_bgcolor: "black",
-                paper_bgcolor: "white"
-            }};
-
-            Plotly.newPlot('plot', [trace], layout, {{responsive: true}});
+                {{
+                    type: 'line',
+                    x0: -0.5, x1: n - 0.5,
+                    y0: i, y1: i,
+                    line: {{color: 'black', width: 1}}
+                }}
+            );
         }}
 
-        document.getElementById('prediction-select').addEventListener('change', function() {{
-            updatePlot(this.value);
-        }});
+        shapes.push(
+            {{ type: 'line', x0: -0.5, x1: n - 0.5, y0: -0.5, y1: -0.5, line: {{color: 'black', width: 1.5}} }},
+            {{ type: 'line', x0: -0.5, x1: n - 0.5, y0: n - 0.5, y1: n - 0.5, line: {{color: 'black', width: 1.5}} }},
+            {{ type: 'line', x0: -0.5, x1: -0.5, y0: -0.5, y1: n - 0.5, line: {{color: 'black', width: 1.5}} }},
+            {{ type: 'line', x0: n - 0.5, x1: n - 0.5, y0: -0.5, y1: n - 0.5, line: {{color: 'black', width: 1.5}} }}
+        );
 
-        updatePlot('{prediction_ids[0]}');
-        </script>
-    </body>
-    </html>
-    """
+        return shapes;
+    }}
+
+    function updatePlot(predId) {{
+        const entry = data[predId];
+        const iptm = entry.iptm;
+        const chain_ids = entry.chain_ids;
+        const n = chain_ids.length;
+        const isTop = entry.is_top;
+        const globalIptm = entry.global_iptm;
+        const rankingScore = entry.ranking_score;
+
+        const trace = {{
+            z: iptm,
+            x: [...Array(n).keys()],
+            y: [...Array(n).keys()],
+            type: 'heatmap',
+            colorscale: [
+                [0.00, '#ffffff'],
+                [0.20, '#eff3ff'],
+                [0.40, '#bdd7e7'],
+                [0.60, '#6baed6'],
+                [0.80, '#3182bd'],
+                [1.00, '#08519c']
+            ],
+            zmin: 0,
+            zmax: 1,
+            colorbar: {{ title: "ipTM" }},
+            hovertemplate:
+                'Chain i: %{{customdata[0]}}<br>' +
+                'Chain j: %{{customdata[1]}}<br>' +
+                'pair ipTM: %{{z:.3f}}<extra></extra>',
+            customdata: iptm.map((row, i) =>
+                row.map((_, j) => [chain_ids[i], chain_ids[j]])
+            )
+        }};
+
+        const titleText = isTop ? `ipTM Matrix - TOP: ${{predId}}` : `ipTM Matrix - ${{predId}}`;
+
+        const layout = {{
+            title: titleText,
+            xaxis: {{
+                title: "Chain",
+                tickmode: "array",
+                tickvals: [...Array(n).keys()],
+                ticktext: chain_ids,
+                side: "bottom",
+                range: [-0.5, n - 0.5],
+                showgrid: false,
+                zeroline: false
+            }},
+            yaxis: {{
+                title: "Chain",
+                tickmode: "array",
+                tickvals: [...Array(n).keys()],
+                ticktext: chain_ids,
+                autorange: "reversed",
+                range: [n - 0.5, -0.5],
+                showgrid: false,
+                zeroline: false,
+                scaleanchor: "x",
+                scaleratio: 1
+            }},
+            shapes: makeBorderShapes(n),
+            margin: {{ l: 60, r: 30, t: 60, b: 60 }},
+            paper_bgcolor: "white",
+            plot_bgcolor: "white"
+        }};
+
+        Plotly.newPlot('plot', [trace], layout, {{responsive: true}});
+
+        let meta = '';
+        if (globalIptm !== null && globalIptm !== undefined) {{
+            meta += `<strong>Global ipTM:</strong> ${{globalIptm.toFixed(3)}}`;
+        }} else {{
+            meta += `<strong>Global ipTM:</strong> n/a`;
+        }}
+
+        if (rankingScore !== null && rankingScore !== undefined) {{
+            meta += ` &nbsp;&nbsp; <strong>Ranking score:</strong> ${{rankingScore.toFixed(3)}}`;
+        }}
+
+        if (isTop) {{
+            meta += ` &nbsp;&nbsp; <strong>Top-ranked sample</strong>`;
+        }}
+
+        document.getElementById('meta').innerHTML = meta;
+    }}
+
+    document.getElementById('prediction-select').addEventListener('change', function() {{
+        updatePlot(this.value);
+    }});
+
+    updatePlot('{prediction_ids[0]}');
+    </script>
+</body>
+</html>
+"""
 
     html_path.write_text(html, encoding="utf-8")
     return str(html_path.relative_to(output_dir))
@@ -474,18 +582,38 @@ def plot_pae_multipanel_best_labeled(
     max_panels: int | None = None,
     vmax_percentile: float = 99.0,
 ) -> bool:
+    import math
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from matplotlib.colors import LinearSegmentedColormap
+    from pathlib import Path
+
     if df_pred.empty:
         return False
 
+    BLUE_WHITE_CMAP = LinearSegmentedColormap.from_list(
+        "blue_white_good",
+        [
+            "#08519c",  # dark blue = good
+            "#3182bd",
+            "#6baed6",
+            "#bdd7e7",
+            "#eff3ff",
+            "#ffffff",  # white = bad
+        ]
+    )
+
     d_plot = df_pred.copy()  # already filtered to exclude literal "top"
 
-    # optional cap
     if max_panels is not None and len(d_plot) > max_panels:
-        d_plot = d_plot.sort_values(["ranking_score", "prediction_id"], ascending=[False, True]).head(max_panels)
+        d_plot = d_plot.sort_values(
+            ["ranking_score", "prediction_id"], ascending=[False, True]
+        ).head(max_panels)
 
-    # order: TOP first (is_top), then ranking desc
-    d_plot = d_plot.sort_values(["is_top", "ranking_score", "prediction_id"],
-                                ascending=[False, False, True])
+    d_plot = d_plot.sort_values(
+        ["is_top", "ranking_score", "prediction_id"],
+        ascending=[False, False, True]
+    )
 
     entries: list[tuple[str, bool, np.ndarray, list[int]]] = []
     all_vals = []
@@ -529,13 +657,27 @@ def plot_pae_multipanel_best_labeled(
         r, c = divmod(k, ncols)
         ax = axes[r][c]
 
-        # PAE: low good -> blue, high bad -> red
-        last_im = ax.imshow(pae, cmap="RdBu_r", vmin=0, vmax=vmax, origin="upper", interpolation="nearest")
+        # low PAE = good = blue ; high PAE = bad = white
+        last_im = ax.imshow(
+            pae,
+            cmap=BLUE_WHITE_CMAP,
+            vmin=0,
+            vmax=vmax,
+            origin="upper",
+            interpolation="nearest"
+        )
 
-        # black chain borders
+        # draw black chain borders
         for x in bounds[1:-1]:
-            ax.axhline(x, color="black", lw=1.2)
-            ax.axvline(x, color="black", lw=1.2)
+            ax.axhline(x - 0.5, color="black", lw=1.2)
+            ax.axvline(x - 0.5, color="black", lw=1.2)
+
+        # outer border
+        nres = pae.shape[0]
+        ax.axhline(-0.5, color="black", lw=1.2)
+        ax.axhline(nres - 0.5, color="black", lw=1.2)
+        ax.axvline(-0.5, color="black", lw=1.2)
+        ax.axvline(nres - 0.5, color="black", lw=1.2)
 
         title = f"TOP: {pid}" if is_top else pid
         ax.set_title(title, fontsize=9)
@@ -548,11 +690,11 @@ def plot_pae_multipanel_best_labeled(
 
     if last_im is not None:
         cbar = fig.colorbar(last_im, ax=axes, fraction=0.02, pad=0.02)
-        cbar.set_label("PAE (Å)  (blue=good, red=bad)")
+        cbar.set_label("PAE (Å)  (blue=good, white=bad)")
 
     fig.tight_layout()
     outpath.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(outpath, dpi=180)
+    fig.savefig(outpath, dpi=180, bbox_inches="tight")
     plt.close(fig)
     return True
 
