@@ -315,17 +315,23 @@ def plot_pae_interactive(df_pred: pd.DataFrame, output_dir: Path) -> str:
 
 def plot_iptm_interactive(
     df_pair: pd.DataFrame,
+    df_pred: pd.DataFrame,
     output_dir: Path
 ) -> str:
     """
-    Generate an interactive ipTM matrix with dropdown to select prediction.
+    Generate an interactive pairwise ipTM matrix with dropdown to select prediction.
+
+    Uses:
+    - df_pair: chain-pair level table with columns like
+      prediction_id, chain_i, chain_j, pair_iptm
+    - df_pred: prediction-level table (predictions.tsv-derived) with columns like
+      prediction_id, ranking_score, iptm
 
     Features:
-    - ipTM pair matrix per prediction
     - high ipTM = blue, low ipTM = white
-    - black borders between cells
-    - top sample by ranking_score labeled as TOP
-    - global ipTM shown below the plot
+    - internal black borders between cells
+    - top sample by ranking score labeled as TOP
+    - global ipTM displayed below the plot
     """
     import json
     import numpy as np
@@ -336,30 +342,61 @@ def plot_iptm_interactive(
     plots_dir.mkdir(parents=True, exist_ok=True)
     html_path = plots_dir / "iptm_interactive.html"
 
-    required = {"prediction_id", "chain_i", "chain_j", "pair_iptm"}
-    if df_pair.empty or not required.issubset(df_pair.columns):
+    required_pair = {"prediction_id", "chain_i", "chain_j", "pair_iptm"}
+    if df_pair.empty or not required_pair.issubset(df_pair.columns):
         html_path.write_text("<p><em>No ipTM data available.</em></p>", encoding="utf-8")
         return str(html_path.relative_to(output_dir))
 
-    # Determine top prediction by ranking_score, if available
+    # Build authoritative metadata from predictions table
+    pred_meta = {}
     top_pred_id = None
-    if "ranking_score" in df_pair.columns:
-        score_df = (
-            df_pair[["prediction_id", "ranking_score"]]
-            .dropna()
-            .drop_duplicates()
-            .sort_values(["ranking_score", "prediction_id"], ascending=[False, True])
-        )
-        if not score_df.empty:
-            top_pred_id = str(score_df.iloc[0]["prediction_id"])
+
+    if df_pred is not None and not df_pred.empty and "prediction_id" in df_pred.columns:
+        dmeta = df_pred.copy()
+        dmeta["prediction_id"] = dmeta["prediction_id"].astype(str)
+
+        # top by ranking_score
+        if "ranking_score" in dmeta.columns:
+            rs = pd.to_numeric(dmeta["ranking_score"], errors="coerce")
+            dmeta = dmeta.assign(_ranking_score_num=rs)
+
+            top_rows = dmeta.dropna(subset=["_ranking_score_num"]).sort_values(
+                ["_ranking_score_num", "prediction_id"],
+                ascending=[False, True]
+            )
+            if not top_rows.empty:
+                top_pred_id = str(top_rows.iloc[0]["prediction_id"])
+
+        # collect metadata per prediction
+        for _, row in dmeta.iterrows():
+            pid = str(row["prediction_id"])
+
+            ranking_score = None
+            if "ranking_score" in row and pd.notna(row["ranking_score"]):
+                try:
+                    ranking_score = float(row["ranking_score"])
+                except Exception:
+                    pass
+
+            global_iptm = None
+            # prefer explicit iptm column from predictions.tsv
+            for col in ["iptm", "ipTM", "global_iptm", "global_iptm"]:
+                if col in dmeta.columns and pd.notna(row.get(col)):
+                    try:
+                        global_iptm = float(row[col])
+                        break
+                    except Exception:
+                        pass
+
+            pred_meta[pid] = {
+                "ranking_score": ranking_score,
+                "global_iptm": global_iptm,
+            }
 
     data = {}
     prediction_ids = []
 
     for pred_id, g in df_pair.groupby("prediction_id"):
-        if not {"chain_i", "chain_j", "pair_iptm"}.issubset(g.columns):
-            continue
-
         pred_id = str(pred_id)
 
         piv = g.pivot(index="chain_i", columns="chain_j", values="pair_iptm")
@@ -371,23 +408,12 @@ def plot_iptm_interactive(
         if np.isnan(mat).all():
             continue
 
-        global_iptm = None
-        if "iptm" in g.columns:
-            vals = pd.to_numeric(g["iptm"], errors="coerce").dropna()
-            if not vals.empty:
-                global_iptm = float(vals.iloc[0])
-
-        ranking_score = None
-        if "ranking_score" in g.columns:
-            vals = pd.to_numeric(g["ranking_score"], errors="coerce").dropna()
-            if not vals.empty:
-                ranking_score = float(vals.iloc[0])
-
+        meta = pred_meta.get(pred_id, {})
         data[pred_id] = {
             "iptm": mat.tolist(),
             "chain_ids": chains,
-            "global_iptm": global_iptm,
-            "ranking_score": ranking_score,
+            "global_iptm": meta.get("global_iptm"),
+            "ranking_score": meta.get("ranking_score"),
             "is_top": (pred_id == top_pred_id),
         }
         prediction_ids.append(pred_id)
@@ -396,18 +422,21 @@ def plot_iptm_interactive(
         html_path.write_text("<p><em>No ipTM data available.</em></p>", encoding="utf-8")
         return str(html_path.relative_to(output_dir))
 
-    # Sort: TOP first, then by ranking_score desc if available, else prediction_id
     def _sort_key(pid):
         d = data[pid]
         is_top = d.get("is_top", False)
         rs = d.get("ranking_score")
-        rs_sort = -(rs if rs is not None else -np.inf)
-        return (0 if is_top else 1, rs_sort, pid)
+        rs_sort = float("-inf") if rs is None else float(rs)
+        return (0 if is_top else 1, -rs_sort, pid)
 
     prediction_ids = sorted(prediction_ids, key=_sort_key)
 
-    html = f"""
-<!DOCTYPE html>
+    options_html = "".join(
+        f'<option value="{pid}">{"TOP: " if data[pid]["is_top"] else ""}{pid}</option>'
+        for pid in prediction_ids
+    )
+
+    html = f"""<!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
@@ -418,20 +447,14 @@ def plot_iptm_interactive(
         .container {{ max-width: 1200px; margin: 0 auto; }}
         .dropdown {{ margin-bottom: 20px; padding: 8px; font-size: 16px; }}
         .plot {{ margin-top: 20px; }}
-        .meta {{
-            margin-top: 10px;
-            font-size: 15px;
-        }}
+        .meta {{ margin-top: 10px; font-size: 15px; }}
     </style>
 </head>
 <body>
     <div class="container">
         <h2>Interactive ipTM Matrices</h2>
         <select id="prediction-select" class="dropdown">
-            {"".join(
-                f'<option value="{pid}">{"TOP: " if data[pid]["is_top"] else ""}{pid}</option>'
-                for pid in prediction_ids
-            )}
+            {options_html}
         </select>
         <div id="plot" class="plot"></div>
         <div id="meta" class="meta"></div>
@@ -440,9 +463,8 @@ def plot_iptm_interactive(
     <script>
     const data = {json.dumps(data)};
 
-    function makeBorderShapes(n) {{
+    function makeInternalBorderShapes(n) {{
         const shapes = [];
-
         for (let i = 0.5; i < n - 0.5; i += 1) {{
             shapes.push(
                 {{
@@ -459,14 +481,6 @@ def plot_iptm_interactive(
                 }}
             );
         }}
-
-        shapes.push(
-            {{ type: 'line', x0: -0.5, x1: n - 0.5, y0: -0.5, y1: -0.5, line: {{color: 'black', width: 1.5}} }},
-            {{ type: 'line', x0: -0.5, x1: n - 0.5, y0: n - 0.5, y1: n - 0.5, line: {{color: 'black', width: 1.5}} }},
-            {{ type: 'line', x0: -0.5, x1: -0.5, y0: -0.5, y1: n - 0.5, line: {{color: 'black', width: 1.5}} }},
-            {{ type: 'line', x0: n - 0.5, x1: n - 0.5, y0: -0.5, y1: n - 0.5, line: {{color: 'black', width: 1.5}} }}
-        );
-
         return shapes;
     }}
 
@@ -504,7 +518,9 @@ def plot_iptm_interactive(
             )
         }};
 
-        const titleText = isTop ? `ipTM Matrix - TOP: ${{predId}}` : `ipTM Matrix - ${{predId}}`;
+        const titleText = isTop
+            ? `ipTM Matrix - TOP: ${{predId}}`
+            : `ipTM Matrix - ${{predId}}`;
 
         const layout = {{
             title: titleText,
@@ -530,7 +546,7 @@ def plot_iptm_interactive(
                 scaleanchor: "x",
                 scaleratio: 1
             }},
-            shapes: makeBorderShapes(n),
+            shapes: makeInternalBorderShapes(n),
             margin: {{ l: 60, r: 30, t: 60, b: 60 }},
             paper_bgcolor: "white",
             plot_bgcolor: "white"
@@ -538,22 +554,22 @@ def plot_iptm_interactive(
 
         Plotly.newPlot('plot', [trace], layout, {{responsive: true}});
 
-        let meta = '';
-        if (globalIptm !== null && globalIptm !== undefined) {{
-            meta += `<strong>Global ipTM:</strong> ${{globalIptm.toFixed(3)}}`;
+        let parts = [];
+        if (globalIptm !== null && globalIptm !== undefined && !Number.isNaN(globalIptm)) {{
+            parts.push(`<strong>Global ipTM:</strong> ${{Number(globalIptm).toFixed(3)}}`);
         }} else {{
-            meta += `<strong>Global ipTM:</strong> n/a`;
+            parts.push(`<strong>Global ipTM:</strong> n/a`);
         }}
 
-        if (rankingScore !== null && rankingScore !== undefined) {{
-            meta += ` &nbsp;&nbsp; <strong>Ranking score:</strong> ${{rankingScore.toFixed(3)}}`;
+        if (rankingScore !== null && rankingScore !== undefined && !Number.isNaN(rankingScore)) {{
+            parts.push(`<strong>Ranking score:</strong> ${{Number(rankingScore).toFixed(3)}}`);
         }}
 
         if (isTop) {{
-            meta += ` &nbsp;&nbsp; <strong>Top-ranked sample</strong>`;
+            parts.push(`<strong>Top-ranked sample</strong>`);
         }}
 
-        document.getElementById('meta').innerHTML = meta;
+        document.getElementById('meta').innerHTML = parts.join(" &nbsp;&nbsp; ");
     }}
 
     document.getElementById('prediction-select').addEventListener('change', function() {{
