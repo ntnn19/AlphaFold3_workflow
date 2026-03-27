@@ -19,6 +19,15 @@ from plotly.subplots import make_subplots
 
 SEED_SAMPLE_RE = re.compile(r"seed-(\d+)_sample-(\d+)")
 
+
+def get_sample_id_from_output_dir(output_dir: Path) -> str:
+    """
+    Use the AF3 output directory name as sample identifier.
+    Example: reports/7wr6_template_based_afdb_seed-1  ->  7wr6_template_based_afdb_seed-1
+    """
+    return output_dir.name
+
+
 def plot_plddt_with_chain_breaks(
     conf: Dict[str, Any],
     outpath: Path,
@@ -586,6 +595,7 @@ def find_summary_files(output_dir: Path, layout: str) -> list[Path]:
     raise ValueError(f"Unknown layout: {layout}")
 
 def summarize_job(output_dir: Path, layout: str):
+    sample_id = get_sample_id_from_output_dir(output_dir)
 
     summary_files = find_summary_files(output_dir, layout)
 
@@ -595,6 +605,11 @@ def summarize_job(output_dir: Path, layout: str):
 
     for sp in summary_files:
         seed, sample, pred_id = parse_prediction_id(sp)
+
+        # Make prediction_id globally unique across samples; keep sample_id explicitly.
+        # Applies to both per-sample predictions and "top".
+        pred_id_with_sample = f"{sample_id}__{pred_id}"
+
         summ = load_json(sp)
 
         cp = resolve_confidences_path(sp, layout)
@@ -602,7 +617,8 @@ def summarize_job(output_dir: Path, layout: str):
 
         # ---- complex-wide ----
         pred_rows.append({
-            "prediction_id": pred_id,
+            "sample_id": sample_id,
+            "prediction_id": pred_id_with_sample,
             "seed": seed,
             "sample": sample,
             "ranking_score": summ.get("ranking_score"),
@@ -630,7 +646,8 @@ def summarize_job(output_dir: Path, layout: str):
 
         for i, cid in enumerate(chain_ids):
             chain_rows.append({
-                "prediction_id": pred_id,
+                "sample_id": sample_id,
+                "prediction_id": pred_id_with_sample,
                 "seed": seed,
                 "sample": sample,
                 "chain_id": cid,
@@ -657,7 +674,8 @@ def summarize_job(output_dir: Path, layout: str):
                     #if i == j:
                     #    continue
                     pair_rows.append({
-                        "prediction_id": pred_id,
+                        "sample_id": sample_id,
+                        "prediction_id": pred_id_with_sample,
                         "seed": seed,
                         "sample": sample,
                         "chain_i": ci,
@@ -891,8 +909,6 @@ def main(af3_output_dir: Path, outdir: Path, html_name: str, max_rows: int, writ
         df_pair.to_csv(outdir / "chain_pairs.csv", index=False)
 
     # --- Generate all plots per prediction ---
-    # --- Generate all plots per prediction ---
-    # --- Generate all plots per prediction ---
     plots = {}
 
     # 1. Complex-wide plots (already per-prediction)
@@ -935,7 +951,7 @@ def main(af3_output_dir: Path, outdir: Path, html_name: str, max_rows: int, writ
     # 7. Generate **interactive ipTM matrix** (dropdown)
     iptm_interactive_path = plot_iptm_interactive(df_pair, outdir)
     plots["iptm_interactive"] = iptm_interactive_path
-    print("Plots=",plots)
+    print("Plots=", plots)
     #out_html = outdir / html_name
     #write_html_report(out_html, df_pred, df_chain, df_pair, max_rows=max_rows)
 
