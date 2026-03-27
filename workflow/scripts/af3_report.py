@@ -321,8 +321,11 @@ def plot_iptm_interactive(
     """
     Generate an interactive pairwise ipTM matrix with dropdown to select prediction.
 
-    Metadata such as top-ranked sample and global ipTM are taken from df_pred
-    (predictions.tsv-level table), not from the long df_pair table.
+    Metadata such as top-ranked sample and global ipTM are taken from df_pred.
+    Styling:
+    - high ipTM = blue
+    - low ipTM = white
+    - no chain borders (cleaner rendering in Plotly)
     """
     plots_dir = output_dir / "plots"
     plots_dir.mkdir(parents=True, exist_ok=True)
@@ -333,9 +336,8 @@ def plot_iptm_interactive(
         html_path.write_text("<p><em>No ipTM data available.</em></p>", encoding="utf-8")
         return str(html_path.relative_to(output_dir))
 
-    # ---- prediction-level metadata from df_pred ----
-    pred_meta: dict[str, dict[str, object]] = {}
-    top_pred_id: str | None = None
+    pred_meta = {}
+    top_pred_id = None
 
     if df_pred is not None and not df_pred.empty and "prediction_id" in df_pred.columns:
         dmeta = df_pred.copy()
@@ -352,7 +354,6 @@ def plot_iptm_interactive(
         else:
             dmeta["ranking_score_num"] = np.nan
 
-        # choose a sensible ipTM column from df_pred
         iptm_col = None
         for col in ["iptm", "ipTM", "global_iptm"]:
             if col in dmeta.columns:
@@ -377,7 +378,6 @@ def plot_iptm_interactive(
                 "global_iptm": global_iptm,
             }
 
-    # ---- build pairwise matrices ----
     data = {}
     prediction_ids = []
 
@@ -385,7 +385,6 @@ def plot_iptm_interactive(
         pred_id = str(pred_id)
 
         piv = g.pivot(index="chain_i", columns="chain_j", values="pair_iptm")
-
         chains = sorted(set(piv.index.astype(str)).union(set(piv.columns.astype(str))))
         piv = piv.reindex(index=chains, columns=chains)
 
@@ -447,27 +446,6 @@ def plot_iptm_interactive(
 
     <script>
     const data = {json.dumps(data)};
-
-    function makeInternalBorderShapes(n) {{
-        const shapes = [];
-        for (let i = 0.5; i < n - 0.5; i += 1) {{
-            shapes.push(
-                {{
-                    type: 'line',
-                    x0: i, x1: i,
-                    y0: -0.5, y1: n - 0.5,
-                    line: {{color: 'black', width: 1}}
-                }},
-                {{
-                    type: 'line',
-                    x0: -0.5, x1: n - 0.5,
-                    y0: i, y1: i,
-                    line: {{color: 'black', width: 1}}
-                }}
-            );
-        }}
-        return shapes;
-    }}
 
     function updatePlot(predId) {{
         const entry = data[predId];
@@ -538,7 +516,6 @@ def plot_iptm_interactive(
                 scaleanchor: "x",
                 scaleratio: 1
             }},
-            shapes: makeInternalBorderShapes(n),
             margin: {{ l: 60, r: 30, t: 60, b: 60 }},
             paper_bgcolor: "white",
             plot_bgcolor: "white"
@@ -696,10 +673,10 @@ def plot_pae_multipanel_best_labeled(
         axes[r][c].axis("off")
 
     if last_im is not None:
-        cbar = fig.colorbar(last_im, ax=axes, fraction=0.02, pad=0.02)
+        cbar = fig.colorbar(last_im, ax=axes.ravel().tolist(), fraction=0.02, pad=0.02)
         cbar.set_label("PAE (Å)  (blue=good, white=bad)")
 
-    fig.tight_layout()
+    fig.subplots_adjust(wspace=0.15, hspace=0.25)
     outpath.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(outpath, dpi=180, bbox_inches="tight")
     plt.close(fig)
