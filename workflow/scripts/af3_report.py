@@ -275,63 +275,116 @@ def plot_pae_interactive(df_pred: pd.DataFrame, output_dir: Path) -> str:
     html_path.write_text(html, encoding="utf-8")
     return str(html_path.relative_to(output_dir))
 
-def plot_iptm_interactive(df_pair: pd.DataFrame, output_dir: Path) -> str:
+def plot_iptm_interactive(
+    df_pair: pd.DataFrame,
+    output_dir: Path
+) -> str:
     """
-    Lightweight "interactive" ipTM viewer: dropdown switches between per-prediction PNGs.
-    Expects PNGs named: plots/pair_iptm_heatmap_{prediction_id}.png
+    Generate an interactive ipTM matrix with dropdown to select prediction.
+    Builds matrices from df_pair (chain_pairs.csv-style long table).
     """
     plots_dir = output_dir / "plots"
     plots_dir.mkdir(parents=True, exist_ok=True)
     html_path = plots_dir / "iptm_interactive.html"
 
-    pred_ids = sorted(df_pair["prediction_id"].dropna().astype(str).unique().tolist())
-
-    # Keep only predictions that actually have a PNG
-    items = []
-    for pid in pred_ids:
-        png = plots_dir / f"pair_iptm_heatmap_{pid}.png"
-        if png.exists():
-            items.append((pid, f"pair_iptm_heatmap_{pid}.png"))
-
-    if not items:
-        html_path.write_text("<p><em>No ipTM PNGs available.</em></p>", encoding="utf-8")
+    if df_pair.empty or "pair_iptm" not in df_pair.columns:
+        html_path.write_text("<p><em>No ipTM data available.</em></p>", encoding="utf-8")
         return str(html_path.relative_to(output_dir))
 
-    first_pid, first_png = items[0]
+    # Collect pivoted matrices per prediction_id
+    data = {}
+    prediction_ids = []
 
-    html = f"""<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>ipTM (image switcher)</title>
-  <style>
-    body {{ font-family: Arial, sans-serif; margin: 24px; }}
-    .container {{ max-width: 1200px; margin: 0 auto; }}
-    .dropdown {{ margin-bottom: 16px; padding: 8px; font-size: 16px; }}
-    img {{ max-width: 100%; height: auto; border: 1px solid #eee; padding: 2px; }}
-  </style>
-</head>
-<body>
-  <div class="container">
-    <h2>ipTM matrices (PNG switcher)</h2>
-    <select id="prediction-select" class="dropdown">
-      {''.join(f'<option value="{png}">{pid}</option>' for pid, png in items)}
-    </select>
-    <div>
-      <img id="iptm-img" src="{first_png}" alt="ipTM PNG">
-    </div>
-  </div>
+    for pred_id, g in df_pair.groupby("prediction_id"):
+        # Ensure needed cols exist
+        if not {"chain_i", "chain_j", "pair_iptm"}.issubset(g.columns):
+            continue
 
-  <script>
-    const sel = document.getElementById('prediction-select');
-    const img = document.getElementById('iptm-img');
-    sel.addEventListener('change', function() {{
-      img.src = this.value;
-    }});
-  </script>
-</body>
-</html>
-"""
+        # Build matrix via pivot (rows=chain_i, cols=chain_j)
+        piv = g.pivot(index="chain_i", columns="chain_j", values="pair_iptm")
+
+        # Make sure ordering is stable and square (include all chains seen in either axis)
+        chains = sorted(set(piv.index.astype(str)).union(set(piv.columns.astype(str))))
+        piv = piv.reindex(index=chains, columns=chains)
+
+        # Skip if completely empty
+        mat = piv.to_numpy(dtype=float)
+        if np.isnan(mat).all():
+            continue
+
+        data[pred_id] = {
+            "iptm": mat.tolist(),
+            "chain_ids": chains
+        }
+        prediction_ids.append(pred_id)
+
+    if not data:
+        html_path.write_text("<p><em>No ipTM data available.</em></p>", encoding="utf-8")
+        return str(html_path.relative_to(output_dir))
+
+    prediction_ids.sort()
+
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <title>Interactive ipTM Matrices</title>
+        <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+        <style>
+            body {{ font-family: Arial, sans-serif; margin: 24px; }}
+            .container {{ max-width: 1200px; margin: 0 auto; }}
+            .dropdown {{ margin-bottom: 20px; padding: 8px; font-size: 16px; }}
+            .plot {{ margin-top: 20px; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h2>Interactive ipTM Matrices</h2>
+            <select id="prediction-select" class="dropdown">
+                {"".join(f'<option value="{pid}">{pid}</option>' for pid in prediction_ids)}
+            </select>
+            <div id="plot" class="plot"></div>
+        </div>
+
+        <script>
+        const data = {json.dumps(data)};
+
+        function updatePlot(predId) {{
+            const iptm = data[predId].iptm;
+            const chain_ids = data[predId].chain_ids;
+
+            const trace = {{
+                z: iptm,
+                x: chain_ids,
+                y: chain_ids,
+                type: 'heatmap',
+                colorscale: 'viridis',
+                zmin: 0,
+                zmax: 1,
+                colorbar: {{ title: "ipTM" }}
+            }};
+
+            const layout = {{
+                title: `ipTM Matrix - ${{predId}}`,
+                xaxis: {{ title: "Chain" }},
+                yaxis: {{ title: "Chain" }},
+                margin: {{ l: 60, r: 30, t: 50, b: 60 }}
+            }};
+
+            Plotly.newPlot('plot', [trace], layout);
+        }}
+
+        document.getElementById('prediction-select').addEventListener('change', function() {{
+            updatePlot(this.value);
+        }});
+
+        updatePlot('{prediction_ids[0]}');
+        </script>
+    </body>
+    </html>
+    """
+
     html_path.write_text(html, encoding="utf-8")
     return str(html_path.relative_to(output_dir))
 
