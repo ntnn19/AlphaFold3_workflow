@@ -451,7 +451,7 @@ def plot_iptm_interactive(
     html_path.write_text(html, encoding="utf-8")
     return str(html_path.relative_to(output_dir))
 
-def plot_pae_with_chain_breaks(conf: dict, outpath: Path, title: str = "PAE") -> bool:
+def plot_pae_with_chain_breaks(conf: dict, outpath: Path, pred_id: str, title: str = "PAE") -> bool:
     pae = conf.get("pae", None)
     tchains = conf.get("token_chain_ids", None)
     if pae is None or tchains is None:
@@ -480,7 +480,9 @@ def plot_pae_with_chain_breaks(conf: dict, outpath: Path, title: str = "PAE") ->
         ax.axhline(x, color="white", lw=1.0)
         ax.axvline(x, color="white", lw=1.0)
 
-    ax.set_title(title)
+    # Use full pred_id in title
+    ax.set_title(f"PAE (with chain breaks) - {pred_id}")
+
     ax.set_xlabel("token index")
     ax.set_ylabel("token index")
 
@@ -514,14 +516,17 @@ def pick_conf_for_plot(df_pred: pd.DataFrame) -> Path | None:
 
 def parse_prediction_id(summary_path: Path) -> tuple[int | None, int | None, str]:
     seed = sample = None
+    # Default to "top" if no match
     pred_id = "top"
     for part in summary_path.parts:
         m = SEED_SAMPLE_RE.fullmatch(part)
         if m:
             seed, sample = int(m.group(1)), int(m.group(2))
-            pred_id = part
+            # Create a consistent prediction ID: seed-<seed>_sample-<sample>
+            pred_id = f"seed-{seed}_sample-{sample}"
             break
     return seed, sample, pred_id
+
 
 
 def resolve_confidences_path(summary_path: Path, layout: str) -> Path | None:
@@ -920,7 +925,7 @@ def main(af3_output_dir: Path, outdir: Path, html_name: str, max_rows: int, writ
 
         # PAE matrix
         pae_png = outdir / "plots" / f"pae_{pred_id}.png"
-        ok_pae = plot_pae_with_chain_breaks(conf, pae_png, title=f"PAE (with chain breaks) - {pred_id}")
+        ok_pae = plot_pae_with_chain_breaks(conf, pae_png,pred_id, title=f"PAE - {pred_id}")
         if ok_pae:
             plots[f"pae_{pred_id}"] = str(pae_png.relative_to(outdir))
 
