@@ -1208,7 +1208,7 @@ def main(af3_output_dir: Path, outdir: Path, html_name: str, max_rows: int, writ
     #plots["pae_interactive"] = pae_interactive_path
 
     # 7. Generate **interactive ipTM matrix** (dropdown)
-    iptm_interactive_path = plot_iptm_interactive(df_pair, outdir)
+    iptm_interactive_path = plot_iptm_interactive(df_pair, df_pred, outdir)
     plots["iptm_interactive"] = iptm_interactive_path
     print("Plots=",plots)
     #out_html = outdir / html_name
