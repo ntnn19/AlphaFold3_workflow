@@ -19,6 +19,31 @@ from plotly.subplots import make_subplots
 
 SEED_SAMPLE_RE = re.compile(r"seed-(\d+)_sample-(\d+)")
 
+def mark_and_filter_top(df_pred: pd.DataFrame,
+                        df_chain: pd.DataFrame,
+                        df_pair: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    # choose best among non-"top" if present, else best overall
+    d = df_pred.copy()
+    cand = d[(d["prediction_id"] != "top") & d["ranking_score"].notna()].copy()
+    if cand.empty:
+        cand = d[d["ranking_score"].notna()].copy()
+
+    top_pid = None
+    if not cand.empty:
+        top_pid = str(cand.sort_values("ranking_score", ascending=False).iloc[0]["prediction_id"])
+
+    # add a boolean label column
+    d["is_top"] = False
+    if top_pid is not None:
+        d.loc[d["prediction_id"].astype(str) == top_pid, "is_top"] = True
+
+    # filter out literal "top" everywhere
+    d = d[d["prediction_id"] != "top"].copy()
+    df_chain2 = df_chain[df_chain["prediction_id"] != "top"].copy()
+    df_pair2 = df_pair[df_pair["prediction_id"] != "top"].copy()
+
+    return d, df_chain2, df_pair2
+
 def get_sample_id_from_output_dir(output_dir: Path) -> str:
     """
     Use the AF3 output directory name as sample identifier.
@@ -282,7 +307,16 @@ def plot_iptm_interactive(
     """
     Generate an interactive ipTM matrix with dropdown to select prediction.
     Builds matrices from df_pair (chain_pairs.csv-style long table).
+
+    Styling:
+    - blue-good colormap (low = light/white, high = dark blue)
+    - black borders between cells via xgap/ygap + black plot background
     """
+    import json
+    import numpy as np
+    import pandas as pd
+    from pathlib import Path
+
     plots_dir = output_dir / "plots"
     plots_dir.mkdir(parents=True, exist_ok=True)
     html_path = plots_dir / "iptm_interactive.html"
@@ -296,18 +330,15 @@ def plot_iptm_interactive(
     prediction_ids = []
 
     for pred_id, g in df_pair.groupby("prediction_id"):
-        # Ensure needed cols exist
         if not {"chain_i", "chain_j", "pair_iptm"}.issubset(g.columns):
             continue
 
-        # Build matrix via pivot (rows=chain_i, cols=chain_j)
         piv = g.pivot(index="chain_i", columns="chain_j", values="pair_iptm")
 
-        # Make sure ordering is stable and square (include all chains seen in either axis)
+        # Stable square ordering
         chains = sorted(set(piv.index.astype(str)).union(set(piv.columns.astype(str))))
         piv = piv.reindex(index=chains, columns=chains)
 
-        # Skip if completely empty
         mat = piv.to_numpy(dtype=float)
         if np.isnan(mat).all():
             continue
@@ -359,20 +390,62 @@ def plot_iptm_interactive(
                 x: chain_ids,
                 y: chain_ids,
                 type: 'heatmap',
-                colorscale: 'viridis',
+
+                // Blue-good colormap: low values light, high values dark blue
+                colorscale: [
+                    [0.00, '#f7fbff'],
+                    [0.20, '#deebf7'],
+                    [0.40, '#c6dbef'],
+                    [0.60, '#9ecae1'],
+                    [0.75, '#6baed6'],
+                    [0.90, '#3182bd'],
+                    [1.00, '#08519c']
+                ],
+
                 zmin: 0,
                 zmax: 1,
-                colorbar: {{ title: "ipTM" }}
+                colorbar: {{ title: "ipTM" }},
+
+                // Creates visible borders between cells when plot_bgcolor is black
+                xgap: 2,
+                ygap: 2,
+
+                hovertemplate:
+                    'Chain i: %{{y}}<br>' +
+                    'Chain j: %{{x}}<br>' +
+                    'ipTM: %{{z:.3f}}<extra></extra>'
             }};
 
             const layout = {{
                 title: `ipTM Matrix - ${{predId}}`,
-                xaxis: {{ title: "Chain" }},
-                yaxis: {{ title: "Chain" }},
-                margin: {{ l: 60, r: 30, t: 50, b: 60 }}
+                xaxis: {{
+                    title: "Chain",
+                    side: "bottom",
+                    tickmode: "array",
+                    tickvals: chain_ids,
+                    ticktext: chain_ids,
+                    showgrid: false,
+                    zeroline: false
+                }},
+                yaxis: {{
+                    title: "Chain",
+                    autorange: "reversed",
+                    tickmode: "array",
+                    tickvals: chain_ids,
+                    ticktext: chain_ids,
+                    showgrid: false,
+                    zeroline: false,
+                    scaleanchor: "x",
+                    scaleratio: 1
+                }},
+                margin: {{ l: 60, r: 30, t: 50, b: 60 }},
+
+                // Black background shows through gaps, appearing as black cell borders
+                plot_bgcolor: "black",
+                paper_bgcolor: "white"
             }};
 
-            Plotly.newPlot('plot', [trace], layout);
+            Plotly.newPlot('plot', [trace], layout, {{responsive: true}});
         }}
 
         document.getElementById('prediction-select').addEventListener('change', function() {{
@@ -388,14 +461,11 @@ def plot_iptm_interactive(
     html_path.write_text(html, encoding="utf-8")
     return str(html_path.relative_to(output_dir))
 
-
 def _chain_boundaries_from_token_chain_ids(tchains: np.ndarray) -> list[int]:
-    """Return boundary indices including 0 and N."""
     if tchains.size == 0:
         return [0]
     change_idx = np.nonzero(tchains[:-1] != tchains[1:])[0] + 1
     return [0, *change_idx.tolist(), int(tchains.size)]
-
 
 def plot_pae_multipanel_best_labeled(
     df_pred: pd.DataFrame,
@@ -404,56 +474,25 @@ def plot_pae_multipanel_best_labeled(
     max_panels: int | None = None,
     vmax_percentile: float = 99.0,
 ) -> bool:
-    """
-    Create one multi-panel PNG with one PAE matrix per prediction.
-    The best prediction (max ranking_score among non-top samples) is labeled "Top".
-    """
     if df_pred.empty:
         return False
 
-    d = df_pred.copy()
-
-    # pick best non-top by ranking_score; fall back to best overall if needed
-    d_rankable = d[(d["prediction_id"] != "top") & d["ranking_score"].notna()].copy()
-    if d_rankable.empty:
-        d_rankable = d[d["ranking_score"].notna()].copy()
-
-    best_pred_id = None
-    if not d_rankable.empty:
-        best_pred_id = d_rankable.sort_values("ranking_score", ascending=False).iloc[0]["prediction_id"]
-
-    # decide which predictions to plot (exclude "top")
-    d_plot = d[d["prediction_id"] != "top"].copy()
-    if d_plot.empty:
-        # if only "top" exists, plot it
-        d_plot = d.copy()
+    d_plot = df_pred.copy()  # already filtered to exclude literal "top"
 
     # optional cap
     if max_panels is not None and len(d_plot) > max_panels:
-        # keep best + top-N others by ranking_score (descending)
-        if "ranking_score" in d_plot.columns:
-            d_plot = d_plot.sort_values("ranking_score", ascending=False).head(max_panels)
-        else:
-            d_plot = d_plot.head(max_panels)
+        d_plot = d_plot.sort_values(["ranking_score", "prediction_id"], ascending=[False, True]).head(max_panels)
 
-    # stable ordering: best first, then by ranking_score desc, then prediction_id
-    if "ranking_score" in d_plot.columns:
-        d_plot = d_plot.sort_values(["ranking_score", "prediction_id"], ascending=[False, True])
-    else:
-        d_plot = d_plot.sort_values(["prediction_id"])
+    # order: TOP first (is_top), then ranking desc
+    d_plot = d_plot.sort_values(["is_top", "ranking_score", "prediction_id"],
+                                ascending=[False, False, True])
 
-    if best_pred_id in set(d_plot["prediction_id"]):
-        d_plot = pd.concat([
-            d_plot[d_plot["prediction_id"] == best_pred_id],
-            d_plot[d_plot["prediction_id"] != best_pred_id]
-        ], ignore_index=True)
-
-    # load all PAE matrices first; compute global vmax for consistent scaling
-    entries: list[tuple[str, np.ndarray, list[int]]] = []
+    entries: list[tuple[str, bool, np.ndarray, list[int]]] = []
     all_vals = []
 
     for _, row in d_plot.iterrows():
         pid = str(row["prediction_id"])
+        is_top = bool(row.get("is_top", False))
         conf_path = row.get("confidences_path", None)
         if not conf_path:
             continue
@@ -464,12 +503,11 @@ def plot_pae_multipanel_best_labeled(
         conf = load_json(p)
         pae = np.asarray(conf.get("pae", []), dtype=float)
         tchains = np.asarray(conf.get("token_chain_ids", []), dtype=str)
-
         if pae.size == 0 or tchains.size == 0:
             continue
 
         bounds = _chain_boundaries_from_token_chain_ids(tchains)
-        entries.append((pid, pae, bounds))
+        entries.append((pid, is_top, pae, bounds))
         all_vals.append(pae[np.isfinite(pae)])
 
     if not entries:
@@ -482,47 +520,37 @@ def plot_pae_multipanel_best_labeled(
     ncols = max(1, int(ncols))
     nrows = int(math.ceil(n / ncols))
 
-    # size heuristics: matrices can be large; keep panels readable
     fig_w = 4.0 * ncols
     fig_h = 4.0 * nrows
     fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=(fig_w, fig_h), squeeze=False)
 
-    # plot panels
     last_im = None
-    for k, (pid, pae, bounds) in enumerate(entries):
+    for k, (pid, is_top, pae, bounds) in enumerate(entries):
         r, c = divmod(k, ncols)
         ax = axes[r][c]
 
-        last_im = ax.imshow(pae, cmap="magma", vmin=0, vmax=vmax, origin="upper", interpolation="nearest")
+        # PAE: low good -> blue, high bad -> red
+        last_im = ax.imshow(pae, cmap="RdBu_r", vmin=0, vmax=vmax, origin="upper", interpolation="nearest")
 
-        # chain breaks
+        # black chain borders
         for x in bounds[1:-1]:
-            ax.axhline(x, color="white", lw=0.8)
-            ax.axvline(x, color="white", lw=0.8)
+            ax.axhline(x, color="black", lw=1.2)
+            ax.axvline(x, color="black", lw=1.2)
 
-        title = pid
-        if best_pred_id is not None and pid == str(best_pred_id):
-            title = f"Top: {pid}"
+        title = f"TOP: {pid}" if is_top else pid
         ax.set_title(title, fontsize=9)
-
-        ax.set_xlabel("")
-        ax.set_ylabel("")
         ax.set_xticks([])
         ax.set_yticks([])
 
-    # hide unused axes
     for k in range(n, nrows * ncols):
         r, c = divmod(k, ncols)
         axes[r][c].axis("off")
 
-    # shared colorbar
     if last_im is not None:
         cbar = fig.colorbar(last_im, ax=axes, fraction=0.02, pad=0.02)
-        cbar.set_label("PAE (Å)")
+        cbar.set_label("PAE (Å)  (blue=good, red=bad)")
 
-    fig.suptitle("PAE matrices (best sample labeled by ranking_score)", fontsize=12)
-    fig.tight_layout(rect=[0, 0, 1, 0.96])
-
+    fig.tight_layout()
     outpath.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(outpath, dpi=180)
     plt.close(fig)
@@ -977,6 +1005,7 @@ def main(af3_output_dir: Path, outdir: Path, html_name: str, max_rows: int, writ
     outdir.mkdir(parents=True, exist_ok=True)
 
     df_pred, df_chain, df_pair = summarize_job(af3_output_dir, layout=layout.lower())
+    df_pred, df_chain, df_pair = mark_and_filter_top(df_pred, df_chain, df_pair)
 
     if write_csv:
         df_pred.to_csv(outdir / "predictions.tsv", sep="\t", index=False)
@@ -1041,3 +1070,6 @@ def main(af3_output_dir: Path, outdir: Path, html_name: str, max_rows: int, writ
     
 if __name__ == "__main__":
     main()
+
+# chain borders for iptm and pae matrices should be clearly visualized using black lines.
+# color scales for pae and iptm should be red to blue (blue is good, red is bad)
