@@ -215,246 +215,123 @@ def plot_plddt_combined_interactive(
 
     return str(html_path.relative_to(output_dir))
 
-def plot_pae_interactive(
-    df_pred: pd.DataFrame,
-    output_dir: Path
-) -> str:
+def plot_pae_interactive(df_pred: pd.DataFrame, output_dir: Path) -> str:
     """
-    Generate an interactive PAE matrix with dropdown to select prediction.
-    Uses Plotly for interactivity.
-
-    Returns:
-        Relative path to saved HTML file.
+    Lightweight "interactive" PAE viewer: dropdown switches between per-prediction PNGs.
+    Expects PNGs named: plots/pae_{prediction_id}.png
     """
     plots_dir = output_dir / "plots"
     plots_dir.mkdir(parents=True, exist_ok=True)
     html_path = plots_dir / "pae_interactive.html"
 
-    # Collect data for all predictions
-    data = {}
-    prediction_ids = []
+    pred_ids = sorted(df_pred["prediction_id"].dropna().astype(str).unique().tolist())
 
-    for pred_id, group in df_pred.groupby("prediction_id"):
-        conf_path = group["confidences_path"].iloc[0]
-        if not conf_path or not Path(conf_path).exists():
-            continue
+    # Keep only predictions that actually have a PNG
+    items = []
+    for pid in pred_ids:
+        png = plots_dir / f"pae_{pid}.png"
+        if png.exists():
+            items.append((pid, f"pae_{pid}.png"))
 
-        conf = load_json(Path(conf_path))
-        pae = np.asarray(conf.get("pae", []), dtype=float)
-        tchains = np.asarray(conf.get("token_chain_ids", []), dtype=str)
-
-        if pae.size == 0 or len(tchains) == 0:
-            continue
-
-        # Compute chain boundaries
-        change_idx = np.nonzero(tchains[:-1] != tchains[1:])[0] + 1
-        boundaries = [0, *change_idx.tolist(), len(tchains)]
-
-        # Get chain IDs
-        chain_ids = []
-        for a, b in zip(boundaries[:-1], boundaries[1:]):
-            chain_ids.append(tchains[a])
-
-        # Store data
-        data[pred_id] = {
-            "pae": pae,
-            "chain_ids": chain_ids
-        }
-        prediction_ids.append(pred_id)
-
-    if not data:
-        html_path.write_text("<p><em>No PAE data available.</em></p>", encoding="utf-8")
+    if not items:
+        html_path.write_text("<p><em>No PAE PNGs available.</em></p>", encoding="utf-8")
         return str(html_path.relative_to(output_dir))
 
-    # Sort prediction IDs
-    prediction_ids.sort()
+    first_pid, first_png = items[0]
 
-    # Create HTML with dropdown and Plotly
-    html = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="utf-8">
-        <title>Interactive PAE Matrices</title>
-        <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
-        <style>
-            body {{ font-family: Arial, sans-serif; margin: 24px; }}
-            .container {{ max-width: 1200px; margin: 0 auto; }}
-            .dropdown {{ margin-bottom: 20px; padding: 8px; font-size: 16px; }}
-            .plot {{ margin-top: 20px; }}
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <h2>Interactive PAE Matrices</h2>
-            <select id="prediction-select" class="dropdown">
-                {"".join(f'<option value="{pid}">{pid}</option>' for pid in prediction_ids)}
-            </select>
-            <div id="plot" class="plot"></div>
-        </div>
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>PAE (image switcher)</title>
+  <style>
+    body {{ font-family: Arial, sans-serif; margin: 24px; }}
+    .container {{ max-width: 1200px; margin: 0 auto; }}
+    .dropdown {{ margin-bottom: 16px; padding: 8px; font-size: 16px; }}
+    img {{ max-width: 100%; height: auto; border: 1px solid #eee; padding: 2px; }}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>PAE matrices (PNG switcher)</h2>
+    <select id="prediction-select" class="dropdown">
+      {''.join(f'<option value="{png}">{pid}</option>' for pid, png in items)}
+    </select>
+    <div>
+      <img id="pae-img" src="{first_png}" alt="PAE PNG">
+    </div>
+  </div>
 
-        <script>
-        // Data
-        const data = {json.dumps(data, default=str)};
-
-        // Initial render
-        function updatePlot(predId) {{
-            const pae = data[predId].pae;
-            const chain_ids = data[predId].chain_ids;
-
-            // Create heatmap
-            const trace = {{
-                z: pae,
-                x: chain_ids,
-                y: chain_ids,
-                type: 'heatmap',
-                colorscale: 'magma',
-                zmin: 0,
-                zmax: Math.max(...pae.flat()),
-                colorbar: {{ title: "PAE (Å)" }}
-            }};
-
-            const layout = {{
-                title: `PAE Matrix - ${{predId}}`,
-                xaxis: {{ title: "Token index" }},
-                yaxis: {{ title: "Token index" }},
-                margin: {{ l: 50, r: 50, t: 50, b: 50 }}
-            }};
-
-            Plotly.newPlot('plot', [trace], layout);
-        }}
-
-        // On load
-        document.getElementById('prediction-select').addEventListener('change', function() {{
-            updatePlot(this.value);
-        }});
-
-        // Initial render
-        updatePlot('{prediction_ids[0]}');
-        </script>
-    </body>
-    </html>
-    """
-
+  <script>
+    const sel = document.getElementById('prediction-select');
+    const img = document.getElementById('pae-img');
+    sel.addEventListener('change', function() {{
+      img.src = this.value;
+    }});
+  </script>
+</body>
+</html>
+"""
     html_path.write_text(html, encoding="utf-8")
     return str(html_path.relative_to(output_dir))
 
-def plot_iptm_interactive(
-    df_pair: pd.DataFrame,
-    output_dir: Path
-) -> str:
+def plot_iptm_interactive(df_pair: pd.DataFrame, output_dir: Path) -> str:
     """
-    Generate an interactive ipTM matrix with dropdown to select prediction.
-    Uses Plotly for interactivity.
-
-    Returns:
-        Relative path to saved HTML file.
+    Lightweight "interactive" ipTM viewer: dropdown switches between per-prediction PNGs.
+    Expects PNGs named: plots/pair_iptm_heatmap_{prediction_id}.png
     """
     plots_dir = output_dir / "plots"
     plots_dir.mkdir(parents=True, exist_ok=True)
     html_path = plots_dir / "iptm_interactive.html"
 
-    # Collect data for all predictions
-    data = {}
-    prediction_ids = []
+    pred_ids = sorted(df_pair["prediction_id"].dropna().astype(str).unique().tolist())
 
-    for pred_id, group in df_pair.groupby("prediction_id"):
-        # Get the first row (or any) for this prediction
-        row = group.iloc[0]
-        if pd.isna(row["pair_iptm"]) or row["pair_iptm"] is None:
-            continue
+    # Keep only predictions that actually have a PNG
+    items = []
+    for pid in pred_ids:
+        png = plots_dir / f"pair_iptm_heatmap_{pid}.png"
+        if png.exists():
+            items.append((pid, f"pair_iptm_heatmap_{pid}.png"))
 
-        # Get the full matrix
-        cp_iptm = row["pair_iptm"]
-        if isinstance(cp_iptm, list):
-            mat = np.asarray(cp_iptm, dtype=float)
-        else:
-            continue
-
-        # Get chain IDs
-        chain_ids = sorted(set(row["chain_i"].astype(str) + row["chain_j"].astype(str)))
-
-        # Store data
-        data[pred_id] = {
-            "iptm": mat,
-            "chain_ids": chain_ids
-        }
-        prediction_ids.append(pred_id)
-
-    if not data:
-        html_path.write_text("<p><em>No ipTM data available.</em></p>", encoding="utf-8")
+    if not items:
+        html_path.write_text("<p><em>No ipTM PNGs available.</em></p>", encoding="utf-8")
         return str(html_path.relative_to(output_dir))
 
-    # Sort prediction IDs
-    prediction_ids.sort()
+    first_pid, first_png = items[0]
 
-    # Create HTML with dropdown and Plotly
-    html = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="utf-8">
-        <title>Interactive ipTM Matrices</title>
-        <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
-        <style>
-            body {{ font-family: Arial, sans-serif; margin: 24px; }}
-            .container {{ max-width: 1200px; margin: 0 auto; }}
-            .dropdown {{ margin-bottom: 20px; padding: 8px; font-size: 16px; }}
-            .plot {{ margin-top: 20px; }}
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <h2>Interactive ipTM Matrices</h2>
-            <select id="prediction-select" class="dropdown">
-                {"".join(f'<option value="{pid}">{pid}</option>' for pid in prediction_ids)}
-            </select>
-            <div id="plot" class="plot"></div>
-        </div>
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>ipTM (image switcher)</title>
+  <style>
+    body {{ font-family: Arial, sans-serif; margin: 24px; }}
+    .container {{ max-width: 1200px; margin: 0 auto; }}
+    .dropdown {{ margin-bottom: 16px; padding: 8px; font-size: 16px; }}
+    img {{ max-width: 100%; height: auto; border: 1px solid #eee; padding: 2px; }}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>ipTM matrices (PNG switcher)</h2>
+    <select id="prediction-select" class="dropdown">
+      {''.join(f'<option value="{png}">{pid}</option>' for pid, png in items)}
+    </select>
+    <div>
+      <img id="iptm-img" src="{first_png}" alt="ipTM PNG">
+    </div>
+  </div>
 
-        <script>
-        // Data
-        const data = {json.dumps(data, default=str)};
-
-        // Initial render
-        function updatePlot(predId) {{
-            const iptm = data[predId].iptm;
-            const chain_ids = data[predId].chain_ids;
-
-            // Create heatmap
-            const trace = {{
-                z: iptm,
-                x: chain_ids,
-                y: chain_ids,
-                type: 'heatmap',
-                colorscale: 'viridis',
-                zmin: 0,
-                zmax: 1,
-                colorbar: {{ title: "ipTM" }}
-            }};
-
-            const layout = {{
-                title: `ipTM Matrix - ${{predId}}`,
-                xaxis: {{ title: "Chain" }},
-                yaxis: {{ title: "Chain" }},
-                margin: {{ l: 50, r: 50, t: 50, b: 50 }}
-            }};
-
-            Plotly.newPlot('plot', [trace], layout);
-        }}
-
-        // On load
-        document.getElementById('prediction-select').addEventListener('change', function() {{
-            updatePlot(this.value);
-        }});
-
-        // Initial render
-        updatePlot('{prediction_ids[0]}');
-        </script>
-    </body>
-    </html>
-    """
-
+  <script>
+    const sel = document.getElementById('prediction-select');
+    const img = document.getElementById('iptm-img');
+    sel.addEventListener('change', function() {{
+      img.src = this.value;
+    }});
+  </script>
+</body>
+</html>
+"""
     html_path.write_text(html, encoding="utf-8")
     return str(html_path.relative_to(output_dir))
 
