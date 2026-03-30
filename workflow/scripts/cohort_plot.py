@@ -11,7 +11,7 @@ import plotly.graph_objects as go
 def load_tsv(path: Path) -> pd.DataFrame:
     if not path.exists():
         return pd.DataFrame()
-    return pd.read_csv(path, sep="\t", dtype=str).fillna("")
+    return pd.read_csv(path, sep="\s+", dtype=str).fillna("")
 
 
 def coerce_numeric(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
@@ -635,7 +635,7 @@ def main(pair_tsv: Path, pred_tsv: Optional[Path], out_html: Path, tm_plot: Opti
         df_tm["name"] = df_tm["sample_id"].str.split("_seed-").str[0]
         df_tm["name"] = df_tm["name"].astype(str).replace("nan", "N/A")
 
-        # Normalize TM score: min(TM1, TM2)
+        # ✅ Use TM1, TM2 — not tm1, tm2
         df_tm["tm_score"] = df_tm[["TM1", "TM2"]].min(axis=1)
         df_tm["tm_score"] = pd.to_numeric(df_tm["tm_score"], errors="coerce")
         df_tm = df_tm[df_tm["tm_score"].notna()].copy()
