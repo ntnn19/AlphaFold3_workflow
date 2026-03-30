@@ -112,25 +112,23 @@ def plot_chain_pair_iptm_cumulative(
         write_no_data_html(out_html, "No valid chain-pair ipTM values available.")
         return False
 
-    # Add metadata columns if present
-    meta_cols = ["sample", "seed", "chain_i", "chain_j"]
-    available_meta = [c for c in meta_cols if c in d.columns]
-    if not available_meta:
-        # Fallback: use sample_id if no metadata
-        d["sample"] = d["sample_id"].str.split("_").str[0]  # e.g., "8sm3" from "8sm3_template_free_afdb"
-        d["seed"] = "N/A"
-        d["chain_i"] = "N/A"
-        d["chain_j"] = "N/A"
-    else:
-        # Ensure all metadata are strings
-        for c in available_meta:
+    # Extract name from sample_id: e.g., "8sm3_template_free_afdb_seed-1" → "8sm3_template_free_afdb"
+    d["name"] = d["sample_id"].str.split("_seed-").str[0]
+    d["name"] = d["name"].astype(str).replace("nan", "N/A")
+
+    # Extract seed and sample (if available)
+    d["seed"] = d["sample_id"].str.extract(r"_seed-(\d+)", expand=False).fillna("N/A")
+    d["sample"] = d["sample_id"].str.extract(r"_sample-(\d+)", expand=False).fillna("N/A")
+
+    # Ensure chain_i, chain_j are strings
+    for c in ["chain_i", "chain_j"]:
+        if c in d.columns:
             d[c] = d[c].astype(str).replace("nan", "N/A")
+        else:
+            d[c] = "N/A"
 
-    # Add is_top as string for hover
+    # is_top as string
     d["is_top"] = d["is_top"].astype(str).str.title()
-
-    # Add a unique identifier for each row (for debugging)
-    d["row_id"] = d.index.astype(str)
 
     n_predictions = len(d)
 
@@ -138,7 +136,7 @@ def plot_chain_pair_iptm_cumulative(
 
     if n_predictions <= 100:
         # --- Jittered strip chart for small datasets ---
-        jitter = 0.005
+        jitter = 0.01  # Increased jitter for better visibility
         d["jitter"] = np.random.uniform(-jitter, jitter, size=len(d))
 
         # All predictions
@@ -154,15 +152,16 @@ def plot_chain_pair_iptm_cumulative(
                 line=dict(width=0.5, color="black")
             ),
             hovertemplate=(
+                "<b>name:</b> %{customdata[0]}<br>"
                 "<b>pair ipTM:</b> %{x:.3f}<br>"
-                "<b>Sample:</b> %{customdata[0]}<br>"
-                "<b>Seed:</b> %{customdata[1]}<br>"
-                "<b>Chain i:</b> %{customdata[2]}<br>"
-                "<b>Chain j:</b> %{customdata[3]}<br>"
-                "<b>Top:</b> %{customdata[4]}<br>"
+                "<b>seed:</b> %{customdata[1]}<br>"
+                "<b>sample:</b> %{customdata[2]}<br>"
+                "<b>chain i:</b> %{customdata[3]}<br>"
+                "<b>chain j:</b> %{customdata[4]}<br>"
+                "<b>is top:</b> %{customdata[5]}<br>"
                 "<extra></extra>"
             ),
-            customdata=d[["sample", "seed", "chain_i", "chain_j", "is_top"]].values,
+            customdata=d[["name", "seed", "sample", "chain_i", "chain_j", "is_top"]].values,
             showlegend=True,
         ))
 
@@ -182,15 +181,16 @@ def plot_chain_pair_iptm_cumulative(
                     line=dict(width=1.5, color="black")
                 ),
                 hovertemplate=(
+                    "<b>name:</b> %{customdata[0]}<br>"
                     "<b>pair ipTM:</b> %{x:.3f}<br>"
-                    "<b>Sample:</b> %{customdata[0]}<br>"
-                    "<b>Seed:</b> %{customdata[1]}<br>"
-                    "<b>Chain i:</b> %{customdata[2]}<br>"
-                    "<b>Chain j:</b> %{customdata[3]}<br>"
-                    "<b>Top:</b> %{customdata[4]}<br>"
+                    "<b>seed:</b> %{customdata[1]}<br>"
+                    "<b>sample:</b> %{customdata[2]}<br>"
+                    "<b>chain i:</b> %{customdata[3]}<br>"
+                    "<b>chain j:</b> %{customdata[4]}<br>"
+                    "<b>is top:</b> %{customdata[5]}<br>"
                     "<extra></extra>"
                 ),
-                customdata=d_top[["sample", "seed", "chain_i", "chain_j", "is_top"]].values,
+                customdata=d_top[["name", "seed", "sample", "chain_i", "chain_j", "is_top"]].values,
                 showlegend=True,
             ))
 
@@ -236,16 +236,17 @@ def plot_chain_pair_iptm_cumulative(
                 name="All predictions",
                 line=dict(color="#4C72B0", width=2.5),
                 hovertemplate=(
+                    "<b>name:</b> %{customdata[0]}<br>"
                     "<b>pair ipTM ≤</b> %{x:.2f}<br>"
                     "<b>Fraction:</b> %{y:.3f}<br>"
-                    "<b>Sample:</b> %{customdata[0]}<br>"
-                    "<b>Seed:</b> %{customdata[1]}<br>"
-                    "<b>Chain i:</b> %{customdata[2]}<br>"
-                    "<b>Chain j:</b> %{customdata[3]}<br>"
-                    "<b>Top:</b> %{customdata[4]}<br>"
+                    "<b>seed:</b> %{customdata[1]}<br>"
+                    "<b>sample:</b> %{customdata[2]}<br>"
+                    "<b>chain i:</b> %{customdata[3]}<br>"
+                    "<b>chain j:</b> %{customdata[4]}<br>"
+                    "<b>is top:</b> %{customdata[5]}<br>"
                     "<extra></extra>"
                 ),
-                customdata=d[["sample", "seed", "chain_i", "chain_j", "is_top"]].values,
+                customdata=d[["name", "seed", "sample", "chain_i", "chain_j", "is_top"]].values,
                 showlegend=True,
             ))
 
@@ -261,16 +262,17 @@ def plot_chain_pair_iptm_cumulative(
                     name="Top predictions",
                     line=dict(color="#D55E00", width=2.5, dash="solid"),
                     hovertemplate=(
+                        "<b>name:</b> %{customdata[0]}<br>"
                         "<b>pair ipTM ≤</b> %{x:.2f}<br>"
                         "<b>Fraction:</b> %{y:.3f}<br>"
-                        "<b>Sample:</b> %{customdata[0]}<br>"
-                        "<b>Seed:</b> %{customdata[1]}<br>"
-                        "<b>Chain i:</b> %{customdata[2]}<br>"
-                        "<b>Chain j:</b> %{customdata[3]}<br>"
-                        "<b>Top:</b> %{customdata[4]}<br>"
+                        "<b>seed:</b> %{customdata[1]}<br>"
+                        "<b>sample:</b> %{customdata[2]}<br>"
+                        "<b>chain i:</b> %{customdata[3]}<br>"
+                        "<b>chain j:</b> %{customdata[4]}<br>"
+                        "<b>is top:</b> %{customdata[5]}<br>"
                         "<extra></extra>"
                     ),
-                    customdata=d_top[["sample", "seed", "chain_i", "chain_j", "is_top"]].values,
+                    customdata=d_top[["name", "seed", "sample", "chain_i", "chain_j", "is_top"]].values,
                     showlegend=True,
                 ))
 
