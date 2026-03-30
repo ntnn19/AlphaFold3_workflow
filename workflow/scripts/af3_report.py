@@ -119,7 +119,7 @@ def plot_plddt_with_chain_breaks(
         mids.append((a + b - 1) / 2)
 
     ax.set_xticks(mids)
-    ax.set_xticklabels(chain_ids_labels, rotation=45, ha="right")
+    ax.set_xticklabels(chain_ids_labels, rotation=0, ha="center")
 
     ax.set_xlabel("Token index")
     ax.set_ylabel("pLDDT")
