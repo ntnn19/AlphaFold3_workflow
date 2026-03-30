@@ -571,7 +571,7 @@ def plot_chain_pair_iptm_cumulative(
     "-o", "--out-html",
     type=click.Path(dir_okay=False, path_type=Path),
     required=True,
-    help="Output HTML path."
+    help="Output HTML path for ipTM plot."
 )
 @click.option(
     "--tm-plot",
@@ -585,25 +585,70 @@ def main(pair_tsv: Path, pred_tsv: Optional[Path], out_html: Path, tm_plot: Opti
     1. Cumulative distribution of chain-pair ipTM across all predictions.
     2. Distribution of normalized TM scores across all predictions.
     """
+    # Load chain-pair data
     df_pair = load_tsv(pair_tsv)
     df_pair = coerce_numeric(df_pair, ["pair_iptm", "pair_pae_min"])
 
+    # Load predictions data (for metadata and ipTM)
     df_pred = load_tsv(pred_tsv) if pred_tsv is not None and pred_tsv.exists() else pd.DataFrame()
-    df_pred = coerce_numeric(df_pred, ["ranking_score", "iptm", "ptm", "mean_plddt_total", "tm1", "tm2"])
+    df_pred = coerce_numeric(df_pred, ["ranking_score", "iptm", "ptm", "mean_plddt_total"])
 
+    # Add prediction metadata (is_top, etc.)
     d = add_prediction_metadata(df_pair, df_pred)
 
     # Plot 1: ipTM
     plot_chain_pair_iptm_cumulative(d, out_html)
 
-    # Plot 2: TM score (if pred_tsv exists and has tm1/tm2)
-    if tm_plot is not None and not df_pred.empty:
-        plot_tm_score_distribution(df_pred, tm_plot)
+    # Plot 2: TM score — use cohort_master.tsv if available
+    if tm_plot is not None:
+        # Try to load cohort_master.tsv (contains tm1, tm2)
+        master_tsv = Path("cohort/cohort_master.tsv")
+        if not master_tsv.exists():
+            click.echo("⚠️  cohort_master.tsv not found. Skipping TM score plot.")
+            return
+
+        df_master = load_tsv(master_tsv)
+        df_master = coerce_numeric(df_master, ["tm1", "tm2"])
+
+        # Extract only needed columns
+        required_cols = {
+            "sample_id", "prediction_id", "sample", "seed", "is_top",
+            "ranking_score", "ptm", "iptm", "mean_plddt_total",
+            "fraction_disordered", "has_clash", "tm1", "tm2"
+        }
+        available_cols = [c for c in required_cols if c in df_master.columns]
+        df_tm = df_master[available_cols].copy()
+
+        # Add name from sample_id
+        df_tm["name"] = df_tm["sample_id"].str.split("_seed-").str[0]
+        df_tm["name"] = df_tm["name"].astype(str).replace("nan", "N/A")
+
+        # Normalize TM score: min(TM1, TM2)
+        df_tm["tm_score"] = df_tm[["tm1", "tm2"]].min(axis=1)
+        df_tm["tm_score"] = pd.to_numeric(df_tm["tm_score"], errors="coerce")
+        df_tm = df_tm[df_tm["tm_score"].notna()].copy()
+
+        if df_tm.empty:
+            click.echo("⚠️  No valid TM scores found. Skipping TM score plot.")
+            return
+
+        # Add is_top as string
+        df_tm["is_top"] = df_tm["is_top"].astype(str).str.title()
+
+        # Prepare metadata for hover
+        meta_cols = [
+            "name", "sample", "seed", "ranking_score", "ptm", "iptm",
+            "mean_plddt_total", "fraction_disordered", "has_clash"
+        ]
+        available_meta = [c for c in meta_cols if c in df_tm.columns]
+        df_tm = df_tm[["tm_score"] + available_meta + ["is_top"]].copy()
+
+        # Plot
+        plot_tm_score_distribution(df_tm, tm_plot)
 
     click.echo(f"✅ ipTM plot saved to: {out_html}")
     if tm_plot is not None:
         click.echo(f"✅ TM score plot saved to: {tm_plot}")
-
 
 if __name__ == "__main__":
     main()
