@@ -325,7 +325,7 @@ def plot_iptm_interactive(
     - builds matrices correctly from long-form df_pair
     - uses white->blue colormap (high = good = blue)
     - labels the top-ranked prediction
-    - shows global ipTM below the plot using df_pred
+    - shows ipTM, pTM, fraction_disordered, has_clash, and ranking_score below the plot using df_pred
     """
     plots_dir = output_dir / "plots"
     plots_dir.mkdir(parents=True, exist_ok=True)
@@ -356,9 +356,15 @@ def plot_iptm_interactive(
             dmeta["ranking_score_num"] = np.nan
 
         iptm_col = None
-        for col in ["iptm", "ipTM", "global_iptm"]:
+        for col in ["iptm", "ipTM"]:
             if col in dmeta.columns:
                 iptm_col = col
+                break
+
+        ptm_col = None
+        for col in ["ptm", "pTM"]:
+            if col in dmeta.columns:
+                ptm_col = col
                 break
 
         for _, row in dmeta.iterrows():
@@ -368,15 +374,36 @@ def plot_iptm_interactive(
             if pd.notna(row.get("ranking_score_num")):
                 ranking_score = float(row["ranking_score_num"])
 
-            global_iptm = None
+            iptm = None
             if iptm_col is not None:
                 val = pd.to_numeric(pd.Series([row.get(iptm_col)]), errors="coerce").iloc[0]
                 if pd.notna(val):
-                    global_iptm = float(val)
+                    iptm = float(val)
+
+            ptm = None
+            if ptm_col is not None:
+                val = pd.to_numeric(pd.Series([row.get(ptm_col)]), errors="coerce").iloc[0]
+                if pd.notna(val):
+                    ptm = float(val)
+
+            fraction_disordered = None
+            if "fraction_disordered" in dmeta.columns:
+                val = pd.to_numeric(pd.Series([row.get("fraction_disordered")]), errors="coerce").iloc[0]
+                if pd.notna(val):
+                    fraction_disordered = float(val)
+
+            has_clash = None
+            if "has_clash" in dmeta.columns:
+                val = row.get("has_clash")
+                if pd.notna(val):
+                    has_clash = bool(val)
 
             pred_meta[pid] = {
                 "ranking_score": ranking_score,
-                "global_iptm": global_iptm,
+                "iptm": iptm,
+                "ptm": ptm,
+                "fraction_disordered": fraction_disordered,
+                "has_clash": has_clash,
             }
 
     # ---- collect matrices ----
@@ -398,7 +425,10 @@ def plot_iptm_interactive(
         data[pred_id] = {
             "iptm": mat.tolist(),
             "chain_ids": chains,
-            "global_iptm": meta.get("global_iptm"),
+            "score_iptm": meta.get("iptm"),
+            "ptm": meta.get("ptm"),
+            "fraction_disordered": meta.get("fraction_disordered"),
+            "has_clash": meta.get("has_clash"),
             "ranking_score": meta.get("ranking_score"),
             "is_top": pred_id == top_pred_id,
         }
@@ -456,7 +486,10 @@ def plot_iptm_interactive(
             const iptm = entry.iptm;
             const chain_ids = entry.chain_ids;
             const isTop = entry.is_top;
-            const globalIptm = entry.global_iptm;
+            const scoreIptm = entry.score_iptm;
+            const ptm = entry.ptm;
+            const fractionDisordered = entry.fraction_disordered;
+            const hasClash = entry.has_clash;
             const rankingScore = entry.ranking_score;
 
             const trace = {{
@@ -495,10 +528,28 @@ def plot_iptm_interactive(
             Plotly.newPlot('plot', [trace], layout, {{responsive: true}});
 
             const parts = [];
-            if (globalIptm !== null && globalIptm !== undefined && !Number.isNaN(globalIptm)) {{
-                parts.push(`<strong>Global ipTM:</strong> ${{Number(globalIptm).toFixed(3)}}`);
+            if (scoreIptm !== null && scoreIptm !== undefined && !Number.isNaN(scoreIptm)) {{
+                parts.push(`<strong>ipTM:</strong> ${{Number(scoreIptm).toFixed(3)}}`);
             }} else {{
-                parts.push(`<strong>Global ipTM:</strong> n/a`);
+                parts.push(`<strong>ipTM:</strong> n/a`);
+            }}
+
+            if (ptm !== null && ptm !== undefined && !Number.isNaN(ptm)) {{
+                parts.push(`<strong>pTM:</strong> ${{Number(ptm).toFixed(3)}}`);
+            }} else {{
+                parts.push(`<strong>pTM:</strong> n/a`);
+            }}
+
+            if (fractionDisordered !== null && fractionDisordered !== undefined && !Number.isNaN(fractionDisordered)) {{
+                parts.push(`<strong>fraction_disordered:</strong> ${{Number(fractionDisordered).toFixed(3)}}`);
+            }} else {{
+                parts.push(`<strong>fraction_disordered:</strong> n/a`);
+            }}
+
+            if (hasClash !== null && hasClash !== undefined) {{
+                parts.push(`<strong>has_clash:</strong> ${{hasClash ? "true" : "false"}}`);
+            }} else {{
+                parts.push(`<strong>has_clash:</strong> n/a`);
             }}
 
             if (rankingScore !== null && rankingScore !== undefined && !Number.isNaN(rankingScore)) {{
