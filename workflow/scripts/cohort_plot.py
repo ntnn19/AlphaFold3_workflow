@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-
+import numpy as np
 from pathlib import Path
 from typing import Optional
-
 import click
 import pandas as pd
 import plotly.graph_objects as go
@@ -118,66 +117,140 @@ def plot_chain_pair_iptm_cumulative(
 
     fig = go.Figure()
 
-    # All predictions: line-based CDF
-    all_iptm = d["pair_iptm"].dropna().sort_values()
-    if len(all_iptm) > 0:
-        y_all = [i / len(all_iptm) for i in range(1, len(all_iptm) + 1)]
+    n_predictions = len(d)
+
+    if n_predictions <= 100:
+        # --- Jittered strip chart for small datasets ---
+        # Add small random jitter to avoid overlap
+        jitter = 0.005  # small jitter to separate points
+        d["jitter"] = np.random.uniform(-jitter, jitter, size=len(d))
+
+        # All predictions
         fig.add_trace(go.Scatter(
-            x=all_iptm,
-            y=y_all,
-            mode='lines',
+            x=d["pair_iptm"] + d["jitter"],
+            y=[0.5] * len(d),
+            mode='markers',
             name="All predictions",
-            line=dict(color="#4C72B0", width=2.5),
-            hovertemplate="pair ipTM ≤ %{x:.2f}<br>Fraction: %{y:.3f}<extra>All predictions</extra>",
+            marker=dict(
+                color="#4C72B0",
+                size=6,
+                opacity=0.7,
+                line=dict(width=0.5, color="black")
+            ),
+            hovertemplate="pair ipTM: %{x:.3f}<extra>All predictions</extra>",
             showlegend=True,
         ))
 
-    # Top predictions only
-    d_top = d[d["is_top"]].copy()
-    if not d_top.empty:
-        top_iptm = d_top["pair_iptm"].dropna().sort_values()
-        if len(top_iptm) > 0:
-            y_top = [i / len(top_iptm) for i in range(1, len(top_iptm) + 1)]
+        # Top predictions (only if any)
+        d_top = d[d["is_top"]]
+        if not d_top.empty:
+            d_top["jitter"] = np.random.uniform(-jitter, jitter, size=len(d_top))
             fig.add_trace(go.Scatter(
-                x=top_iptm,
-                y=y_top,
-                mode='lines',
+                x=d_top["pair_iptm"] + d_top["jitter"],
+                y=[0.5] * len(d_top),
+                mode='markers',
                 name="Top predictions",
-                line=dict(color="#D55E00", width=2.5, dash="solid"),
-                hovertemplate="pair ipTM ≤ %{x:.2f}<br>Fraction: %{y:.3f}<extra>Top predictions</extra>",
+                marker=dict(
+                    color="#D55E00",
+                    size=8,
+                    opacity=0.8,
+                    line=dict(width=1.5, color="black")
+                ),
+                hovertemplate="pair ipTM: %{x:.3f}<extra>Top predictions</extra>",
                 showlegend=True,
             ))
 
-    fig.update_layout(
-        title=dict(
-            text=title,
-            x=0.5,
-            xanchor="center"
-        ),
-        xaxis=dict(
-            title="pair ipTM",
-            range=[0, 1],
-            tickvals=[0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
-            ticktext=["0.0", "0.2", "0.4", "0.6", "0.8", "1.0"]
-        ),
-        yaxis=dict(
-            title="Cumulative fraction",
-            range=[0, 1.02],
-            tickvals=[0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
-            ticktext=["0.0", "0.2", "0.4", "0.6", "0.8", "1.0"]
-        ),
-        template="plotly_white",
-        hovermode="x unified",
-        height=650,
-        margin=dict(l=70, r=50, t=80, b=70),
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="center",
-            x=0.5
-        ),
-    )
+        # Styling for strip chart
+        fig.update_layout(
+            title=dict(
+                text=title,
+                x=0.5,
+                xanchor="center"
+            ),
+            xaxis=dict(
+                title="pair ipTM",
+                range=[0, 1],
+                tickvals=[0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
+                ticktext=["0.0", "0.2", "0.4", "0.6", "0.8", "1.0"]
+            ),
+            yaxis=dict(
+                showticklabels=False,
+                title="",
+                range=[0, 1]
+            ),
+            template="plotly_white",
+            hovermode="x unified",
+            height=400,
+            margin=dict(l=70, r=50, t=80, b=70),
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="center",
+                x=0.5
+            ),
+        )
+
+    else:
+        # --- Smooth line-based CDF for large datasets ---
+        all_iptm = d["pair_iptm"].dropna().sort_values()
+        if len(all_iptm) > 0:
+            y_all = [i / len(all_iptm) for i in range(1, len(all_iptm) + 1)]
+            fig.add_trace(go.Scatter(
+                x=all_iptm,
+                y=y_all,
+                mode='lines',
+                name="All predictions",
+                line=dict(color="#4C72B0", width=2.5),
+                hovertemplate="pair ipTM ≤ %{x:.2f}<br>Fraction: %{y:.3f}<extra>All predictions</extra>",
+                showlegend=True,
+            ))
+
+        d_top = d[d["is_top"]]
+        if not d_top.empty:
+            top_iptm = d_top["pair_iptm"].dropna().sort_values()
+            if len(top_iptm) > 0:
+                y_top = [i / len(top_iptm) for i in range(1, len(top_iptm) + 1)]
+                fig.add_trace(go.Scatter(
+                    x=top_iptm,
+                    y=y_top,
+                    mode='lines',
+                    name="Top predictions",
+                    line=dict(color="#D55E00", width=2.5, dash="solid"),
+                    hovertemplate="pair ipTM ≤ %{x:.2f}<br>Fraction: %{y:.3f}<extra>Top predictions</extra>",
+                    showlegend=True,
+                ))
+
+        fig.update_layout(
+            title=dict(
+                text=title,
+                x=0.5,
+                xanchor="center"
+            ),
+            xaxis=dict(
+                title="pair ipTM",
+                range=[0, 1],
+                tickvals=[0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
+                ticktext=["0.0", "0.2", "0.4", "0.6", "0.8", "1.0"]
+            ),
+            yaxis=dict(
+                title="Cumulative fraction",
+                range=[0, 1.02],
+                tickvals=[0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
+                ticktext=["0.0", "0.2", "0.4", "0.6", "0.8", "1.0"]
+            ),
+            template="plotly_white",
+            hovermode="x unified",
+            height=650,
+            margin=dict(l=70, r=50, t=80, b=70),
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="center",
+                x=0.5
+            ),
+        )
 
     out_html.parent.mkdir(parents=True, exist_ok=True)
     fig.write_html(str(out_html), include_plotlyjs="cdn", full_html=True)
