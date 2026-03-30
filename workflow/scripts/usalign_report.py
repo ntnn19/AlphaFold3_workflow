@@ -234,20 +234,6 @@ def build_interactive_plot(df: pd.DataFrame, html_path: Path) -> Optional[str]:
     # Top annotations + metadata annotations
     annotations = []
     for i, row in d.iterrows():
-        lbl = labels[i]
-
-
-        annotations.append(dict(
-            x=x[i],
-            y=-0.22,
-            xref="x",
-            yref="paper",
-            showarrow=False,
-            xanchor="center",
-            yanchor="top",
-            align="center",
-            font=dict(size=10, color="black")
-        ))
 
         if bool(row.get("is_top", False)):
             y_top = 1.08
