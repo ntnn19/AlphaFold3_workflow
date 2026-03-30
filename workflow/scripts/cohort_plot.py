@@ -649,7 +649,8 @@ def main(pair_tsv: Path, pred_tsv: Optional[Path], out_html: Path, tm_plot: Opti
 
         # Add is_top as string
         df_tm["is_top"] = df_tm["is_top"].astype(str).str.title()
-
+        print(df_tm)
+        exit()
         # Prepare metadata for hover
         meta_cols = [
             "name", "sample", "seed", "ranking_score", "ptm", "iptm",
