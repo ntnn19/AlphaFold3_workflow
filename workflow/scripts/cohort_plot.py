@@ -657,7 +657,8 @@ def main(pair_tsv: Path, pred_tsv: Optional[Path], out_html: Path, tm_plot: Opti
         ]
         available_meta = [c for c in meta_cols if c in df_tm.columns]
         df_tm = df_tm[["tm_score"] + available_meta + ["is_top"]].copy()
-
+        print(df_tm)
+        exit()
         # Plot
         plot_tm_score_distribution(df_tm, tm_plot)
 
