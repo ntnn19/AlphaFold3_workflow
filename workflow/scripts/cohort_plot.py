@@ -21,6 +21,248 @@ def coerce_numeric(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
             d[c] = pd.to_numeric(d[c], errors="coerce")
     return d
 
+def plot_tm_score_distribution(
+    df_pred: pd.DataFrame,
+    out_html: Path,
+    title: str = "Distribution of normalized TM scores across all predictions",
+) -> bool:
+    required = {"sample_id", "prediction_id", "tm1", "tm2"}
+    if df_pred.empty or not required.issubset(df_pred.columns):
+        write_no_data_html(out_html, "No TM score data available.")
+        return False
+
+    d = df_pred.copy()
+    d["sample_id"] = d["sample_id"].astype(str)
+    d["prediction_id"] = d["prediction_id"].astype(str)
+
+    # Extract name from sample_id
+    d["name"] = d["sample_id"].str.split("_seed-").str[0]
+    d["name"] = d["name"].astype(str).replace("nan", "N/A")
+
+    # Extract seed and sample
+    d["seed"] = d["sample_id"].str.extract(r"_seed-(\d+)", expand=False).fillna("N/A")
+    d["sample"] = d["sample_id"].str.extract(r"_sample-(\d+)", expand=False).fillna("N/A")
+
+    # Normalize TM score: use min(TM1, TM2) as the effective TM score
+    # This is standard in structural biology: TM score is limited by the shorter chain
+    d["tm_score"] = d[["tm1", "tm2"]].min(axis=1)
+    d["tm_score"] = pd.to_numeric(d["tm_score"], errors="coerce")
+
+    # Drop invalid values
+    d = d[d["tm_score"].notna()].copy()
+    if d.empty:
+        write_no_data_html(out_html, "No valid TM scores available.")
+        return False
+
+    # Add is_top as string
+    d["is_top"] = d["is_top"].astype(str).str.title()
+
+    # Add metadata columns
+    meta_cols = [
+        "sample", "seed", "name", "ranking_score", "ptm", "iptm",
+        "mean_plddt_total", "fraction_disordered", "has_clash"
+    ]
+    available_meta = [c for c in meta_cols if c in d.columns]
+    d = d[["tm_score"] + available_meta + ["is_top"]].copy()
+
+    n_predictions = len(d)
+
+    fig = go.Figure()
+
+    if n_predictions <= 100:
+        # Strip chart: jitter on x-axis
+        jitter = 0.01
+        d["jitter"] = np.random.uniform(-jitter, jitter, size=len(d))
+
+        # All predictions
+        fig.add_trace(go.Scatter(
+            x=d["tm_score"] + d["jitter"],
+            y=[0.5] * len(d),
+            mode='markers',
+            name="All predictions",
+            marker=dict(
+                color="#4C72B0",
+                size=6,
+                opacity=0.7,
+                line=dict(width=0.5, color="black")
+            ),
+            hovertemplate=(
+                "<b>name:</b> %{customdata[0]}<br>"
+                "<b>sample:</b> %{customdata[1]}<br>"
+                "<b>seed:</b> %{customdata[2]}<br>"
+                "<b>ranking score:</b> %{customdata[3]:.3f}<br>"
+                "<b>ptm:</b> %{customdata[4]:.3f}<br>"
+                "<b>iptm:</b> %{customdata[5]:.3f}<br>"
+                "<b>mean pLDDT:</b> %{customdata[6]:.2f}<br>"
+                "<b>fraction disordered:</b> %{customdata[7]:.3f}<br>"
+                "<b>has clash:</b> %{customdata[8]}<br>"
+                "<b>is top:</b> %{customdata[9]}<br>"
+                "<b>normalized TM:</b> %{x:.3f}<br>"
+                "<extra></extra>"
+            ),
+            customdata=d[meta_cols + ["is_top"]].values,
+            showlegend=True,
+        ))
+
+        # Top predictions
+        d_top = d[d["is_top"].str.lower() == "true"]
+        if not d_top.empty:
+            d_top["jitter"] = np.random.uniform(-jitter, jitter, size=len(d_top))
+            fig.add_trace(go.Scatter(
+                x=d_top["tm_score"] + d_top["jitter"],
+                y=[0.5] * len(d_top),
+                mode='markers',
+                name="Top predictions",
+                marker=dict(
+                    color="#D55E00",
+                    size=8,
+                    opacity=0.8,
+                    line=dict(width=1.5, color="black")
+                ),
+                hovertemplate=(
+                    "<b>name:</b> %{customdata[0]}<br>"
+                    "<b>sample:</b> %{customdata[1]}<br>"
+                    "<b>seed:</b> %{customdata[2]}<br>"
+                    "<b>ranking score:</b> %{customdata[3]:.3f}<br>"
+                    "<b>ptm:</b> %{customdata[4]:.3f}<br>"
+                    "<b>iptm:</b> %{customdata[5]:.3f}<br>"
+                    "<b>mean pLDDT:</b> %{customdata[6]:.2f}<br>"
+                    "<b>fraction disordered:</b> %{customdata[7]:.3f}<br>"
+                    "<b>has clash:</b> %{customdata[8]}<br>"
+                    "<b>is top:</b> %{customdata[9]}<br>"
+                    "<b>normalized TM:</b> %{x:.3f}<br>"
+                    "<extra></extra>"
+                ),
+                customdata=d_top[meta_cols + ["is_top"]].values,
+                showlegend=True,
+            ))
+
+        fig.update_layout(
+            title=dict(
+                text=title,
+                x=0.5,
+                xanchor="center"
+            ),
+            xaxis=dict(
+                title="Normalized TM score (min(TM1, TM2))",
+                range=[0, 1],
+                tickvals=[0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
+                ticktext=["0.0", "0.2", "0.4", "0.6", "0.8", "1.0"]
+            ),
+            yaxis=dict(
+                showticklabels=True,
+                title="Prediction",
+                tickvals=[0.5],
+                ticktext=[""],
+                range=[0, 1]
+            ),
+            template="plotly_white",
+            hovermode="x unified",
+            height=400,
+            margin=dict(l=70, r=50, t=80, b=70),
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="center",
+                x=0.5
+            ),
+        )
+
+    else:
+        # CDF: smooth line
+        all_tm = d["tm_score"].dropna().sort_values()
+        if len(all_tm) > 0:
+            y_all = [i / len(all_tm) for i in range(1, len(all_tm) + 1)]
+            fig.add_trace(go.Scatter(
+                x=all_tm,
+                y=y_all,
+                mode='lines',
+                name="All predictions",
+                line=dict(color="#4C72B0", width=2.5),
+                hovertemplate=(
+                    "<b>name:</b> %{customdata[0]}<br>"
+                    "<b>sample:</b> %{customdata[1]}<br>"
+                    "<b>seed:</b> %{customdata[2]}<br>"
+                    "<b>ranking score:</b> %{customdata[3]:.3f}<br>"
+                    "<b>ptm:</b> %{customdata[4]:.3f}<br>"
+                    "<b>iptm:</b> %{customdata[5]:.3f}<br>"
+                    "<b>mean pLDDT:</b> %{customdata[6]:.2f}<br>"
+                    "<b>fraction disordered:</b> %{customdata[7]:.3f}<br>"
+                    "<b>has clash:</b> %{customdata[8]}<br>"
+                    "<b>is top:</b> %{customdata[9]}<br>"
+                    "<b>normalized TM ≤</b> %{x:.2f}<br>"
+                    "<b>Fraction:</b> %{y:.3f}<br>"
+                    "<extra></extra>"
+                ),
+                customdata=d[meta_cols + ["is_top"]].values,
+                showlegend=True,
+            ))
+
+        d_top = d[d["is_top"].str.lower() == "true"]
+        if not d_top.empty:
+            top_tm = d_top["tm_score"].dropna().sort_values()
+            if len(top_tm) > 0:
+                y_top = [i / len(top_tm) for i in range(1, len(top_tm) + 1)]
+                fig.add_trace(go.Scatter(
+                    x=top_tm,
+                    y=y_top,
+                    mode='lines',
+                    name="Top predictions",
+                    line=dict(color="#D55E00", width=2.5, dash="solid"),
+                    hovertemplate=(
+                        "<b>name:</b> %{customdata[0]}<br>"
+                        "<b>sample:</b> %{customdata[1]}<br>"
+                        "<b>seed:</b> %{customdata[2]}<br>"
+                        "<b>ranking score:</b> %{customdata[3]:.3f}<br>"
+                        "<b>ptm:</b> %{customdata[4]:.3f}<br>"
+                        "<b>iptm:</b> %{customdata[5]:.3f}<br>"
+                        "<b>mean pLDDT:</b> %{customdata[6]:.2f}<br>"
+                        "<b>fraction disordered:</b> %{customdata[7]:.3f}<br>"
+                        "<b>has clash:</b> %{customdata[8]}<br>"
+                        "<b>is top:</b> %{customdata[9]}<br>"
+                        "<b>normalized TM ≤</b> %{x:.2f}<br>"
+                        "<b>Fraction:</b> %{y:.3f}<br>"
+                        "<extra></extra>"
+                    ),
+                    customdata=d_top[meta_cols + ["is_top"]].values,
+                    showlegend=True,
+                ))
+
+        fig.update_layout(
+            title=dict(
+                text=title,
+                x=0.5,
+                xanchor="center"
+            ),
+            xaxis=dict(
+                title="Normalized TM score (min(TM1, TM2))",
+                range=[0, 1],
+                tickvals=[0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
+                ticktext=["0.0", "0.2", "0.4", "0.6", "0.8", "1.0"]
+            ),
+            yaxis=dict(
+                title="Cumulative fraction",
+                range=[0, 1.02],
+                tickvals=[0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
+                ticktext=["0.0", "0.2", "0.4", "0.6", "0.8", "1.0"]
+            ),
+            template="plotly_white",
+            hovermode="x unified",
+            height=650,
+            margin=dict(l=70, r=50, t=80, b=70),
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="center",
+                x=0.5
+            ),
+        )
+
+    out_html.parent.mkdir(parents=True, exist_ok=True)
+    fig.write_html(str(out_html), include_plotlyjs="cdn", full_html=True)
+    return True
 
 def add_prediction_metadata(df_pair: pd.DataFrame, df_pred: pd.DataFrame) -> pd.DataFrame:
     d = df_pair.copy()
@@ -331,20 +573,36 @@ def plot_chain_pair_iptm_cumulative(
     required=True,
     help="Output HTML path."
 )
-def main(pair_tsv: Path, pred_tsv: Optional[Path], out_html: Path):
+@click.option(
+    "--tm-plot",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=None,
+    help="Output HTML path for TM score distribution plot."
+)
+def main(pair_tsv: Path, pred_tsv: Optional[Path], out_html: Path, tm_plot: Optional[Path]):
     """
-    Create an interactive cumulative histogram of chain-pair ipTM across all predictions.
+    Create two interactive plots:
+    1. Cumulative distribution of chain-pair ipTM across all predictions.
+    2. Distribution of normalized TM scores across all predictions.
     """
     df_pair = load_tsv(pair_tsv)
     df_pair = coerce_numeric(df_pair, ["pair_iptm", "pair_pae_min"])
 
     df_pred = load_tsv(pred_tsv) if pred_tsv is not None and pred_tsv.exists() else pd.DataFrame()
-    df_pred = coerce_numeric(df_pred, ["ranking_score", "iptm", "ptm", "mean_plddt_total"])
+    df_pred = coerce_numeric(df_pred, ["ranking_score", "iptm", "ptm", "mean_plddt_total", "tm1", "tm2"])
 
     d = add_prediction_metadata(df_pair, df_pred)
+
+    # Plot 1: ipTM
     plot_chain_pair_iptm_cumulative(d, out_html)
 
-    click.echo(str(out_html))
+    # Plot 2: TM score (if pred_tsv exists and has tm1/tm2)
+    if tm_plot is not None and not df_pred.empty:
+        plot_tm_score_distribution(df_pred, tm_plot)
+
+    click.echo(f"✅ ipTM plot saved to: {out_html}")
+    if tm_plot is not None:
+        click.echo(f"✅ TM score plot saved to: {tm_plot}")
 
 
 if __name__ == "__main__":
