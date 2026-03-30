@@ -625,7 +625,8 @@ def main(pair_tsv: Path, pred_tsv: Optional[Path], out_html: Path, tm_plot: Opti
 
         # ✅ Use exact column names as they appear in the file
         df_master = coerce_numeric(df_master, ["TM1", "TM2"])
-
+        print(df_master)
+        exit()
         required_cols = {
             "sample_id", "prediction_id", "sample", "seed", "is_top",
             "ranking_score", "ptm", "iptm", "mean_plddt_total",
