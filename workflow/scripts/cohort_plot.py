@@ -12,7 +12,6 @@ def load_tsv(path: Path) -> pd.DataFrame:
     if not path.exists():
         return pd.DataFrame()
     print(pd.read_csv(path, sep="\s+", dtype=str).fillna(""))
-    exit()
     return pd.read_csv(path, sep="\s+", dtype=str).fillna("")
 
 
@@ -621,7 +620,7 @@ def main(pair_tsv: Path, pred_tsv: Optional[Path], out_html: Path, tm_plot: Opti
             return
 
         df_master = load_tsv(master_path)
-
+        exit()
         # ✅ Use exact column names as they appear in the file
         df_master = coerce_numeric(df_master, ["TM1", "TM2"])
 
