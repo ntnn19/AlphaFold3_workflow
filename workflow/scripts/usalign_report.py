@@ -209,7 +209,7 @@ def build_interactive_plot(df: pd.DataFrame, html_path: Path) -> Optional[str]:
         fig.add_trace(go.Scatter(
             x=x,
             y=d["RMSD"],
-            mode="markers+lines",
+            mode="markers",
             name="RMSD",
             marker=dict(color="#2ca02c", size=9, symbol="diamond"),
             line=dict(color="#2ca02c", width=1),
