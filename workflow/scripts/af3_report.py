@@ -822,15 +822,15 @@ def resolve_confidences_path(summary_path: Path, layout: str) -> Path | None:
 
     raise ValueError(f"Unknown layout: {layout}")
 
-def sem(a: np.ndarray) -> float | None:
+def std(a: np.ndarray) -> float | None:
     a = np.asarray(a, dtype=float)
     a = a[np.isfinite(a)]
     if a.size <= 1:
         return None
-    return float(np.std(a, ddof=1) / math.sqrt(a.size))
+    return float(np.std(a, ddof=1))
 
 
-def mean_sem_plddt_total(conf: dict) -> tuple[float | None, float | None]:
+def mean_std_plddt_total(conf: dict) -> tuple[float | None, float | None]:
     arr = conf.get("atom_plddts")
     if arr is None:
         return None, None
@@ -838,10 +838,10 @@ def mean_sem_plddt_total(conf: dict) -> tuple[float | None, float | None]:
     a = a[np.isfinite(a)]
     if a.size == 0:
         return None, None
-    return float(a.mean()), sem(a)
+    return float(a.mean()), std(a)
 
 
-def mean_sem_plddt_by_chain(conf: dict) -> dict[str, tuple[float | None, float | None]]:
+def mean_std_plddt_by_chain(conf: dict) -> dict[str, tuple[float | None, float | None]]:
     p = conf.get("atom_plddts")
     c = conf.get("atom_chain_ids")
     if p is None or c is None:
@@ -858,7 +858,7 @@ def mean_sem_plddt_by_chain(conf: dict) -> dict[str, tuple[float | None, float |
         if vals.size == 0:
             out[str(chain)] = (None, None)
         else:
-            out[str(chain)] = (float(vals.mean()), sem(vals))
+            out[str(chain)] = (float(vals.mean()), std(vals))
     return out
 
 def mean_plddt_total(conf: dict) -> float | None:
@@ -912,7 +912,7 @@ def summarize_job(output_dir: Path, layout: str):
         cp = resolve_confidences_path(sp, layout)
         conf = load_json(cp) if cp and cp.exists() else {}
 
-        mean_plddt_total_val, sem_plddt_total_val = mean_sem_plddt_total(conf)
+        mean_plddt_total_val, std_plddt_total_val = mean_std_plddt_total(conf)
 
         pred_rows.append({
             "sample_id": sample_id,
@@ -926,7 +926,7 @@ def summarize_job(output_dir: Path, layout: str):
             "fraction_disordered": summ.get("fraction_disordered"),
             "has_clash": summ.get("has_clash"),
             "mean_plddt_total": mean_plddt_total_val,
-            "sem_plddt_total": sem_plddt_total_val,
+            "std_plddt_total": std_plddt_total_val,
             "summary_path": str(sp),
             "confidences_path": str(cp) if cp else None,
         })
@@ -941,10 +941,10 @@ def summarize_job(output_dir: Path, layout: str):
         if not chain_ids and n:
             chain_ids = [str(i) for i in range(n)]
 
-        chain_mean_sem_plddt = mean_sem_plddt_by_chain(conf)
+        chain_mean_std_plddt = mean_std_plddt_by_chain(conf)
 
         for i, cid in enumerate(chain_ids):
-            mean_val, sem_val = chain_mean_sem_plddt.get(cid, (None, None))
+            mean_val, std_val = chain_mean_std_plddt.get(cid, (None, None))
             chain_rows.append({
                 "sample_id": sample_id,
                 "sample_pred_id": sample_pred_id,
@@ -955,7 +955,7 @@ def summarize_job(output_dir: Path, layout: str):
                 "chain_ptm": chain_ptm[i] if i < len(chain_ptm) else None,
                 "chain_iptm": chain_iptm[i] if i < len(chain_iptm) else None,
                 "mean_plddt_chain": mean_val,
-                "sem_plddt_chain": sem_val,
+                "std_plddt_chain": std_val,
             })
 
         # ---- per chain-pair ----
@@ -1001,7 +1001,7 @@ def plot_complex_overview(df_pred: pd.DataFrame, outdir: Path) -> dict[str, str]
     d = df_pred.copy()
     d["seed"] = d["seed"].astype("Int64")
 
-    # ranking vs mean plddt
+    # ranking by prediction
     plt.figure(figsize=(max(6, 0.35 * len(d)), 4.2))
     sns.stripplot(data=d, x="prediction_id", y="ranking_score", dodge=True)
     plt.xticks(rotation=60, ha="right")
@@ -1011,17 +1011,17 @@ def plot_complex_overview(df_pred: pd.DataFrame, outdir: Path) -> dict[str, str]
     save_fig(p)
     plots["ranking_by_prediction"] = str(p.relative_to(outdir))
 
-    # mean pLDDT per prediction with SEM
+    # mean pLDDT per prediction with SD
     d2 = d.copy()
     d2["mean_plddt_total"] = pd.to_numeric(d2["mean_plddt_total"], errors="coerce")
-    d2["sem_plddt_total"] = pd.to_numeric(d2.get("sem_plddt_total"), errors="coerce")
+    d2["std_plddt_total"] = pd.to_numeric(d2.get("std_plddt_total"), errors="coerce")
 
     plt.figure(figsize=(max(6, 0.45 * len(d2)), 4.5))
     ax = plt.gca()
 
     x = np.arange(len(d2))
     y = d2["mean_plddt_total"].to_numpy(dtype=float)
-    yerr = d2["sem_plddt_total"].to_numpy(dtype=float)
+    yerr = d2["std_plddt_total"].to_numpy(dtype=float)
 
     ax.bar(x, y, color="#4C72B0", alpha=0.9)
     ax.errorbar(x, y, yerr=yerr, fmt="none", ecolor="black", elinewidth=1, capsize=3)
@@ -1029,7 +1029,7 @@ def plot_complex_overview(df_pred: pd.DataFrame, outdir: Path) -> dict[str, str]
     ax.set_xticks(x)
     ax.set_xticklabels(d2["prediction_id"].astype(str), rotation=60, ha="right")
     ax.set_xlabel("prediction")
-    ax.set_ylabel("mean pLDDT (atom mean ± SEM)")
+    ax.set_ylabel("mean pLDDT (atom mean ± SD)")
     ax.set_ylim(0, max(100, np.nanmax(y + np.nan_to_num(yerr, nan=0)) * 1.05))
 
     p = outdir / "plots" / "plddt_by_prediction.png"
@@ -1047,7 +1047,7 @@ def plot_chain_bars_per_prediction(
 ) -> str:
     """
     Generate a multipanel per-chain mean pLDDT bar plot, one panel per prediction,
-    with SEM error bars.
+    with SD error bars.
     Returns relative path to saved plot.
     """
     if df_chain.empty:
@@ -1059,7 +1059,7 @@ def plot_chain_bars_per_prediction(
         d["is_top"] = False
 
     d["mean_plddt_chain"] = pd.to_numeric(d["mean_plddt_chain"], errors="coerce")
-    d["sem_plddt_chain"] = pd.to_numeric(d.get("sem_plddt_chain"), errors="coerce")
+    d["std_plddt_chain"] = pd.to_numeric(d.get("std_plddt_chain"), errors="coerce")
 
     pred_order_df = d[["prediction_id", "is_top"]].drop_duplicates().copy()
 
@@ -1083,7 +1083,7 @@ def plot_chain_bars_per_prediction(
     fig_h = 3.9 * nrows
     fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=(fig_w, fig_h), squeeze=False)
 
-    ymax_data = (d["mean_plddt_chain"] + d["sem_plddt_chain"].fillna(0)).max()
+    ymax_data = (d["mean_plddt_chain"] + d["std_plddt_chain"].fillna(0)).max()
     if pd.isna(ymax_data):
         ymax_data = 100
     ymax = max(100, float(ymax_data) * 1.05)
@@ -1102,7 +1102,7 @@ def plot_chain_bars_per_prediction(
 
         x = np.arange(len(sub))
         y = sub["mean_plddt_chain"].to_numpy(dtype=float)
-        yerr = sub["sem_plddt_chain"].to_numpy(dtype=float)
+        yerr = sub["std_plddt_chain"].to_numpy(dtype=float)
 
         ax.bar(x, y, color="#4C72B0", alpha=0.9)
         ax.errorbar(x, y, yerr=yerr, fmt="none", ecolor="black", elinewidth=1, capsize=3)
