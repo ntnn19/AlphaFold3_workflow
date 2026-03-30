@@ -90,6 +90,8 @@ def write_no_data_html(path: Path, message: str = "No data to plot.") -> None:
     path.write_text(html, encoding="utf-8")
 
 
+import numpy as np  # Make sure this is at the top of the file
+
 def plot_chain_pair_iptm_cumulative(
     df_pair: pd.DataFrame,
     out_html: Path,
@@ -110,19 +112,33 @@ def plot_chain_pair_iptm_cumulative(
         write_no_data_html(out_html, "No valid chain-pair ipTM values available.")
         return False
 
-    if "is_top" not in d.columns:
-        d["is_top"] = False
+    # Add metadata columns if present
+    meta_cols = ["sample", "seed", "chain_i", "chain_j"]
+    available_meta = [c for c in meta_cols if c in d.columns]
+    if not available_meta:
+        # Fallback: use sample_id if no metadata
+        d["sample"] = d["sample_id"].str.split("_").str[0]  # e.g., "8sm3" from "8sm3_template_free_afdb"
+        d["seed"] = "N/A"
+        d["chain_i"] = "N/A"
+        d["chain_j"] = "N/A"
+    else:
+        # Ensure all metadata are strings
+        for c in available_meta:
+            d[c] = d[c].astype(str).replace("nan", "N/A")
 
-    d["is_top"] = d["is_top"].astype(bool)
+    # Add is_top as string for hover
+    d["is_top"] = d["is_top"].astype(str).str.title()
 
-    fig = go.Figure()
+    # Add a unique identifier for each row (for debugging)
+    d["row_id"] = d.index.astype(str)
 
     n_predictions = len(d)
 
+    fig = go.Figure()
+
     if n_predictions <= 100:
         # --- Jittered strip chart for small datasets ---
-        # Add small random jitter to avoid overlap
-        jitter = 0.005  # small jitter to separate points
+        jitter = 0.005
         d["jitter"] = np.random.uniform(-jitter, jitter, size=len(d))
 
         # All predictions
@@ -137,12 +153,21 @@ def plot_chain_pair_iptm_cumulative(
                 opacity=0.7,
                 line=dict(width=0.5, color="black")
             ),
-            hovertemplate="pair ipTM: %{x:.3f}<extra>All predictions</extra>",
+            hovertemplate=(
+                "<b>pair ipTM:</b> %{x:.3f}<br>"
+                "<b>Sample:</b> %{customdata[0]}<br>"
+                "<b>Seed:</b> %{customdata[1]}<br>"
+                "<b>Chain i:</b> %{customdata[2]}<br>"
+                "<b>Chain j:</b> %{customdata[3]}<br>"
+                "<b>Top:</b> %{customdata[4]}<br>"
+                "<extra></extra>"
+            ),
+            customdata=d[["sample", "seed", "chain_i", "chain_j", "is_top"]].values,
             showlegend=True,
         ))
 
-        # Top predictions (only if any)
-        d_top = d[d["is_top"]]
+        # Top predictions
+        d_top = d[d["is_top"].str.lower() == "true"]
         if not d_top.empty:
             d_top["jitter"] = np.random.uniform(-jitter, jitter, size=len(d_top))
             fig.add_trace(go.Scatter(
@@ -156,11 +181,19 @@ def plot_chain_pair_iptm_cumulative(
                     opacity=0.8,
                     line=dict(width=1.5, color="black")
                 ),
-                hovertemplate="pair ipTM: %{x:.3f}<extra>Top predictions</extra>",
+                hovertemplate=(
+                    "<b>pair ipTM:</b> %{x:.3f}<br>"
+                    "<b>Sample:</b> %{customdata[0]}<br>"
+                    "<b>Seed:</b> %{customdata[1]}<br>"
+                    "<b>Chain i:</b> %{customdata[2]}<br>"
+                    "<b>Chain j:</b> %{customdata[3]}<br>"
+                    "<b>Top:</b> %{customdata[4]}<br>"
+                    "<extra></extra>"
+                ),
+                customdata=d_top[["sample", "seed", "chain_i", "chain_j", "is_top"]].values,
                 showlegend=True,
             ))
 
-        # Styling for strip chart
         fig.update_layout(
             title=dict(
                 text=title,
@@ -202,11 +235,21 @@ def plot_chain_pair_iptm_cumulative(
                 mode='lines',
                 name="All predictions",
                 line=dict(color="#4C72B0", width=2.5),
-                hovertemplate="pair ipTM ≤ %{x:.2f}<br>Fraction: %{y:.3f}<extra>All predictions</extra>",
+                hovertemplate=(
+                    "<b>pair ipTM ≤</b> %{x:.2f}<br>"
+                    "<b>Fraction:</b> %{y:.3f}<br>"
+                    "<b>Sample:</b> %{customdata[0]}<br>"
+                    "<b>Seed:</b> %{customdata[1]}<br>"
+                    "<b>Chain i:</b> %{customdata[2]}<br>"
+                    "<b>Chain j:</b> %{customdata[3]}<br>"
+                    "<b>Top:</b> %{customdata[4]}<br>"
+                    "<extra></extra>"
+                ),
+                customdata=d[["sample", "seed", "chain_i", "chain_j", "is_top"]].values,
                 showlegend=True,
             ))
 
-        d_top = d[d["is_top"]]
+        d_top = d[d["is_top"].str.lower() == "true"]
         if not d_top.empty:
             top_iptm = d_top["pair_iptm"].dropna().sort_values()
             if len(top_iptm) > 0:
@@ -217,7 +260,17 @@ def plot_chain_pair_iptm_cumulative(
                     mode='lines',
                     name="Top predictions",
                     line=dict(color="#D55E00", width=2.5, dash="solid"),
-                    hovertemplate="pair ipTM ≤ %{x:.2f}<br>Fraction: %{y:.3f}<extra>Top predictions</extra>",
+                    hovertemplate=(
+                        "<b>pair ipTM ≤</b> %{x:.2f}<br>"
+                        "<b>Fraction:</b> %{y:.3f}<br>"
+                        "<b>Sample:</b> %{customdata[0]}<br>"
+                        "<b>Seed:</b> %{customdata[1]}<br>"
+                        "<b>Chain i:</b> %{customdata[2]}<br>"
+                        "<b>Chain j:</b> %{customdata[3]}<br>"
+                        "<b>Top:</b> %{customdata[4]}<br>"
+                        "<extra></extra>"
+                    ),
+                    customdata=d_top[["sample", "seed", "chain_i", "chain_j", "is_top"]].values,
                     showlegend=True,
                 ))
 
