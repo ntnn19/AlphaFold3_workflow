@@ -236,16 +236,6 @@ def build_interactive_plot(df: pd.DataFrame, html_path: Path) -> Optional[str]:
     for i, row in d.iterrows():
         lbl = labels[i]
 
-        meta_lines = []
-        for col in ["ID1", "ID2", "IDali", "L1", "L2", "Lali"]:
-            val = row.get(col, np.nan)
-            if pd.notna(val):
-                if col.startswith("L"):
-                    meta_lines.append(f"{col}={int(val)}")
-                else:
-                    meta_lines.append(f"{col}={float(val):.3f}")
-
-        meta_text = "<br>".join(meta_lines)
 
         annotations.append(dict(
             x=x[i],
