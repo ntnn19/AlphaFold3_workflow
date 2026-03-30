@@ -26,7 +26,7 @@ def plot_tm_score_distribution(
     out_html: Path,
     title: str = "Distribution of normalized TM scores across all predictions",
 ) -> bool:
-    required = {"sample_id", "prediction_id", "tm1", "tm2"}
+    required = {"sample_id", "prediction_id", "TM1", "TM2"}
     if df_pred.empty or not required.issubset(df_pred.columns):
         write_no_data_html(out_html, "No TM score data available.")
         return False
@@ -619,13 +619,14 @@ def main(pair_tsv: Path, pred_tsv: Optional[Path], out_html: Path, tm_plot: Opti
             return
 
         df_master = load_tsv(master_path)
-        df_master = coerce_numeric(df_master, ["tm1", "tm2"])
 
-        # Extract only needed columns
+        # ✅ Use exact column names as they appear in the file
+        df_master = coerce_numeric(df_master, ["TM1", "TM2"])
+
         required_cols = {
             "sample_id", "prediction_id", "sample", "seed", "is_top",
             "ranking_score", "ptm", "iptm", "mean_plddt_total",
-            "fraction_disordered", "has_clash", "tm1", "tm2"
+            "fraction_disordered", "has_clash", "TM1", "TM2"
         }
         available_cols = [c for c in required_cols if c in df_master.columns]
         df_tm = df_master[available_cols].copy()
