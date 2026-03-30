@@ -45,7 +45,7 @@ def mark_and_filter_top(df_pred: pd.DataFrame,
     if not cand.empty:
         top_pid = str(cand.sort_values("ranking_score", ascending=False).iloc[0]["prediction_id"])
 
-    # add a boolean label column
+    # add boolean label columns
     d["is_top"] = False
     if top_pid is not None:
         d.loc[d["prediction_id"].astype(str) == top_pid, "is_top"] = True
@@ -54,6 +54,10 @@ def mark_and_filter_top(df_pred: pd.DataFrame,
     d = d[d["prediction_id"] != "top"].copy()
     df_chain2 = df_chain[df_chain["prediction_id"] != "top"].copy()
     df_pair2 = df_pair[df_pair["prediction_id"] != "top"].copy()
+
+    # propagate is_top to chain/pair tables
+    df_chain2["is_top"] = df_chain2["prediction_id"].astype(str) == str(top_pid) if top_pid is not None else False
+    df_pair2["is_top"] = df_pair2["prediction_id"].astype(str) == str(top_pid) if top_pid is not None else False
 
     return d, df_chain2, df_pair2
 
@@ -980,28 +984,98 @@ def plot_complex_overview(df_pred: pd.DataFrame, outdir: Path) -> dict[str, str]
 def plot_chain_bars_per_prediction(
     df_chain: pd.DataFrame,
     outdir: Path,
-    pred_id: str
+    ncols: int = 3,
+    max_panels: int | None = None
 ) -> str:
     """
-    Generate a per-chain pLDDT bar plot for a single prediction.
+    Generate a multipanel per-chain mean pLDDT bar plot, one panel per prediction.
     Returns relative path to saved plot.
     """
-    d = df_chain[df_chain["prediction_id"] == pred_id].copy()
-    if d.empty:
+    if df_chain.empty:
         return ""
 
-    plt.figure(figsize=(max(6, 0.6 * len(d)), 4.2))
-    sns.barplot(data=d, x="chain_id", y="mean_plddt_chain", color="#4C72B0")
-    plt.title(f"Per-chain mean pLDDT ({pred_id})")
-    plt.xlabel("chain")
-    plt.ylabel("mean pLDDT (atom mean)")
+    d = df_chain.copy()
 
-    fname = f"chain_plddt_{pred_id}.png"
-    p = outdir / "plots" / fname
+    # infer top prediction if available from ranking_score-like ordering is not possible here
+    # so we only use prediction order as present unless df_chain has is_top
+    if "is_top" not in d.columns:
+        d["is_top"] = False
+
+    # one row per prediction for sorting
+    pred_order_df = d[["prediction_id", "is_top"]].drop_duplicates().copy()
+
+    if max_panels is not None and len(pred_order_df) > max_panels:
+        pred_order_df = pred_order_df.head(max_panels)
+
+    pred_order_df = pred_order_df.sort_values(
+        ["is_top", "prediction_id"],
+        ascending=[False, True]
+    )
+
+    prediction_ids = pred_order_df["prediction_id"].astype(str).tolist()
+    if not prediction_ids:
+        return ""
+
+    n = len(prediction_ids)
+    ncols = max(1, int(ncols))
+    nrows = int(math.ceil(n / ncols))
+
+    fig_w = 4.2 * ncols
+    fig_h = 3.8 * nrows
+    fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=(fig_w, fig_h), squeeze=False)
+
+    ymax = pd.to_numeric(d["mean_plddt_chain"], errors="coerce").max()
+    if pd.isna(ymax):
+        ymax = 100
+    ymax = max(100, float(ymax))
+
+    for k, pred_id in enumerate(prediction_ids):
+        r, c = divmod(k, ncols)
+        ax = axes[r][c]
+
+        sub = d[d["prediction_id"].astype(str) == str(pred_id)].copy()
+        if sub.empty:
+            ax.axis("off")
+            continue
+
+        sub["chain_id"] = sub["chain_id"].astype(str)
+        sub["mean_plddt_chain"] = pd.to_numeric(sub["mean_plddt_chain"], errors="coerce")
+
+        sns.barplot(
+            data=sub,
+            x="chain_id",
+            y="mean_plddt_chain",
+            color="#4C72B0",
+            ax=ax
+        )
+
+        is_top = bool(sub["is_top"].fillna(False).any())
+        title = f"TOP: {pred_id}" if is_top else str(pred_id)
+
+        ax.set_title(title, fontsize=9)
+        ax.set_xlabel("chain")
+        ax.set_ylabel("mean pLDDT")
+        ax.set_ylim(0, ymax)
+
+        # rotate labels if needed
+        ax.tick_params(axis="x", rotation=45)
+
+        # optional horizontal confidence guide lines
+        ax.axhline(50, color="gray", lw=0.8, ls="--", alpha=0.5)
+        ax.axhline(70, color="gray", lw=0.8, ls="--", alpha=0.5)
+        ax.axhline(90, color="gray", lw=0.8, ls="--", alpha=0.5)
+
+    for k in range(n, nrows * ncols):
+        r, c = divmod(k, ncols)
+        axes[r][c].axis("off")
+
+    fig.suptitle("Per-chain mean pLDDT by prediction", fontsize=14)
+    fig.subplots_adjust(wspace=0.28, hspace=0.42, top=0.90)
+
+    p = outdir / "plots" / "chain_plddt_multipanel.png"
     p.parent.mkdir(parents=True, exist_ok=True)
-    plt.tight_layout()
-    plt.savefig(p, dpi=180)
-    plt.close()
+    fig.savefig(p, dpi=180, bbox_inches="tight")
+    plt.close(fig)
 
     return str(p.relative_to(outdir))
 
@@ -1093,48 +1167,6 @@ def df_to_html_table(df: pd.DataFrame, max_rows: int, table_id: str = None) -> s
     return html
 
 
-def write_html_report(out_html: Path,
-                      df_pred: pd.DataFrame,
-                      df_chain: pd.DataFrame,
-                      df_pair: pd.DataFrame,
-                      max_rows: int):
-    css = """
-    <style>
-    body { font-family: Arial, sans-serif; margin: 24px; }
-    h1,h2 { margin-top: 1.2em; }
-    .table { border-collapse: collapse; font-size: 13px; }
-    .table th, .table td { border: 1px solid #ddd; padding: 6px 8px; }
-    .table th { background: #f5f5f5; }
-    img { max-width: 100%; height: auto; border: 1px solid #eee; padding: 2px; }
-    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-    </style>
-    """
-
-    def img(tag):
-        if tag in plots:
-            return f'<img src="{plots[tag]}"/>'
-        return "<p><em>Plot not available.</em></p>"
-
-    html = f"""<!doctype html>
-<html><head><meta charset="utf-8"><title>AlphaFold3 report</title>{css}</head>
-<body>
-<h1>AlphaFold 3 summary report</h1>
-
-<h2>Complex-wide metrics (per prediction)</h2>
-{df_to_html_table(df_pred.sort_values(["prediction_id"], ascending=True), max_rows=max_rows)}
-
-<h2>Per-chain metrics</h2>
-{img("chain_plddt_bar")}
-{df_to_html_table(df_chain.sort_values(["prediction_id","chain_id"]), max_rows=max_rows)}
-
-<h2>Per-interface (chain-pair) metrics</h2>
-{img("pair_iptm_heatmap")}
-{df_to_html_table(df_pair.sort_values(["prediction_id","pair_iptm"], ascending=[True, False]), max_rows=max_rows)}
-</body></html>
-"""
-    out_html.parent.mkdir(parents=True, exist_ok=True)
-    out_html.write_text(html, encoding="utf-8")
-
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
 @click.argument("af3_output_dir", type=click.Path(exists=True, file_okay=False, path_type=Path))
@@ -1162,59 +1194,33 @@ def main(af3_output_dir: Path, outdir: Path, html_name: str, max_rows: int, writ
         df_pair.to_csv(outdir / "chain_pairs.tsv", sep="\t", index=False)
 
     # --- Generate all plots per prediction ---
-    # --- Generate all plots per prediction ---
-    # --- Generate all plots per prediction ---
     plots = {}
 
     # 1. Complex-wide plots (already per-prediction)
     plots.update(plot_complex_overview(df_pred, outdir))
 
     # 2. Per-prediction chain bar plots
-    for pred_id in df_pred["prediction_id"].unique():
-        path = plot_chain_bars_per_prediction(df_chain, outdir, pred_id)
-        if path:
-            plots[f"chain_plddt_{pred_id}"] = path
+    chain_multi_path = plot_chain_bars_per_prediction(df_chain, outdir, ncols=3)
+    if chain_multi_path:
+        plots["chain_plddt_multipanel"] = chain_multi_path
 
-#    # 3. Per-prediction pair heatmap plots
-#    for pred_id in df_pred["prediction_id"].unique():
-#        path = plot_pair_heatmap_per_prediction(df_pair, outdir, pred_id)
-#        if path:
-#            plots[f"pair_iptm_heatmap_{pred_id}"] = path
+
 
     # 4. Per-prediction PAE plots
     pae_multi = outdir / "plots" / "pae_multipanel.png"
     if plot_pae_multipanel_best_labeled(df_pred, pae_multi, ncols=3):
         plots["pae_multipanel"] = str(pae_multi.relative_to(outdir))
 
-    #for pred_id in df_pred["prediction_id"].unique():
-    #    conf_path = df_pred[df_pred["prediction_id"] == pred_id]["confidences_path"].iloc[0]
-    #    if not conf_path or not Path(conf_path).exists():
-    #        continue#
 
-        #conf = load_json(Path(conf_path))
-
-        # PAE matrix
-        #pae_png = outdir / "plots" / f"pae_{pred_id}.png"
-        #ok_pae = plot_pae_with_chain_breaks(conf, pae_png, title=f"PAE (with chain breaks) - {pred_id}")
-        #if ok_pae:
-        #    plots[f"pae_{pred_id}"] = str(pae_png.relative_to(outdir))
-
-    # 5. Generate **one interactive combined pLDDT plot** for all predictions
     combined_plot_path = plot_plddt_combined_interactive(df_pred, outdir, max_rows=max_rows)
     plots["plddt_combined"] = combined_plot_path
 
-    # 6. Generate **interactive PAE matrix** (dropdown)
-    #pae_interactive_path = plot_pae_interactive(df_pred, outdir)
-    #plots["pae_interactive"] = pae_interactive_path
 
     # 7. Generate **interactive ipTM matrix** (dropdown)
     iptm_interactive_path = plot_iptm_interactive(df_pair, df_pred, outdir)
     plots["iptm_interactive"] = iptm_interactive_path
     print("Plots=",plots)
-    #out_html = outdir / html_name
-    #write_html_report(out_html, df_pred, df_chain, df_pair, max_rows=max_rows)
 
-    #click.echo(str(out_html))
 
 
 if __name__ == "__main__":
