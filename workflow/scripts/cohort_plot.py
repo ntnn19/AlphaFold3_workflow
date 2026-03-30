@@ -625,17 +625,13 @@ def main(pair_tsv: Path, pred_tsv: Optional[Path], out_html: Path, tm_plot: Opti
 
         # ✅ Use exact column names as they appear in the file
         df_master = coerce_numeric(df_master, ["TM1", "TM2"])
-        print(df_master)
-        exit()
+
         required_cols = {
-            "sample_id", "prediction_id", "sample", "seed", "is_top",
-            "ranking_score", "ptm", "iptm", "mean_plddt_total",
-            "fraction_disordered", "has_clash", "TM1", "TM2"
+            *df_master.columns[:22].tolist()
         }
         available_cols = [c for c in required_cols if c in df_master.columns]
         df_tm = df_master[available_cols].copy()
-        print(df_tm)
-        exit()
+
         # Add name from sample_id
         df_tm["name"] = df_tm["sample_id"].str.split("_seed-").str[0]
         df_tm["name"] = df_tm["name"].astype(str).replace("nan", "N/A")
@@ -651,8 +647,7 @@ def main(pair_tsv: Path, pred_tsv: Optional[Path], out_html: Path, tm_plot: Opti
 
         # Add is_top as string
         df_tm["is_top"] = df_tm["is_top"].astype(str).str.title()
-        print(df_tm)
-        exit()
+
         # Prepare metadata for hover
         meta_cols = [
             "name", "sample", "seed", "ranking_score", "ptm", "iptm",
@@ -660,8 +655,7 @@ def main(pair_tsv: Path, pred_tsv: Optional[Path], out_html: Path, tm_plot: Opti
         ]
         available_meta = [c for c in meta_cols if c in df_tm.columns]
         df_tm = df_tm[["tm_score"] + available_meta + ["is_top"]].copy()
-        print(df_tm)
-        exit()
+
         # Plot
         plot_tm_score_distribution(df_tm, tm_plot)
 
