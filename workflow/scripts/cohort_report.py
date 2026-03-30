@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
 
 import click
 import pandas as pd
@@ -13,8 +12,15 @@ def read_report_samples(samplesheet: Path) -> pd.DataFrame:
     required = {"sample_id", "af3_dir"}
     if not required.issubset(df.columns):
         raise ValueError(f"Report samplesheet must contain columns: {sorted(required)}")
+
     if "ground_truth" not in df.columns:
         df["ground_truth"] = ""
+
+    # Optional explicit US-align report location column
+    # e.g. reports/usalign/<sample_id>
+    if "usalign_dir" not in df.columns:
+        df["usalign_dir"] = ""
+
     return df
 
 
@@ -35,15 +41,18 @@ def add_sample_id_if_missing(df: pd.DataFrame, sample_id: str) -> pd.DataFrame:
     return d
 
 
-def sample_status_table(df_samples: pd.DataFrame, af3_base: Path, usalign_base: Optional[Path]) -> pd.DataFrame:
+def sample_status_table(df_samples: pd.DataFrame, af3_base: Path) -> pd.DataFrame:
     """
-    This is a merged/derived sample-level table from the sample sheet plus file existence checks.
+    Derived sample-level merged/status table.
+    US-align expectation is driven by ground_truth.
+    US-align location is taken from optional samplesheet column usalign_dir.
     """
     rows = []
     for _, row in df_samples.iterrows():
         sample_id = str(row["sample_id"])
         af3_dir = str(row.get("af3_dir", ""))
         ground_truth = str(row.get("ground_truth", "")).strip()
+        usalign_dir = str(row.get("usalign_dir", "")).strip()
 
         af3_sample_dir = af3_base / sample_id
         pred_path = af3_sample_dir / "predictions.tsv"
@@ -53,13 +62,13 @@ def sample_status_table(df_samples: pd.DataFrame, af3_base: Path, usalign_base: 
         has_ground_truth = bool(ground_truth)
         usalign_expected = has_ground_truth
 
-        usalign_sample_dir = usalign_base / sample_id if usalign_base is not None else None
-        usalign_summary = usalign_sample_dir / "usalign_summary.tsv" if usalign_sample_dir is not None else None
+        usalign_summary = Path(usalign_dir) / "usalign_summary.tsv" if usalign_dir else None
 
         rows.append({
             "sample_id": sample_id,
             "af3_dir": af3_dir,
             "ground_truth": ground_truth,
+            "usalign_dir": usalign_dir,
             "has_ground_truth": has_ground_truth,
             "usalign_expected": usalign_expected,
             "af3_report_dir": str(af3_sample_dir),
@@ -69,7 +78,7 @@ def sample_status_table(df_samples: pd.DataFrame, af3_base: Path, usalign_base: 
             "af3_predictions_found": pred_path.exists(),
             "af3_chains_found": chains_path.exists(),
             "af3_chain_pairs_found": pairs_path.exists(),
-            "usalign_report_dir": str(usalign_sample_dir) if usalign_sample_dir is not None else "",
+            "usalign_report_dir": usalign_dir,
             "usalign_summary_tsv": str(usalign_summary) if usalign_summary is not None else "",
             "usalign_found": bool(usalign_summary.exists()) if usalign_summary is not None else False,
             "usalign_not_applicable": not usalign_expected,
@@ -133,23 +142,21 @@ def collect_af3_chain_pairs(df_samples: pd.DataFrame, af3_base: Path) -> pd.Data
     return pd.concat(parts, ignore_index=True) if parts else pd.DataFrame()
 
 
-def collect_usalign(df_samples: pd.DataFrame, usalign_base: Optional[Path]) -> pd.DataFrame:
+def collect_usalign(df_samples: pd.DataFrame) -> pd.DataFrame:
     """
     Pure aggregation only. No merge with AF3 predictions.
-    Only aggregate samples with non-empty ground_truth and existing US-align summary.
+    Only aggregate samples with non-empty ground_truth and existing usalign_dir/usalign_summary.tsv.
     """
-    if usalign_base is None or not usalign_base.exists():
-        return pd.DataFrame()
-
     parts = []
     for _, row in df_samples.iterrows():
         sample_id = str(row["sample_id"])
         ground_truth = str(row.get("ground_truth", "")).strip()
+        usalign_dir = str(row.get("usalign_dir", "")).strip()
 
-        if not ground_truth:
+        if not ground_truth or not usalign_dir:
             continue
 
-        p = usalign_base / sample_id / "usalign_summary.tsv"
+        p = Path(usalign_dir) / "usalign_summary.tsv"
         df = load_optional_tsv(p)
         if df.empty:
             continue
@@ -161,12 +168,10 @@ def collect_usalign(df_samples: pd.DataFrame, usalign_base: Optional[Path]) -> p
 
 
 def build_master(
-    df_samples: pd.DataFrame,
     df_pred: pd.DataFrame,
     df_usalign: pd.DataFrame,
     df_status: pd.DataFrame,
     af3_base: Path,
-    usalign_base: Optional[Path],
 ) -> pd.DataFrame:
     """
     cohort_master is the only prediction-level merged table:
@@ -181,6 +186,7 @@ def build_master(
         "sample_id",
         "af3_dir",
         "ground_truth",
+        "usalign_dir",
         "has_ground_truth",
         "usalign_expected",
         "usalign_found",
@@ -247,17 +253,22 @@ def build_master(
             how="left"
         )
 
-    # Add deterministic US-align plot path after merge, not from df_usalign
-    if usalign_base is not None:
-        usalign_plot_rows = []
-        for sample_id in master["sample_id"].astype(str).drop_duplicates():
-            udir = usalign_base / sample_id
-            usalign_plot_rows.append({
+    # Add deterministic US-align plot path from explicit usalign_dir, not from a CLI flag
+    if "usalign_dir" in master.columns:
+        plot_rows = []
+        for sample_id, usalign_dir in (
+            master[["sample_id", "usalign_dir"]]
+            .drop_duplicates()
+            .itertuples(index=False, name=None)
+        ):
+            usalign_dir = str(usalign_dir).strip()
+            plot_rows.append({
                 "sample_id": sample_id,
-                "usalign_plot_tm_rmsd": str(udir / "plots" / "usalign_tm_rmsd_interactive.html"),
+                "usalign_dir": usalign_dir,
+                "usalign_plot_tm_rmsd": str(Path(usalign_dir) / "plots" / "usalign_tm_rmsd_interactive.html") if usalign_dir else "",
             })
-        df_usalign_plots = pd.DataFrame(usalign_plot_rows)
-        master = master.merge(df_usalign_plots, on="sample_id", how="left")
+        df_usalign_plots = pd.DataFrame(plot_rows)
+        master = master.merge(df_usalign_plots, on=["sample_id", "usalign_dir"], how="left")
 
     return master
 
@@ -268,7 +279,7 @@ def build_master(
     "report_samples_path",
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
     required=True,
-    help="TSV with sample_id, af3_dir, and optional ground_truth."
+    help="TSV with sample_id, af3_dir, optional ground_truth, and optional usalign_dir."
 )
 @click.option(
     "--af3-base",
@@ -276,13 +287,6 @@ def build_master(
     default=Path("reports/alphafold3"),
     show_default=True,
     help="Base directory containing per-sample AF3 report outputs."
-)
-@click.option(
-    "--usalign-base",
-    type=click.Path(exists=False, file_okay=False, path_type=Path),
-    default=Path("reports/usalign"),
-    show_default=True,
-    help="Base directory containing per-sample US-align report outputs. Optional."
 )
 @click.option(
     "-o", "--outdir",
@@ -293,11 +297,17 @@ def build_master(
 def main(
     report_samples_path: Path,
     af3_base: Path,
-    usalign_base: Optional[Path],
     outdir: Path
 ):
     """
     Aggregate AF3 and optional US-align tables across all sample report directories.
+
+    Inputs:
+      - report_samples.tsv with columns:
+          sample_id
+          af3_dir
+          optional ground_truth
+          optional usalign_dir
 
     Outputs:
       - cohort_chain_pairs.tsv        (aggregation only)
@@ -313,24 +323,19 @@ def main(
 
     df_samples = read_report_samples(report_samples_path)
 
-    use_usalign = usalign_base is not None and Path(usalign_base).exists()
-    usalign_base_eff = Path(usalign_base) if use_usalign else None
-
     # Aggregation-only tables
     df_pred = collect_af3_predictions(df_samples, af3_base=af3_base)
     df_chain = collect_af3_chains(df_samples, af3_base=af3_base)
     df_pair = collect_af3_chain_pairs(df_samples, af3_base=af3_base)
-    df_usalign = collect_usalign(df_samples, usalign_base=usalign_base_eff)
+    df_usalign = collect_usalign(df_samples)
 
     # Derived/merged tables
-    df_status = sample_status_table(df_samples, af3_base=af3_base, usalign_base=usalign_base_eff)
+    df_status = sample_status_table(df_samples, af3_base=af3_base)
     master = build_master(
-        df_samples=df_samples,
         df_pred=df_pred,
         df_usalign=df_usalign,
         df_status=df_status,
         af3_base=af3_base,
-        usalign_base=usalign_base_eff,
     )
 
     # Write aggregation-only tables
@@ -367,6 +372,7 @@ def main(
         "Lali",
         "af3_dir",
         "ground_truth",
+        "usalign_dir",
         "has_ground_truth",
         "usalign_expected",
         "usalign_found",
