@@ -118,31 +118,35 @@ def plot_chain_pair_iptm_cumulative(
 
     fig = go.Figure()
 
-    # All predictions
-    fig.add_trace(go.Histogram(
-        x=d["pair_iptm"],
-        name="All predictions",
-        histnorm="probability",
-        cumulative=dict(enabled=True),
-        xbins=dict(start=0, end=1, size=0.02),
-        marker=dict(color="#4C72B0"),
-        opacity=0.65,
-        hovertemplate="pair ipTM ≤ %{x:.2f}<br>Fraction: %{y:.3f}<extra>All predictions</extra>",
-    ))
+    # All predictions: line-based CDF
+    all_iptm = d["pair_iptm"].dropna().sort_values()
+    if len(all_iptm) > 0:
+        y_all = [i / len(all_iptm) for i in range(1, len(all_iptm) + 1)]
+        fig.add_trace(go.Scatter(
+            x=all_iptm,
+            y=y_all,
+            mode='lines',
+            name="All predictions",
+            line=dict(color="#4C72B0", width=2.5),
+            hovertemplate="pair ipTM ≤ %{x:.2f}<br>Fraction: %{y:.3f}<extra>All predictions</extra>",
+            showlegend=True,
+        ))
 
     # Top predictions only
     d_top = d[d["is_top"]].copy()
     if not d_top.empty:
-        fig.add_trace(go.Histogram(
-            x=d_top["pair_iptm"],
-            name="Top predictions",
-            histnorm="probability",
-            cumulative=dict(enabled=True),
-            xbins=dict(start=0, end=1, size=0.02),
-            marker=dict(color="#D55E00"),
-            opacity=0.55,
-            hovertemplate="pair ipTM ≤ %{x:.2f}<br>Fraction: %{y:.3f}<extra>Top predictions</extra>",
-        ))
+        top_iptm = d_top["pair_iptm"].dropna().sort_values()
+        if len(top_iptm) > 0:
+            y_top = [i / len(top_iptm) for i in range(1, len(top_iptm) + 1)]
+            fig.add_trace(go.Scatter(
+                x=top_iptm,
+                y=y_top,
+                mode='lines',
+                name="Top predictions",
+                line=dict(color="#D55E00", width=2.5, dash="solid"),
+                hovertemplate="pair ipTM ≤ %{x:.2f}<br>Fraction: %{y:.3f}<extra>Top predictions</extra>",
+                showlegend=True,
+            ))
 
     fig.update_layout(
         title=dict(
@@ -152,13 +156,16 @@ def plot_chain_pair_iptm_cumulative(
         ),
         xaxis=dict(
             title="pair ipTM",
-            range=[0, 1]
+            range=[0, 1],
+            tickvals=[0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
+            ticktext=["0.0", "0.2", "0.4", "0.6", "0.8", "1.0"]
         ),
         yaxis=dict(
             title="Cumulative fraction",
-            range=[0, 1.02]
+            range=[0, 1.02],
+            tickvals=[0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
+            ticktext=["0.0", "0.2", "0.4", "0.6", "0.8", "1.0"]
         ),
-        barmode="overlay",
         template="plotly_white",
         hovermode="x unified",
         height=650,
