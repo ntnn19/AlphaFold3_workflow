@@ -1115,7 +1115,7 @@ def plot_chain_bars_per_prediction(
         ax.set_ylabel("mean pLDDT")
         ax.set_ylim(0, ymax)
         ax.set_xticks(x)
-        ax.set_xticklabels(sub["chain_id"].tolist(), rotation=45, ha="right")
+        ax.set_xticklabels(sub["chain_id"].tolist(), rotation=0, ha="center")
 
         ax.axhline(50, color="gray", lw=0.8, ls="--", alpha=0.5)
         ax.axhline(70, color="gray", lw=0.8, ls="--", alpha=0.5)
