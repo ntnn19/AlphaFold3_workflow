@@ -631,8 +631,7 @@ def main(pair_tsv: Path, pred_tsv: Optional[Path], out_html: Path, tm_plot: Opti
         }
         available_cols = [c for c in required_cols if c in df_master.columns]
         df_tm = df_master[available_cols].copy()
-        print(df_tm)
-        exit()
+
         # Add name from sample_id
         df_tm["name"] = df_tm["sample_id"].str.split("_seed-").str[0]
         df_tm["name"] = df_tm["name"].astype(str).replace("nan", "N/A")
@@ -656,7 +655,8 @@ def main(pair_tsv: Path, pred_tsv: Optional[Path], out_html: Path, tm_plot: Opti
         ]
         available_meta = [c for c in meta_cols if c in df_tm.columns]
         df_tm = df_tm[["tm_score"] + available_meta + ["is_top"]].copy()
-
+        print(df_tm)
+        exit()
         # Plot
         plot_tm_score_distribution(df_tm, tm_plot)
 
