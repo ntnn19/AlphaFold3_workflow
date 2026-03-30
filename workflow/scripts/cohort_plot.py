@@ -11,7 +11,6 @@ import plotly.graph_objects as go
 def load_tsv(path: Path) -> pd.DataFrame:
     if not path.exists():
         return pd.DataFrame()
-    print(pd.read_csv(path, sep="\s+", dtype=str).fillna(""))
     return pd.read_csv(path, sep="\s+", dtype=str).fillna("")
 
 
