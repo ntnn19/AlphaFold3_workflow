@@ -620,6 +620,7 @@ def main(pair_tsv: Path, pred_tsv: Optional[Path], out_html: Path, tm_plot: Opti
             return
 
         df_master = load_tsv(master_path)
+        print(master_path)
         exit()
         # ✅ Use exact column names as they appear in the file
         df_master = coerce_numeric(df_master, ["TM1", "TM2"])
