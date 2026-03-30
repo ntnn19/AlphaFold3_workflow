@@ -36,6 +36,9 @@ def add_sample_id_if_missing(df: pd.DataFrame, sample_id: str) -> pd.DataFrame:
 
 
 def sample_status_table(df_samples: pd.DataFrame, af3_base: Path, usalign_base: Optional[Path]) -> pd.DataFrame:
+    """
+    This is a merged/derived sample-level table from the sample sheet plus file existence checks.
+    """
     rows = []
     for _, row in df_samples.iterrows():
         sample_id = str(row["sample_id"])
@@ -76,27 +79,10 @@ def sample_status_table(df_samples: pd.DataFrame, af3_base: Path, usalign_base: 
     return pd.DataFrame(rows)
 
 
-def add_af3_report_paths(df: pd.DataFrame, sample_id: str, af3_base: Path) -> pd.DataFrame:
-    if df.empty:
-        return df
-
-    d = df.copy()
-    d["af3_report_dir"] = str(af3_base / sample_id)
-
-    af3_plots = af3_base / sample_id / "plots"
-    d["af3_predictions_tsv"] = str(af3_base / sample_id / "predictions.tsv")
-    d["af3_chains_tsv"] = str(af3_base / sample_id / "chains.tsv")
-    d["af3_chain_pairs_tsv"] = str(af3_base / sample_id / "chain_pairs.tsv")
-    d["af3_plot_plddt_combined"] = str(af3_plots / "plddt_combined.html")
-    d["af3_plot_iptm_interactive"] = str(af3_plots / "iptm_interactive.html")
-    d["af3_plot_pae_multipanel"] = str(af3_plots / "pae_multipanel.png")
-    d["af3_plot_chain_plddt_multipanel"] = str(af3_plots / "chain_plddt_multipanel.png")
-    d["af3_plot_plddt_by_prediction"] = str(af3_plots / "plddt_by_prediction.png")
-    d["af3_plot_ranking_by_prediction"] = str(af3_plots / "ranking_by_prediction.png")
-    return d
-
-
 def collect_af3_predictions(df_samples: pd.DataFrame, af3_base: Path) -> pd.DataFrame:
+    """
+    Pure aggregation only. No merge with status or US-align.
+    """
     parts = []
     for _, row in df_samples.iterrows():
         sample_id = str(row["sample_id"])
@@ -106,17 +92,15 @@ def collect_af3_predictions(df_samples: pd.DataFrame, af3_base: Path) -> pd.Data
             continue
 
         df = add_sample_id_if_missing(df, sample_id)
-        df = add_af3_report_paths(df, sample_id, af3_base)
-
-        df["af3_dir"] = str(row.get("af3_dir", ""))
-        df["ground_truth"] = str(row.get("ground_truth", ""))
-
         parts.append(df)
 
     return pd.concat(parts, ignore_index=True) if parts else pd.DataFrame()
 
 
 def collect_af3_chains(df_samples: pd.DataFrame, af3_base: Path) -> pd.DataFrame:
+    """
+    Pure aggregation only.
+    """
     parts = []
     for _, row in df_samples.iterrows():
         sample_id = str(row["sample_id"])
@@ -126,15 +110,15 @@ def collect_af3_chains(df_samples: pd.DataFrame, af3_base: Path) -> pd.DataFrame
             continue
 
         df = add_sample_id_if_missing(df, sample_id)
-        df["af3_dir"] = str(row.get("af3_dir", ""))
-        df["ground_truth"] = str(row.get("ground_truth", ""))
-
         parts.append(df)
 
     return pd.concat(parts, ignore_index=True) if parts else pd.DataFrame()
 
 
 def collect_af3_chain_pairs(df_samples: pd.DataFrame, af3_base: Path) -> pd.DataFrame:
+    """
+    Pure aggregation only.
+    """
     parts = []
     for _, row in df_samples.iterrows():
         sample_id = str(row["sample_id"])
@@ -144,15 +128,16 @@ def collect_af3_chain_pairs(df_samples: pd.DataFrame, af3_base: Path) -> pd.Data
             continue
 
         df = add_sample_id_if_missing(df, sample_id)
-        df["af3_dir"] = str(row.get("af3_dir", ""))
-        df["ground_truth"] = str(row.get("ground_truth", ""))
-
         parts.append(df)
 
     return pd.concat(parts, ignore_index=True) if parts else pd.DataFrame()
 
 
 def collect_usalign(df_samples: pd.DataFrame, usalign_base: Optional[Path]) -> pd.DataFrame:
+    """
+    Pure aggregation only. No merge with AF3 predictions.
+    Only aggregate samples with non-empty ground_truth and existing US-align summary.
+    """
     if usalign_base is None or not usalign_base.exists():
         return pd.DataFrame()
 
@@ -161,7 +146,6 @@ def collect_usalign(df_samples: pd.DataFrame, usalign_base: Optional[Path]) -> p
         sample_id = str(row["sample_id"])
         ground_truth = str(row.get("ground_truth", "")).strip()
 
-        # Only expect / collect US-align if ground truth exists for this sample
         if not ground_truth:
             continue
 
@@ -171,58 +155,109 @@ def collect_usalign(df_samples: pd.DataFrame, usalign_base: Optional[Path]) -> p
             continue
 
         df = add_sample_id_if_missing(df, sample_id)
-        df["af3_dir"] = str(row.get("af3_dir", ""))
-        df["ground_truth"] = ground_truth
-        df["usalign_report_dir"] = str(usalign_base / sample_id)
-        df["usalign_summary_tsv"] = str(p)
-        df["usalign_plot_tm_rmsd"] = str(usalign_base / sample_id / "plots" / "usalign_tm_rmsd_interactive.html")
-
         parts.append(df)
 
     return pd.concat(parts, ignore_index=True) if parts else pd.DataFrame()
 
 
-def build_master(df_pred: pd.DataFrame, df_usalign: pd.DataFrame) -> pd.DataFrame:
+def build_master(
+    df_samples: pd.DataFrame,
+    df_pred: pd.DataFrame,
+    df_usalign: pd.DataFrame,
+    df_status: pd.DataFrame,
+    af3_base: Path,
+    usalign_base: Optional[Path],
+) -> pd.DataFrame:
     """
-    cohort_master = prediction-level AF3 table merged with optional US-align results.
-    No sample-status table is merged here.
+    cohort_master is the only prediction-level merged table:
+      AF3 predictions + optional US-align + sample-level status/path metadata
     """
     master = df_pred.copy()
     if master.empty:
         return master
 
-    if df_usalign.empty:
-        return master
-
-    d_u = df_usalign.copy()
-
-    if "prediction_id" not in d_u.columns and "usalign_id" in d_u.columns:
-        d_u["prediction_id"] = d_u["usalign_id"].astype(str)
-
-    u_keep = [
+    # Merge sample metadata / status once
+    status_keep = [
         "sample_id",
-        "prediction_id",
-        "TM1",
-        "TM2",
-        "RMSD",
-        "ID1",
-        "ID2",
-        "IDali",
-        "L1",
-        "L2",
-        "Lali",
+        "af3_dir",
+        "ground_truth",
+        "has_ground_truth",
+        "usalign_expected",
+        "usalign_found",
+        "usalign_not_applicable",
+        "usalign_missing_expected",
+        "af3_report_dir",
+        "af3_predictions_tsv",
+        "af3_chains_tsv",
+        "af3_chain_pairs_tsv",
         "usalign_report_dir",
         "usalign_summary_tsv",
-        "usalign_plot_tm_rmsd",
     ]
-    u_keep = [c for c in u_keep if c in d_u.columns]
-    d_u = d_u[u_keep].drop_duplicates()
+    status_keep = [c for c in status_keep if c in df_status.columns]
 
     master = master.merge(
-        d_u,
-        on=["sample_id", "prediction_id"],
+        df_status[status_keep].drop_duplicates(),
+        on="sample_id",
         how="left"
     )
+
+    # Add deterministic AF3 plot paths after merge
+    af3_plot_rows = []
+    for sample_id in master["sample_id"].astype(str).drop_duplicates():
+        plot_dir = af3_base / sample_id / "plots"
+        af3_plot_rows.append({
+            "sample_id": sample_id,
+            "af3_plot_plddt_combined": str(plot_dir / "plddt_combined.html"),
+            "af3_plot_iptm_interactive": str(plot_dir / "iptm_interactive.html"),
+            "af3_plot_pae_multipanel": str(plot_dir / "pae_multipanel.png"),
+            "af3_plot_chain_plddt_multipanel": str(plot_dir / "chain_plddt_multipanel.png"),
+            "af3_plot_plddt_by_prediction": str(plot_dir / "plddt_by_prediction.png"),
+            "af3_plot_ranking_by_prediction": str(plot_dir / "ranking_by_prediction.png"),
+        })
+    df_af3_plots = pd.DataFrame(af3_plot_rows)
+
+    master = master.merge(df_af3_plots, on="sample_id", how="left")
+
+    # Merge optional US-align only into master
+    if not df_usalign.empty:
+        d_u = df_usalign.copy()
+
+        if "prediction_id" not in d_u.columns and "usalign_id" in d_u.columns:
+            d_u["prediction_id"] = d_u["usalign_id"].astype(str)
+
+        u_keep = [
+            "sample_id",
+            "prediction_id",
+            "TM1",
+            "TM2",
+            "RMSD",
+            "ID1",
+            "ID2",
+            "IDali",
+            "L1",
+            "L2",
+            "Lali",
+        ]
+        u_keep = [c for c in u_keep if c in d_u.columns]
+        d_u = d_u[u_keep].drop_duplicates()
+
+        master = master.merge(
+            d_u,
+            on=["sample_id", "prediction_id"],
+            how="left"
+        )
+
+    # Add deterministic US-align plot path after merge, not from df_usalign
+    if usalign_base is not None:
+        usalign_plot_rows = []
+        for sample_id in master["sample_id"].astype(str).drop_duplicates():
+            udir = usalign_base / sample_id
+            usalign_plot_rows.append({
+                "sample_id": sample_id,
+                "usalign_plot_tm_rmsd": str(udir / "plots" / "usalign_tm_rmsd_interactive.html"),
+            })
+        df_usalign_plots = pd.DataFrame(usalign_plot_rows)
+        master = master.merge(df_usalign_plots, on="sample_id", how="left")
 
     return master
 
@@ -265,18 +300,14 @@ def main(
     Aggregate AF3 and optional US-align tables across all sample report directories.
 
     Outputs:
-      - cohort_chain_pairs.tsv
-      - cohort_chains.tsv
-      - cohort_master.tsv
-      - cohort_predictions.tsv
-      - cohort_sample_status.tsv
-      - cohort_usalign.tsv
+      - cohort_chain_pairs.tsv        (aggregation only)
+      - cohort_chains.tsv            (aggregation only)
+      - cohort_predictions.tsv       (aggregation only)
+      - cohort_usalign.tsv           (aggregation only)
+      - cohort_sample_status.tsv     (derived sample-level merged/status table)
+      - cohort_master.tsv            (merged prediction-level table)
 
-    Notes:
-      - cohort_predictions.tsv is the aggregated AF3 predictions table only
-      - cohort_usalign.tsv is the aggregated US-align table only
-      - cohort_master.tsv is the merge of cohort_predictions + cohort_usalign
-      - no other tables are merged with US-align results
+    Only cohort_master.tsv and cohort_sample_status.tsv are merge/derived tables.
     """
     outdir.mkdir(parents=True, exist_ok=True)
 
@@ -285,21 +316,31 @@ def main(
     use_usalign = usalign_base is not None and Path(usalign_base).exists()
     usalign_base_eff = Path(usalign_base) if use_usalign else None
 
-    df_status = sample_status_table(df_samples, af3_base=af3_base, usalign_base=usalign_base_eff)
+    # Aggregation-only tables
     df_pred = collect_af3_predictions(df_samples, af3_base=af3_base)
     df_chain = collect_af3_chains(df_samples, af3_base=af3_base)
     df_pair = collect_af3_chain_pairs(df_samples, af3_base=af3_base)
     df_usalign = collect_usalign(df_samples, usalign_base=usalign_base_eff)
 
-    # Write raw aggregated tables
+    # Derived/merged tables
+    df_status = sample_status_table(df_samples, af3_base=af3_base, usalign_base=usalign_base_eff)
+    master = build_master(
+        df_samples=df_samples,
+        df_pred=df_pred,
+        df_usalign=df_usalign,
+        df_status=df_status,
+        af3_base=af3_base,
+        usalign_base=usalign_base_eff,
+    )
+
+    # Write aggregation-only tables
     df_pair.to_csv(outdir / "cohort_chain_pairs.tsv", sep="\t", index=False)
     df_chain.to_csv(outdir / "cohort_chains.tsv", sep="\t", index=False)
     df_pred.to_csv(outdir / "cohort_predictions.tsv", sep="\t", index=False)
-    df_status.to_csv(outdir / "cohort_sample_status.tsv", sep="\t", index=False)
     df_usalign.to_csv(outdir / "cohort_usalign.tsv", sep="\t", index=False)
 
-    # Build master only from df_pred + df_usalign
-    master = build_master(df_pred, df_usalign)
+    # Write merged/derived tables
+    df_status.to_csv(outdir / "cohort_sample_status.tsv", sep="\t", index=False)
 
     preferred = [
         "sample_id",
@@ -326,6 +367,11 @@ def main(
         "Lali",
         "af3_dir",
         "ground_truth",
+        "has_ground_truth",
+        "usalign_expected",
+        "usalign_found",
+        "usalign_not_applicable",
+        "usalign_missing_expected",
         "summary_path",
         "confidences_path",
         "af3_report_dir",
@@ -344,7 +390,6 @@ def main(
     ]
     cols = [c for c in preferred if c in master.columns] + [c for c in master.columns if c not in preferred]
     master = master[cols]
-
     master.to_csv(outdir / "cohort_master.tsv", sep="\t", index=False)
 
     click.echo(str(outdir / "cohort_master.tsv"))
