@@ -724,7 +724,7 @@ def plot_pae_multipanel_best_labeled(
 
     if last_im is not None:
         cbar = fig.colorbar(last_im, ax=axes.ravel().tolist(), fraction=0.02, pad=0.02)
-        cbar.set_label("PAE (Å)  (blue=good, white=bad)")
+        cbar.set_label("PAE (Å)")
 
     fig.subplots_adjust(wspace=0.15, hspace=0.25)
     outpath.parent.mkdir(parents=True, exist_ok=True)
