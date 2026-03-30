@@ -79,20 +79,24 @@ def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
 
 def parse_one_usalign_file(path: Path) -> pd.DataFrame:
     """
-    Read one US-align TSV. Assumes one row of tabular results.
+    Parse one US-align outfmt=2 file as whitespace-delimited text.
     """
     try:
-        df = pd.read_csv(path, sep=r"\s+|\t+", engine="python", comment="#")
+        df = pd.read_csv(path, sep=r"\s+", engine="python", comment=None)
     except Exception:
         return pd.DataFrame()
 
     if df.empty:
         return pd.DataFrame()
 
-    df = _normalize_columns(df)
+    # Remove leading '#' from first column name if present
+    cols = list(df.columns)
+    if cols:
+        cols[0] = str(cols[0]).lstrip("#")
+        df.columns = cols
+
     df["usalign_id"] = usalign_id_from_file(path)
     return df.head(1).copy()
-
 
 def load_usalign_results(report_dir: Path) -> pd.DataFrame:
     files = sorted(report_dir.glob("*.usalign.tsv"))
@@ -100,15 +104,21 @@ def load_usalign_results(report_dir: Path) -> pd.DataFrame:
     parts = [x for x in parts if not x.empty]
 
     if not parts:
-        return pd.DataFrame(columns=["usalign_id", "IDali", "L1", "L2", "Lali", "RMSD", "TM1", "TM2"])
+        return pd.DataFrame(
+            columns=[
+                "usalign_id", "PDBchain1", "PDBchain2",
+                "TM1", "TM2", "RMSD", "ID1", "ID2", "IDali", "L1", "L2", "Lali"
+            ]
+        )
 
     d = pd.concat(parts, ignore_index=True)
 
-    for col in ["IDali", "L1", "L2", "Lali", "RMSD", "TM1", "TM2"]:
+    for col in ["TM1", "TM2", "RMSD", "ID1", "ID2", "IDali", "L1", "L2", "Lali"]:
         if col in d.columns:
             d[col] = pd.to_numeric(d[col], errors="coerce")
 
     return d
+
 
 
 def merge_with_predictions(df_u: pd.DataFrame, df_pred: pd.DataFrame) -> pd.DataFrame:
