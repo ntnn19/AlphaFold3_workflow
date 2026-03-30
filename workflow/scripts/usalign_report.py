@@ -242,7 +242,6 @@ def build_interactive_plot(df: pd.DataFrame, html_path: Path) -> Optional[str]:
             y=-0.22,
             xref="x",
             yref="paper",
-            text=meta_text,
             showarrow=False,
             xanchor="center",
             yanchor="top",
