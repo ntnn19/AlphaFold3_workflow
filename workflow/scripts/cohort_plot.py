@@ -636,7 +636,7 @@ def main(pair_tsv: Path, pred_tsv: Optional[Path], out_html: Path, tm_plot: Opti
         df_tm["name"] = df_tm["name"].astype(str).replace("nan", "N/A")
 
         # Normalize TM score: min(TM1, TM2)
-        df_tm["tm_score"] = df_tm[["tm1", "tm2"]].min(axis=1)
+        df_tm["tm_score"] = df_tm[["TM1", "TM2"]].min(axis=1)
         df_tm["tm_score"] = pd.to_numeric(df_tm["tm_score"], errors="coerce")
         df_tm = df_tm[df_tm["tm_score"].notna()].copy()
 
