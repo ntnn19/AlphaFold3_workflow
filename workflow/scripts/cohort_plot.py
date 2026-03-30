@@ -579,7 +579,13 @@ def plot_chain_pair_iptm_cumulative(
     default=None,
     help="Output HTML path for TM score distribution plot."
 )
-def main(pair_tsv: Path, pred_tsv: Optional[Path], out_html: Path, tm_plot: Optional[Path]):
+@click.option(
+    "--master-tsv",
+    type=click.Path(exists=False, dir_okay=False, path_type=Path),
+    default=None,
+    help="Optional: Path to cohort_master.tsv (contains tm1, tm2)."
+)
+def main(pair_tsv: Path, pred_tsv: Optional[Path], out_html: Path, tm_plot: Optional[Path], master_tsv: Optional[Path]):
     """
     Create two interactive plots:
     1. Cumulative distribution of chain-pair ipTM across all predictions.
@@ -601,13 +607,18 @@ def main(pair_tsv: Path, pred_tsv: Optional[Path], out_html: Path, tm_plot: Opti
 
     # Plot 2: TM score — use cohort_master.tsv if available
     if tm_plot is not None:
-        # Try to load cohort_master.tsv (contains tm1, tm2)
-        master_tsv = Path("cohort/cohort_master.tsv")
-        if not master_tsv.exists():
-            click.echo("⚠️  cohort_master.tsv not found. Skipping TM score plot.")
+        # Use --master-tsv if provided
+        if master_tsv is not None:
+            master_path = master_tsv
+        else:
+            # Fallback: try reports/cohort/cohort_master.tsv
+            master_path = Path("reports/cohort/cohort_master.tsv")
+
+        if not master_path.exists():
+            click.echo(f"⚠️  {master_path} not found. Skipping TM score plot.")
             return
 
-        df_master = load_tsv(master_tsv)
+        df_master = load_tsv(master_path)
         df_master = coerce_numeric(df_master, ["tm1", "tm2"])
 
         # Extract only needed columns
