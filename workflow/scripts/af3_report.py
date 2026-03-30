@@ -145,6 +145,8 @@ def plot_plddt_combined_interactive(
     Generate a single interactive Plotly plot showing pLDDT vs. token index
     for all predictions, with chain breaks and color by prediction ID.
 
+    The top-ranked real prediction is annotated as TOP based on ranking_score.
+
     Returns:
         Relative path to saved HTML file.
     """
@@ -152,13 +154,29 @@ def plot_plddt_combined_interactive(
     plots_dir.mkdir(parents=True, exist_ok=True)
     html_path = plots_dir / "plddt_combined.html"
 
+    # Determine top prediction by ranking_score, preferring non-literal "top"
+    top_pred_id = None
+    if not df_pred.empty and "prediction_id" in df_pred.columns and "ranking_score" in df_pred.columns:
+        d = df_pred.copy()
+        d["prediction_id"] = d["prediction_id"].astype(str)
+        d["ranking_score_num"] = pd.to_numeric(d["ranking_score"], errors="coerce")
+
+        cand = d[(d["prediction_id"] != "top") & d["ranking_score_num"].notna()].copy()
+        if cand.empty:
+            cand = d[d["ranking_score_num"].notna()].copy()
+
+        if not cand.empty:
+            top_pred_id = str(
+                cand.sort_values(["ranking_score_num", "prediction_id"], ascending=[False, True]).iloc[0]["prediction_id"]
+            )
+
     # Collect data for all predictions
     traces = []
-    prediction_ids = []
     chain_breaks_all = set()
 
     # Group by prediction_id
     for pred_id, group in df_pred.groupby("prediction_id"):
+        pred_id = str(pred_id)
         conf_path = group["confidences_path"].iloc[0]
         if not conf_path or not Path(conf_path).exists():
             continue
@@ -178,18 +196,23 @@ def plot_plddt_combined_interactive(
         # Create x-axis
         x = np.arange(len(plddt))
 
+        is_top = (pred_id == top_pred_id)
+        display_name = f"TOP: {pred_id}" if is_top else pred_id
+
         # Add trace
         traces.append({
             "x": x,
             "y": plddt,
-            "name": pred_id,
+            "name": display_name,
             "mode": "lines",
             "line": {"width": 1.5},
-            "hovertemplate": f"<b>{pred_id}</b><br>Token: %{{x}}<br>pLDDT: %{{y:.2f}}<extra></extra>",
+            "hovertemplate": (
+                f"<b>{display_name}</b><br>"
+                "Token: %{x}<br>"
+                "pLDDT: %{y:.2f}<extra></extra>"
+            ),
             "showlegend": True
         })
-
-        prediction_ids.append(pred_id)
 
     # If no data, return empty
     if not traces:
@@ -213,7 +236,7 @@ def plot_plddt_combined_interactive(
             y1=100,
             line=dict(color="red", width=1, dash="dash"),
             xref="x",
-            yref="paper",
+            yref="y",
             opacity=0.6
         )
 
@@ -1001,9 +1024,18 @@ def plot_complex_overview(df_pred: pd.DataFrame, outdir: Path) -> dict[str, str]
     d = df_pred.copy()
     d["seed"] = d["seed"].astype("Int64")
 
+    if "is_top" not in d.columns:
+        d["is_top"] = False
+
+    d["prediction_label"] = np.where(
+        d["is_top"].fillna(False),
+        "TOP: " + d["prediction_id"].astype(str),
+        d["prediction_id"].astype(str)
+    )
+
     # ranking by prediction
     plt.figure(figsize=(max(6, 0.35 * len(d)), 4.2))
-    sns.stripplot(data=d, x="prediction_id", y="ranking_score", dodge=True)
+    sns.stripplot(data=d, x="prediction_label", y="ranking_score", dodge=True)
     plt.xticks(rotation=60, ha="right")
     plt.xlabel("prediction")
     plt.ylabel("ranking_score")
@@ -1022,12 +1054,13 @@ def plot_complex_overview(df_pred: pd.DataFrame, outdir: Path) -> dict[str, str]
     x = np.arange(len(d2))
     y = d2["mean_plddt_total"].to_numpy(dtype=float)
     yerr = d2["std_plddt_total"].to_numpy(dtype=float)
+    labels = d2["prediction_label"].astype(str).tolist()
 
     ax.bar(x, y, color="#4C72B0", alpha=0.9)
     ax.errorbar(x, y, yerr=yerr, fmt="none", ecolor="black", elinewidth=1, capsize=3)
 
     ax.set_xticks(x)
-    ax.set_xticklabels(d2["prediction_id"].astype(str), rotation=60, ha="right")
+    ax.set_xticklabels(labels, rotation=60, ha="right")
     ax.set_xlabel("prediction")
     ax.set_ylabel("mean pLDDT (atom mean ± SD)")
     ax.set_ylim(0, max(100, np.nanmax(y + np.nan_to_num(yerr, nan=0)) * 1.05))
@@ -1037,7 +1070,6 @@ def plot_complex_overview(df_pred: pd.DataFrame, outdir: Path) -> dict[str, str]
     plots["plddt_by_prediction"] = str(p.relative_to(outdir))
 
     return plots
-
 
 def plot_chain_bars_per_prediction(
     df_chain: pd.DataFrame,
