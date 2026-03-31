@@ -17,6 +17,7 @@ import seaborn as sns
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from matplotlib.colors import LinearSegmentedColormap
+from preprocessing import sanitised_name
 
 BLUE_WHITE_CMAP = LinearSegmentedColormap.from_list(
     "blue_white_good",
@@ -44,6 +45,7 @@ def load_input_descriptions(input_tsv: Optional[Path]) -> dict[str, dict[str, st
         return {}
 
     df = pd.read_csv(input_tsv, sep="\t", dtype=str).fillna("")
+    df["job_name"] = df["job_name"].apply(sanitised_name)
     if not {"job_name", "id", "description"}.issubset(df.columns):
         return {}
 
