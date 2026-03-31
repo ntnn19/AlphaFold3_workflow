@@ -52,9 +52,6 @@ def _prepare_description_col(d: pd.DataFrame) -> pd.DataFrame:
     return d
 
 
-# ---------------------------------------------------------------------------
-# A fixed colour palette for ground-truth references (up to 20 distinct)
-# ---------------------------------------------------------------------------
 _GT_PALETTE = [
     "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
     "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf",
@@ -113,7 +110,6 @@ def plot_tm_score_distribution(
 
     d = _prepare_description_col(d)
 
-    # Ensure ground_truth_id column
     if "ground_truth_id" not in d.columns:
         d["ground_truth_id"] = "default"
     else:
@@ -133,8 +129,6 @@ def plot_tm_score_distribution(
     gt_ids = sorted(d["ground_truth_id"].unique().tolist())
     gt_color_map = {gt: _gt_color(i) for i, gt in enumerate(gt_ids)}
 
-    # Build per-ground-truth trace data as JSON for JavaScript
-    # Each gt gets: {gt_id, color, all_x, all_y, all_customdata, top_x, top_y, top_customdata}
     n_total = len(d)
     use_cdf = n_total > 100
 
@@ -147,13 +141,11 @@ def plot_tm_score_distribution(
         color = gt_color_map[gt_id]
 
         if use_cdf:
-            # CDF: all predictions
             dg_sorted = dg.sort_values("tm_score").reset_index(drop=True)
             all_x = dg_sorted["tm_score"].tolist()
             all_y = [(i + 1) / len(dg_sorted) for i in range(len(dg_sorted))]
             all_cd = dg_sorted[meta_cols + ["is_top_str"]].values.tolist()
 
-            # CDF: top predictions
             dg_top = dg[dg["is_top"]].sort_values("tm_score").reset_index(drop=True)
             if not dg_top.empty:
                 top_x = dg_top["tm_score"].tolist()
@@ -162,7 +154,6 @@ def plot_tm_score_distribution(
             else:
                 top_x, top_y, top_cd = [], [], []
         else:
-            # Dot plot
             jitter = 0.01
             dg["jitter"] = np.random.uniform(-jitter, jitter, size=len(dg))
             all_x = (dg["tm_score"] + dg["jitter"]).tolist()
@@ -189,11 +180,16 @@ def plot_tm_score_distribution(
             "top_cd": top_cd,
         })
 
-    # We'll generate the full HTML with embedded JS that manages checkboxes
     gt_data_json = json.dumps(gt_data_list)
 
+    # Build the JSON for Choices.js options (with color in customProperties)
+    choices_options = json.dumps([
+        {"value": gt, "label": gt, "selected": True, "customProperties": {"color": gt_color_map[gt]}}
+        for gt in gt_ids
+    ])
+
     if use_cdf:
-        hover_all = (
+        hover_tpl = (
             "<b>name:</b> %{customdata[0]}<br>"
             "<b>description:</b> %{customdata[9]}<br>"
             "<b>ground truth:</b> %{customdata[10]}<br>"
@@ -210,7 +206,6 @@ def plot_tm_score_distribution(
             "<b>Fraction:</b> %{y:.3f}<br>"
             "<extra></extra>"
         )
-        hover_top = hover_all
         mode_all = "lines"
         mode_top = "lines"
         yaxis_cfg = {
@@ -220,7 +215,7 @@ def plot_tm_score_distribution(
         }
         plot_height = 700
     else:
-        hover_all = (
+        hover_tpl = (
             "<b>name:</b> %{customdata[0]}<br>"
             "<b>description:</b> %{customdata[9]}<br>"
             "<b>ground truth:</b> %{customdata[10]}<br>"
@@ -236,7 +231,6 @@ def plot_tm_score_distribution(
             "<b>TM score:</b> %{x:.3f}<br>"
             "<extra></extra>"
         )
-        hover_top = hover_all
         mode_all = "markers"
         mode_top = "markers"
         yaxis_cfg = {
@@ -252,23 +246,50 @@ def plot_tm_score_distribution(
 <meta charset="utf-8">
 <title>TM Score Distribution</title>
 <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css">
+<script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
 <style>
   body {{ font-family: Arial, sans-serif; margin: 20px; }}
   .container {{ max-width: 1400px; margin: 0 auto; }}
-  .controls {{ margin-bottom: 16px; padding: 12px; background: #f8f8f8;
-               border: 1px solid #ddd; border-radius: 6px; }}
-  .controls h3 {{ margin: 0 0 8px 0; font-size: 14px; }}
-  .btn-row {{ margin-bottom: 8px; }}
-  .btn-row button {{ margin-right: 8px; padding: 4px 12px; font-size: 13px;
-                     cursor: pointer; border: 1px solid #999; border-radius: 3px;
-                     background: #fff; }}
-  .btn-row button:hover {{ background: #eee; }}
-  .checkbox-grid {{ display: flex; flex-wrap: wrap; gap: 6px 18px; }}
-  .checkbox-grid label {{ font-size: 13px; cursor: pointer; white-space: nowrap; }}
-  .checkbox-grid label span.swatch {{
-      display: inline-block; width: 12px; height: 12px;
-      border-radius: 2px; margin-right: 4px; vertical-align: middle;
+
+  .controls {{
+      margin-bottom: 16px; padding: 14px 16px;
+      background: #f8f9fa; border: 1px solid #dee2e6;
+      border-radius: 6px;
   }}
+  .controls h3 {{
+      margin: 0 0 10px 0; font-size: 14px; color: #495057;
+  }}
+  .controls-row {{
+      display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap;
+  }}
+  .select-wrapper {{ flex: 1; min-width: 280px; max-width: 700px; }}
+  .btn-group {{ display: flex; gap: 6px; padding-top: 2px; }}
+  .btn-group button {{
+      padding: 6px 14px; font-size: 13px; cursor: pointer;
+      border: 1px solid #adb5bd; border-radius: 4px;
+      background: #fff; color: #495057; white-space: nowrap;
+  }}
+  .btn-group button:hover {{ background: #e9ecef; }}
+
+  /* Color swatches inside Choices.js items */
+  .gt-swatch {{
+      display: inline-block; width: 10px; height: 10px;
+      border-radius: 2px; margin-right: 5px; vertical-align: middle;
+      border: 1px solid rgba(0,0,0,0.15);
+  }}
+
+  /* Make the Choices.js dropdown a bit taller for many items */
+  .choices__list--dropdown .choices__list {{
+      max-height: 320px;
+  }}
+
+  /* Compact selected items */
+  .choices__list--multiple .choices__item {{
+      font-size: 12px; padding: 2px 8px;
+      margin-bottom: 2px; border-radius: 3px;
+  }}
+
   #plot {{ margin-top: 12px; }}
 </style>
 </head>
@@ -276,66 +297,135 @@ def plot_tm_score_distribution(
 <div class="container">
   <div class="controls">
     <h3>Ground truth references</h3>
-    <div class="btn-row">
-      <button id="btn-all">Select All</button>
-      <button id="btn-none">Clear All</button>
+    <div class="controls-row">
+      <div class="select-wrapper">
+        <select id="gt-select" multiple>
+        </select>
+      </div>
+      <div class="btn-group">
+        <button id="btn-all" title="Select all references">Select All</button>
+        <button id="btn-none" title="Clear all references">Clear All</button>
+      </div>
     </div>
-    <div class="checkbox-grid" id="gt-checkboxes"></div>
   </div>
   <div id="plot"></div>
 </div>
 
 <script>
-const GT_DATA = {gt_data_json};
-const USE_CDF = {'true' if use_cdf else 'false'};
-const HOVER_ALL = {json.dumps(hover_all)};
-const HOVER_TOP = {json.dumps(hover_top)};
-const MODE_ALL = {json.dumps(mode_all)};
-const MODE_TOP = {json.dumps(mode_top)};
-const YAXIS_CFG = {json.dumps(yaxis_cfg)};
+// ---- Data ----
+const GT_DATA    = {gt_data_json};
+const USE_CDF    = {'true' if use_cdf else 'false'};
+const HOVER_TPL  = {json.dumps(hover_tpl)};
+const MODE_ALL   = {json.dumps(mode_all)};
+const MODE_TOP   = {json.dumps(mode_top)};
+const YAXIS_CFG  = {json.dumps(yaxis_cfg)};
 const PLOT_HEIGHT = {plot_height};
-const TITLE = {json.dumps(title)};
+const TITLE      = {json.dumps(title)};
 
-// Build checkboxes
-const cbContainer = document.getElementById('gt-checkboxes');
+// Build a gt_id -> color lookup
+const GT_COLORS = {{}};
+GT_DATA.forEach(function(gt) {{ GT_COLORS[gt.gt_id] = gt.color; }});
+
+// ---- Choices.js setup ----
+const selectEl = document.getElementById('gt-select');
+
+// Create <option> elements
 GT_DATA.forEach(function(gt) {{
-    const label = document.createElement('label');
-    const cb = document.createElement('input');
-    cb.type = 'checkbox';
-    cb.checked = true;
-    cb.value = gt.gt_id;
-    cb.addEventListener('change', rebuildPlot);
-    const swatch = document.createElement('span');
-    swatch.className = 'swatch';
-    swatch.style.backgroundColor = gt.color;
-    label.appendChild(cb);
-    label.appendChild(document.createTextNode(' '));
-    label.appendChild(swatch);
-    label.appendChild(document.createTextNode(gt.gt_id));
-    cbContainer.appendChild(label);
+    const opt = document.createElement('option');
+    opt.value = gt.gt_id;
+    opt.textContent = gt.gt_id;
+    opt.selected = true;
+    selectEl.appendChild(opt);
 }});
 
+const choicesInstance = new Choices(selectEl, {{
+    removeItemButton: true,
+    placeholderValue: 'Select ground truth references...',
+    searchPlaceholderValue: 'Search...',
+    shouldSort: false,
+    itemSelectText: '',
+    classNames: {{
+        containerOuter: 'choices',
+    }},
+    callbackOnCreateTemplates: function(template) {{
+        const self = this;
+        return {{
+            // Custom template for items in the dropdown list
+            choice: function(classNames, data) {{
+                const color = GT_COLORS[data.value] || '#999';
+                const div = document.createElement('div');
+                div.className = classNames.item + ' ' + classNames.itemChoice + ' ' +
+                    (data.disabled ? classNames.itemDisabled : classNames.itemSelectable);
+                div.setAttribute('data-select-text', self.config.itemSelectText);
+                div.setAttribute('data-choice', '');
+                div.setAttribute('data-id', data.id);
+                div.setAttribute('data-value', data.value);
+                if (data.disabled) {{
+                    div.setAttribute('aria-disabled', 'true');
+                }}
+                div.innerHTML =
+                    '<span class="gt-swatch" style="background-color:' + color + '"></span>' +
+                    data.label;
+                return div;
+            }},
+            // Custom template for selected items (tags)
+            item: function(classNames, data) {{
+                const color = GT_COLORS[data.value] || '#999';
+                const div = document.createElement('div');
+                div.className = classNames.item + ' ' +
+                    (data.highlighted ? classNames.highlightedState : classNames.itemSelectable);
+                div.setAttribute('data-item', '');
+                div.setAttribute('data-id', data.id);
+                div.setAttribute('data-value', data.value);
+                if (data.active) div.setAttribute('aria-selected', 'true');
+                if (data.disabled) div.setAttribute('aria-disabled', 'true');
+                div.style.backgroundColor = color;
+                div.style.borderColor = color;
+                div.style.color = '#fff';
+                div.style.fontSize = '12px';
+                div.innerHTML = data.label;
+                if (self.config.removeItemButton) {{
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = classNames.button;
+                    btn.setAttribute('data-button', '');
+                    btn.innerHTML = 'Remove item';
+                    btn.style.borderLeft = '1px solid rgba(255,255,255,0.4)';
+                    div.appendChild(btn);
+                }}
+                return div;
+            }},
+        }};
+    }},
+}});
+
+// Listen for changes
+selectEl.addEventListener('change', rebuildPlot);
+
+// Select All / Clear All
 document.getElementById('btn-all').addEventListener('click', function() {{
-    cbContainer.querySelectorAll('input[type=checkbox]').forEach(function(cb) {{ cb.checked = true; }});
-    rebuildPlot();
-}});
-document.getElementById('btn-none').addEventListener('click', function() {{
-    cbContainer.querySelectorAll('input[type=checkbox]').forEach(function(cb) {{ cb.checked = false; }});
+    // Remove all then re-add all
+    choicesInstance.removeActiveItems();
+    GT_DATA.forEach(function(gt) {{
+        choicesInstance.setChoiceByValue(gt.gt_id);
+    }});
     rebuildPlot();
 }});
 
+document.getElementById('btn-none').addEventListener('click', function() {{
+    choicesInstance.removeActiveItems();
+    rebuildPlot();
+}});
+
+// ---- Plot rebuild ----
 function rebuildPlot() {{
-    const checked = new Set();
-    cbContainer.querySelectorAll('input[type=checkbox]:checked').forEach(function(cb) {{
-        checked.add(cb.value);
-    }});
+    const selected = new Set(choicesInstance.getValue(true));
 
     const traces = [];
 
     GT_DATA.forEach(function(gt) {{
-        if (!checked.has(gt.gt_id)) return;
+        if (!selected.has(gt.gt_id)) return;
 
-        // "All predictions" trace for this ground truth
         if (gt.all_x.length > 0) {{
             const traceAll = {{
                 x: gt.all_x,
@@ -343,7 +433,7 @@ function rebuildPlot() {{
                 mode: MODE_ALL,
                 name: gt.gt_id + ' (all)',
                 customdata: gt.all_cd,
-                hovertemplate: HOVER_ALL,
+                hovertemplate: HOVER_TPL,
                 showlegend: true,
             }};
             if (MODE_ALL === 'lines') {{
@@ -357,7 +447,6 @@ function rebuildPlot() {{
             traces.push(traceAll);
         }}
 
-        // "Top predictions" trace for this ground truth
         if (gt.top_x.length > 0) {{
             const traceTop = {{
                 x: gt.top_x,
@@ -365,7 +454,7 @@ function rebuildPlot() {{
                 mode: MODE_TOP,
                 name: gt.gt_id + ' (top)',
                 customdata: gt.top_cd,
-                hovertemplate: HOVER_TOP,
+                hovertemplate: HOVER_TPL,
                 showlegend: true,
             }};
             if (MODE_TOP === 'lines') {{
