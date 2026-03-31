@@ -32,10 +32,89 @@ BLUE_WHITE_CMAP = LinearSegmentedColormap.from_list(
 
 SEED_SAMPLE_RE = re.compile(r"seed-(\d+)_sample-(\d+)")
 
+
+def load_input_descriptions(input_tsv: Optional[Path]) -> dict[str, dict[str, str]]:
+    """
+    Load the input TSV and build a mapping from job_name -> {chain_id: description}.
+
+    The TSV is expected to have columns: job_name, id, description (among others).
+    Returns e.g. {"8SM3_template_free_afdb": {"B": "Gabija protein GajB", "A": "Endonuclease GajA"}, ...}
+    """
+    if input_tsv is None or not input_tsv.exists():
+        return {}
+
+    df = pd.read_csv(input_tsv, sep="\t", dtype=str).fillna("")
+    if not {"job_name", "id", "description"}.issubset(df.columns):
+        return {}
+
+    result: dict[str, dict[str, str]] = {}
+    for _, row in df.iterrows():
+        job = row["job_name"].strip()
+        chain_id = row["id"].strip()
+        desc = row["description"].strip()
+        if job not in result:
+            result[job] = {}
+        result[job][chain_id] = desc
+
+    return result
+
+
+def get_job_name_from_sample_id(sample_id: str) -> str:
+    """
+    Extract the job name from a sample_id by stripping the _seed-N suffix.
+    e.g. "8SM3_template_free_afdb_seed-1" -> "8SM3_template_free_afdb"
+    Also handles case-insensitive matching.
+    """
+    # Remove _seed-N suffix
+    return re.sub(r"_seed-\d+$", "", sample_id)
+
+
+def build_description_string(
+    sample_id: str,
+    descriptions: dict[str, dict[str, str]],
+    chain_ids: Optional[list[str]] = None,
+) -> str:
+    """
+    Build a human-readable description string for a prediction from the input descriptions.
+
+    If chain_ids is provided, returns descriptions for those specific chains.
+    Otherwise returns all chain descriptions for the job.
+    """
+    if not descriptions:
+        return ""
+
+    job_name = get_job_name_from_sample_id(sample_id)
+
+    # Try exact match first, then case-insensitive
+    chain_descs = descriptions.get(job_name, {})
+    if not chain_descs:
+        for key, val in descriptions.items():
+            if key.lower() == job_name.lower():
+                chain_descs = val
+                break
+
+    if not chain_descs:
+        return ""
+
+    if chain_ids is not None:
+        parts = []
+        for cid in chain_ids:
+            desc = chain_descs.get(cid, "")
+            if desc:
+                parts.append(f"{cid}: {desc}")
+        return "; ".join(parts) if parts else ""
+    else:
+        parts = []
+        for cid in sorted(chain_descs.keys()):
+            desc = chain_descs[cid]
+            if desc:
+                parts.append(f"{cid}: {desc}")
+        return "; ".join(parts) if parts else ""
+
+
 def mark_and_filter_top(df_pred: pd.DataFrame,
                         df_chain: pd.DataFrame,
                         df_pair: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    # choose best among non-"top" if present, else best overall
     d = df_pred.copy()
     cand = d[(d["prediction_id"] != "top") & d["ranking_score"].notna()].copy()
     if cand.empty:
@@ -45,27 +124,20 @@ def mark_and_filter_top(df_pred: pd.DataFrame,
     if not cand.empty:
         top_pid = str(cand.sort_values("ranking_score", ascending=False).iloc[0]["prediction_id"])
 
-    # add boolean label columns
     d["is_top"] = False
     if top_pid is not None:
         d.loc[d["prediction_id"].astype(str) == top_pid, "is_top"] = True
 
-    # filter out literal "top" everywhere
     d = d[d["prediction_id"] != "top"].copy()
     df_chain2 = df_chain[df_chain["prediction_id"] != "top"].copy()
     df_pair2 = df_pair[df_pair["prediction_id"] != "top"].copy()
 
-    # propagate is_top to chain/pair tables
     df_chain2["is_top"] = df_chain2["prediction_id"].astype(str) == str(top_pid) if top_pid is not None else False
     df_pair2["is_top"] = df_pair2["prediction_id"].astype(str) == str(top_pid) if top_pid is not None else False
 
     return d, df_chain2, df_pair2
 
 def get_sample_id_from_output_dir(output_dir: Path) -> str:
-    """
-    Use the AF3 output directory name as sample identifier.
-    Example: reports/7wr6_template_based_afdb_seed-1  ->  7wr6_template_based_afdb_seed-1
-    """
     return output_dir.name
 
 def plot_plddt_with_chain_breaks(
@@ -73,18 +145,6 @@ def plot_plddt_with_chain_breaks(
     outpath: Path,
     title: str = "pLDDT per token (with chain breaks)"
 ) -> bool:
-    """
-    Plot pLDDT values as a line plot over token index.
-    Chain breaks are shown as vertical dashed lines.
-
-    Args:
-        conf: Dictionary containing confidence data, including 'atom_plddts' and 'token_chain_ids'.
-        outpath: Path to save the output PNG file.
-        title: Title for the plot.
-
-    Returns:
-        True if the plot was successfully saved, False otherwise.
-    """
     plddt = conf.get("atom_plddts")
     tchains = conf.get("token_chain_ids")
 
@@ -94,24 +154,19 @@ def plot_plddt_with_chain_breaks(
     plddt_array = np.asarray(plddt, dtype=float)
     chain_ids = np.asarray(tchains).astype(str)
 
-    # Find boundaries where chain ID changes
     change_idx = np.nonzero(chain_ids[:-1] != chain_ids[1:])[0] + 1
     boundaries = [0, *change_idx.tolist(), len(chain_ids)]
 
-    # Create x-axis (token indices)
     x = np.arange(len(plddt_array))
 
     plt.figure(figsize=(10, 5))
     ax = plt.gca()
 
-    # Plot pLDDT as line
     ax.plot(x, plddt_array, color="blue", linewidth=1.0, alpha=0.8, label="pLDDT")
 
-    # Draw vertical dashed lines at chain breaks
     for x_break in boundaries[1:-1]:
         ax.axvline(x_break, color="red", linestyle="--", linewidth=1.0, alpha=0.7)
 
-    # Add chain labels on x-axis
     chain_ids_labels = []
     mids = []
     for a, b in zip(boundaries[:-1], boundaries[1:]):
@@ -127,7 +182,6 @@ def plot_plddt_with_chain_breaks(
     ax.grid(True, axis="y", linestyle="--", alpha=0.5)
     ax.legend()
 
-    # Ensure layout fits
     plt.tight_layout()
 
     outpath.parent.mkdir(parents=True, exist_ok=True)
@@ -139,22 +193,13 @@ def plot_plddt_with_chain_breaks(
 def plot_plddt_combined_interactive(
     df_pred: pd.DataFrame,
     output_dir: Path,
-    max_rows: int = 200
+    max_rows: int = 200,
+    descriptions: Optional[dict[str, dict[str, str]]] = None,
 ) -> str:
-    """
-    Generate a single interactive Plotly plot showing pLDDT vs. token index
-    for all predictions, with chain breaks and color by prediction ID.
-
-    The top-ranked real prediction is annotated as TOP based on ranking_score.
-
-    Returns:
-        Relative path to saved HTML file.
-    """
     plots_dir = output_dir / "plots"
     plots_dir.mkdir(parents=True, exist_ok=True)
     html_path = plots_dir / "plddt_combined.html"
 
-    # Determine top prediction by ranking_score, preferring non-literal "top"
     top_pred_id = None
     if not df_pred.empty and "prediction_id" in df_pred.columns and "ranking_score" in df_pred.columns:
         d = df_pred.copy()
@@ -170,11 +215,9 @@ def plot_plddt_combined_interactive(
                 cand.sort_values(["ranking_score_num", "prediction_id"], ascending=[False, True]).iloc[0]["prediction_id"]
             )
 
-    # Collect data for all predictions
     traces = []
     chain_breaks_all = set()
 
-    # Group by prediction_id
     for pred_id, group in df_pred.groupby("prediction_id"):
         pred_id = str(pred_id)
         conf_path = group["confidences_path"].iloc[0]
@@ -188,18 +231,21 @@ def plot_plddt_combined_interactive(
         if len(plddt) == 0:
             continue
 
-        # Find chain breaks
         change_idx = np.nonzero(tchains[:-1] != tchains[1:])[0] + 1
         breaks = set(change_idx.tolist())
         chain_breaks_all.update(breaks)
 
-        # Create x-axis
         x = np.arange(len(plddt))
 
         is_top = (pred_id == top_pred_id)
         display_name = f"TOP: {pred_id}" if is_top else pred_id
 
-        # Add trace
+        # Build description annotation
+        sample_id = group["sample_id"].iloc[0] if "sample_id" in group.columns else ""
+        chain_ids_unique = sorted(set(tchains.tolist()))
+        desc_str = build_description_string(str(sample_id), descriptions or {}, chain_ids_unique)
+        desc_hover = f"<br><b>Description:</b> {desc_str}" if desc_str else ""
+
         traces.append({
             "x": x,
             "y": plddt,
@@ -209,24 +255,20 @@ def plot_plddt_combined_interactive(
             "hovertemplate": (
                 f"<b>{display_name}</b><br>"
                 "Token: %{x}<br>"
-                "pLDDT: %{y:.2f}<extra></extra>"
+                f"pLDDT: %{{y:.2f}}{desc_hover}<extra></extra>"
             ),
             "showlegend": True
         })
 
-    # If no data, return empty
     if not traces:
         html_path.write_text("<p><em>No data to plot.</em></p>", encoding="utf-8")
         return str(html_path.relative_to(output_dir))
 
-    # Create Plotly figure
     fig = go.Figure()
 
-    # Add all traces
     for trace in traces:
         fig.add_trace(go.Scatter(**trace))
 
-    # Add chain break lines
     for x_break in sorted(chain_breaks_all):
         fig.add_shape(
             type="line",
@@ -240,7 +282,6 @@ def plot_plddt_combined_interactive(
             opacity=0.6
         )
 
-    # Update layout
     fig.update_layout(
         title={
             "text": "pLDDT per token (all predictions)",
@@ -275,23 +316,21 @@ def plot_plddt_combined_interactive(
         template="plotly_white"
     )
 
-    # Save as HTML
     fig.write_html(str(html_path), include_plotlyjs="cdn", full_html=True)
 
     return str(html_path.relative_to(output_dir))
 
-def plot_pae_interactive(df_pred: pd.DataFrame, output_dir: Path) -> str:
-    """
-    Lightweight "interactive" PAE viewer: dropdown switches between per-prediction PNGs.
-    Expects PNGs named: plots/pae_{prediction_id}.png
-    """
+def plot_pae_interactive(
+    df_pred: pd.DataFrame,
+    output_dir: Path,
+    descriptions: Optional[dict[str, dict[str, str]]] = None,
+) -> str:
     plots_dir = output_dir / "plots"
     plots_dir.mkdir(parents=True, exist_ok=True)
     html_path = plots_dir / "pae_interactive.html"
 
     pred_ids = sorted(df_pred["prediction_id"].dropna().astype(str).unique().tolist())
 
-    # Keep only predictions that actually have a PNG
     items = []
     for pid in pred_ids:
         png = plots_dir / f"pae_{pid}.png"
@@ -303,6 +342,13 @@ def plot_pae_interactive(df_pred: pd.DataFrame, output_dir: Path) -> str:
         return str(html_path.relative_to(output_dir))
 
     first_pid, first_png = items[0]
+
+    # Build description for the page header
+    sample_id = ""
+    if not df_pred.empty and "sample_id" in df_pred.columns:
+        sample_id = str(df_pred["sample_id"].iloc[0])
+    desc_str = build_description_string(sample_id, descriptions or {})
+    desc_html = f"<p><strong>Chains:</strong> {desc_str}</p>" if desc_str else ""
 
     html = f"""<!DOCTYPE html>
 <html>
@@ -319,6 +365,7 @@ def plot_pae_interactive(df_pred: pd.DataFrame, output_dir: Path) -> str:
 <body>
   <div class="container">
     <h2>PAE matrices (PNG switcher)</h2>
+    {desc_html}
     <select id="prediction-select" class="dropdown">
       {''.join(f'<option value="{png}">{pid}</option>' for pid, png in items)}
     </select>
@@ -343,17 +390,9 @@ def plot_pae_interactive(df_pred: pd.DataFrame, output_dir: Path) -> str:
 def plot_iptm_interactive(
     df_pair: pd.DataFrame,
     df_pred: pd.DataFrame,
-    output_dir: Path
+    output_dir: Path,
+    descriptions: Optional[dict[str, dict[str, str]]] = None,
 ) -> str:
-    """
-    Generate an interactive ipTM matrix with dropdown to select prediction.
-
-    Keeps the simple Plotly heatmap style of the old version, but:
-    - builds matrices correctly from long-form df_pair
-    - uses white->blue colormap (high = good = blue)
-    - labels the top-ranked prediction
-    - shows ipTM, pTM, fraction_disordered, has_clash, and ranking_score below the plot using df_pred
-    """
     plots_dir = output_dir / "plots"
     plots_dir.mkdir(parents=True, exist_ok=True)
     html_path = plots_dir / "iptm_interactive.html"
@@ -362,6 +401,13 @@ def plot_iptm_interactive(
     if df_pair.empty or not required_pair.issubset(df_pair.columns):
         html_path.write_text("<p><em>No ipTM data available.</em></p>", encoding="utf-8")
         return str(html_path.relative_to(output_dir))
+
+    # Get sample_id for description lookup
+    sample_id = ""
+    if not df_pred.empty and "sample_id" in df_pred.columns:
+        sample_id = str(df_pred["sample_id"].iloc[0])
+    elif not df_pair.empty and "sample_id" in df_pair.columns:
+        sample_id = str(df_pair["sample_id"].iloc[0])
 
     # ---- metadata from df_pred ----
     pred_meta = {}
@@ -437,6 +483,18 @@ def plot_iptm_interactive(
     data = {}
     prediction_ids = []
 
+    # Build chain descriptions for axis labels
+    chain_desc_map = {}
+    if descriptions:
+        job_name = get_job_name_from_sample_id(sample_id)
+        chain_descs = descriptions.get(job_name, {})
+        if not chain_descs:
+            for key, val in descriptions.items():
+                if key.lower() == job_name.lower():
+                    chain_descs = val
+                    break
+        chain_desc_map = chain_descs
+
     for pred_id, group in df_pair.groupby("prediction_id"):
         pred_id = str(pred_id)
 
@@ -448,10 +506,20 @@ def plot_iptm_interactive(
         if mat.size == 0 or np.isnan(mat).all():
             continue
 
+        # Build chain labels with descriptions
+        chain_labels = []
+        for cid in chains:
+            desc = chain_desc_map.get(cid, "")
+            if desc:
+                chain_labels.append(f"{cid} ({desc})")
+            else:
+                chain_labels.append(cid)
+
         meta = pred_meta.get(pred_id, {})
         data[pred_id] = {
             "iptm": mat.tolist(),
             "chain_ids": chains,
+            "chain_labels": chain_labels,
             "score_iptm": meta.get("iptm"),
             "ptm": meta.get("ptm"),
             "fraction_disordered": meta.get("fraction_disordered"),
@@ -465,7 +533,6 @@ def plot_iptm_interactive(
         html_path.write_text("<p><em>No ipTM data available.</em></p>", encoding="utf-8")
         return str(html_path.relative_to(output_dir))
 
-    # sort with top first, then ranking_score desc, then prediction_id
     def _sort_key(pid: str):
         d = data[pid]
         is_top = d.get("is_top", False)
@@ -479,6 +546,10 @@ def plot_iptm_interactive(
         f'<option value="{pid}">{"TOP: " if data[pid]["is_top"] else ""}{pid}</option>'
         for pid in prediction_ids
     )
+
+    # Build overall description for the page
+    desc_str = build_description_string(sample_id, descriptions or {})
+    desc_html_block = f'<p><strong>Chains:</strong> {desc_str}</p>' if desc_str else ''
 
     html = f"""
     <!DOCTYPE html>
@@ -498,6 +569,7 @@ def plot_iptm_interactive(
     <body>
         <div class="container">
             <h2>Interactive ipTM Matrices</h2>
+            {desc_html_block}
             <select id="prediction-select" class="dropdown">
                 {options_html}
             </select>
@@ -512,6 +584,7 @@ def plot_iptm_interactive(
             const entry = data[predId];
             const iptm = entry.iptm;
             const chain_ids = entry.chain_ids;
+            const chain_labels = entry.chain_labels;
             const isTop = entry.is_top;
             const scoreIptm = entry.score_iptm;
             const ptm = entry.ptm;
@@ -521,8 +594,8 @@ def plot_iptm_interactive(
 
             const trace = {{
                 z: iptm,
-                x: chain_ids,
-                y: chain_ids,
+                x: chain_labels,
+                y: chain_labels,
                 type: 'heatmap',
                 colorscale: [
                     [0.00, '#ffffff'],
@@ -549,7 +622,7 @@ def plot_iptm_interactive(
                 title: titleText,
                 xaxis: {{ title: "Chain" }},
                 yaxis: {{ title: "Chain" }},
-                margin: {{ l: 50, r: 50, t: 50, b: 50 }}
+                margin: {{ l: 120, r: 50, t: 50, b: 120 }}
             }};
 
             Plotly.newPlot('plot', [trace], layout, {{responsive: true}});
@@ -615,6 +688,7 @@ def plot_pae_multipanel_best_labeled(
     ncols: int = 3,
     max_panels: int | None = None,
     vmax_percentile: float = 99.0,
+    descriptions: Optional[dict[str, dict[str, str]]] = None,
 ) -> bool:
     import math
     import numpy as np
@@ -628,16 +702,16 @@ def plot_pae_multipanel_best_labeled(
     BLUE_WHITE_CMAP = LinearSegmentedColormap.from_list(
         "blue_white_good",
         [
-            "#08519c",  # dark blue = good
+            "#08519c",
             "#3182bd",
             "#6baed6",
             "#bdd7e7",
             "#eff3ff",
-            "#ffffff",  # white = bad
+            "#ffffff",
         ]
     )
 
-    d_plot = df_pred.copy()  # already filtered to exclude literal "top"
+    d_plot = df_pred.copy()
 
     if max_panels is not None and len(d_plot) > max_panels:
         d_plot = d_plot.sort_values(
@@ -649,7 +723,7 @@ def plot_pae_multipanel_best_labeled(
         ascending=[False, False, True]
     )
 
-    entries: list[tuple[str, bool, np.ndarray, list[int]]] = []
+    entries: list[tuple[str, bool, np.ndarray, list[int], str]] = []
     all_vals = []
 
     for _, row in d_plot.iterrows():
@@ -669,7 +743,13 @@ def plot_pae_multipanel_best_labeled(
             continue
 
         bounds = _chain_boundaries_from_token_chain_ids(tchains)
-        entries.append((pid, is_top, pae, bounds))
+
+        # Build description for this prediction
+        sample_id = str(row.get("sample_id", ""))
+        chain_ids_unique = sorted(set(tchains.tolist()))
+        desc_str = build_description_string(sample_id, descriptions or {}, chain_ids_unique)
+
+        entries.append((pid, is_top, pae, bounds, desc_str))
         all_vals.append(pae[np.isfinite(pae)])
 
     if not entries:
@@ -687,11 +767,10 @@ def plot_pae_multipanel_best_labeled(
     fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=(fig_w, fig_h), squeeze=False)
 
     last_im = None
-    for k, (pid, is_top, pae, bounds) in enumerate(entries):
+    for k, (pid, is_top, pae, bounds, desc_str) in enumerate(entries):
         r, c = divmod(k, ncols)
         ax = axes[r][c]
 
-        # low PAE = good = blue ; high PAE = bad = white
         last_im = ax.imshow(
             pae,
             cmap=BLUE_WHITE_CMAP,
@@ -701,12 +780,10 @@ def plot_pae_multipanel_best_labeled(
             interpolation="nearest"
         )
 
-        # draw black chain borders
         for x in bounds[1:-1]:
             ax.axhline(x - 0.5, color="black", lw=1.2)
             ax.axvline(x - 0.5, color="black", lw=1.2)
 
-        # outer border
         nres = pae.shape[0]
         ax.axhline(-0.5, color="black", lw=1.2)
         ax.axhline(nres - 0.5, color="black", lw=1.2)
@@ -714,7 +791,13 @@ def plot_pae_multipanel_best_labeled(
         ax.axvline(nres - 0.5, color="black", lw=1.2)
 
         title = f"TOP: {pid}" if is_top else pid
-        ax.set_title(title, fontsize=9)
+        if desc_str:
+            # Truncate if too long for title
+            if len(desc_str) > 60:
+                title += f"\n{desc_str[:57]}..."
+            else:
+                title += f"\n{desc_str}"
+        ax.set_title(title, fontsize=8)
         ax.set_xticks([])
         ax.set_yticks([])
 
@@ -726,7 +809,7 @@ def plot_pae_multipanel_best_labeled(
         cbar = fig.colorbar(last_im, ax=axes.ravel().tolist(), fraction=0.02, pad=0.02)
         cbar.set_label("PAE (Å)")
 
-    fig.subplots_adjust(wspace=0.15, hspace=0.25)
+    fig.subplots_adjust(wspace=0.15, hspace=0.45)
     outpath.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(outpath, dpi=180, bbox_inches="tight")
     plt.close(fig)
@@ -741,11 +824,9 @@ def plot_pae_with_chain_breaks(conf: dict, outpath: Path, title: str = "PAE") ->
     pae = np.asarray(pae, dtype=float)
     tchains = np.asarray(tchains).astype(str)
 
-    # boundaries where chain id changes
     change_idx = np.nonzero(tchains[:-1] != tchains[1:])[0] + 1
     boundaries = [0, *change_idx.tolist(), len(tchains)]
 
-    # compute chain midpoints for tick labels
     chain_ids = []
     mids = []
     for a, b in zip(boundaries[:-1], boundaries[1:]):
@@ -756,7 +837,6 @@ def plot_pae_with_chain_breaks(conf: dict, outpath: Path, title: str = "PAE") ->
     ax = sns.heatmap(pae, cmap="magma", vmin=0, vmax=np.nanpercentile(pae, 99),
                      square=True, cbar_kws={"label": "PAE (Å)"})
 
-    # draw chain break lines
     for x in boundaries[1:-1]:
         ax.axhline(x, color="white", lw=1.0)
         ax.axvline(x, color="white", lw=1.0)
@@ -765,7 +845,6 @@ def plot_pae_with_chain_breaks(conf: dict, outpath: Path, title: str = "PAE") ->
     ax.set_xlabel("token index")
     ax.set_ylabel("token index")
 
-    # optional: chain labels on axes (can get crowded for many chains)
     ax.set_xticks(mids)
     ax.set_xticklabels(chain_ids, rotation=0)
     ax.set_yticks(mids)
@@ -784,7 +863,6 @@ def load_json(p: Path) -> dict:
 def pick_conf_for_plot(df_pred: pd.DataFrame) -> Path | None:
     if df_pred.empty:
         return None
-    # prefer top if present
     d = df_pred.copy()
     if (d["prediction_id"] == "top").any():
         row = d[d["prediction_id"] == "top"].iloc[0]
@@ -805,39 +883,27 @@ def parse_prediction_id(summary_path: Path) -> tuple[int | None, int | None, str
     return seed, sample, pred_id
 
 def make_sample_pred_id(sample_id: str, prediction_id: str, sample: int | None) -> str:
-    """
-    Create a globally unique per-prediction identifier without duplicating seed info.
-      - top                -> <sample_id>_sample-top
-      - seed-*_sample-N    -> <sample_id>_sample-N  (N from parsed sample index)
-    """
     if prediction_id == "top":
         return f"{sample_id}_sample-top"
     if sample is None:
-        # Fallback (shouldn't normally happen for non-top predictions)
         return f"{sample_id}_sample-unknown"
     return f"{sample_id}_sample-{int(sample)}"
 
 def resolve_confidences_path(summary_path: Path, layout: str) -> Path | None:
-    """
-    Given a summary_confidences.json path, find the matching confidences.json.
-    """
     parent = summary_path.parent
 
-    if layout == "nagarnat":  # your default layout
-        # per-sample: seed-*_sample-*/summary_confidences.json -> confidences.json
+    if layout == "nagarnat":
         if summary_path.name == "summary_confidences.json":
             p = parent / "confidences.json"
             return p if p.exists() else None
 
-        # top-level: <job>_summary_confidences.json -> <job>_confidences.json
         if summary_path.name.endswith("_summary_confidences.json"):
             p = parent / summary_path.name.replace("_summary_confidences.json", "_confidences.json")
             return p if p.exists() else None
 
         return None
 
-    if layout == "dm":  # DeepMind canonical naming
-        # per-sample and top-level both use replace convention
+    if layout == "dm":
         if summary_path.name.endswith("_summary_confidences.json"):
             p = parent / summary_path.name.replace("_summary_confidences.json", "_confidences.json")
             return p if p.exists() else None
@@ -908,7 +974,6 @@ def mean_plddt_by_chain(conf: dict) -> dict[str, float]:
 
 def find_summary_files(output_dir: Path, layout: str) -> list[Path]:
     if layout == "nagarnat":
-        # includes top-level <job>_summary_confidences.json and per-sample summary_confidences.json
         a = list(output_dir.rglob("*_summary_confidences.json"))
         b = list(output_dir.rglob("summary_confidences.json"))
         return sorted(set(a + b))
@@ -919,7 +984,7 @@ def find_summary_files(output_dir: Path, layout: str) -> list[Path]:
 
 def summarize_job(output_dir: Path, layout: str):
 
-    sample_id = output_dir.name  # e.g. 7wr6_template_based_afdb_seed-1
+    sample_id = output_dir.name
 
     summary_files = find_summary_files(output_dir, layout)
 
@@ -955,7 +1020,6 @@ def summarize_job(output_dir: Path, layout: str):
         })
 
 
-        # ---- per-chain ----
         chain_ptm = summ.get("chain_ptm", [])
         chain_iptm = summ.get("chain_iptm", [])
 
@@ -981,7 +1045,6 @@ def summarize_job(output_dir: Path, layout: str):
                 "std_plddt_chain": std_val,
             })
 
-        # ---- per chain-pair ----
         cp_iptm = summ.get("chain_pair_iptm")
         cp_pae_min = summ.get("chain_pair_pae_min")
         if isinstance(cp_iptm, list):
@@ -1017,8 +1080,11 @@ def save_fig(path: Path):
     plt.close()
 
 
-def plot_complex_overview(df_pred: pd.DataFrame, outdir: Path) -> dict[str, str]:
-    """Return dict: plot_name -> relative path."""
+def plot_complex_overview(
+    df_pred: pd.DataFrame,
+    outdir: Path,
+    descriptions: Optional[dict[str, dict[str, str]]] = None,
+) -> dict[str, str]:
     plots = {}
 
     d = df_pred.copy()
@@ -1033,12 +1099,19 @@ def plot_complex_overview(df_pred: pd.DataFrame, outdir: Path) -> dict[str, str]
         d["prediction_id"].astype(str)
     )
 
+    # Build description for suptitle
+    sample_id = str(d["sample_id"].iloc[0]) if "sample_id" in d.columns and not d.empty else ""
+    desc_str = build_description_string(sample_id, descriptions or {})
+    suptitle_suffix = f"\n{desc_str}" if desc_str else ""
+
     # ranking by prediction
     plt.figure(figsize=(max(6, 0.35 * len(d)), 4.2))
     sns.stripplot(data=d, x="prediction_label", y="ranking_score", dodge=True)
     plt.xticks(rotation=60, ha="right")
     plt.xlabel("prediction")
     plt.ylabel("ranking_score")
+    if suptitle_suffix:
+        plt.title(f"Ranking score by prediction{suptitle_suffix}", fontsize=10)
     p = outdir / "plots" / "ranking_by_prediction.png"
     save_fig(p)
     plots["ranking_by_prediction"] = str(p.relative_to(outdir))
@@ -1064,6 +1137,8 @@ def plot_complex_overview(df_pred: pd.DataFrame, outdir: Path) -> dict[str, str]
     ax.set_xlabel("prediction")
     ax.set_ylabel("mean pLDDT (atom mean ± SD)")
     ax.set_ylim(0, max(100, np.nanmax(y + np.nan_to_num(yerr, nan=0)) * 1.05))
+    if suptitle_suffix:
+        ax.set_title(f"Mean pLDDT by prediction{suptitle_suffix}", fontsize=10)
 
     p = outdir / "plots" / "plddt_by_prediction.png"
     save_fig(p)
@@ -1075,13 +1150,9 @@ def plot_chain_bars_per_prediction(
     df_chain: pd.DataFrame,
     outdir: Path,
     ncols: int = 3,
-    max_panels: int | None = None
+    max_panels: int | None = None,
+    descriptions: Optional[dict[str, dict[str, str]]] = None,
 ) -> str:
-    """
-    Generate a multipanel per-chain mean pLDDT bar plot, one panel per prediction,
-    with SD error bars.
-    Returns relative path to saved plot.
-    """
     if df_chain.empty:
         return ""
 
@@ -1120,6 +1191,19 @@ def plot_chain_bars_per_prediction(
         ymax_data = 100
     ymax = max(100, float(ymax_data) * 1.05)
 
+    # Build chain description map
+    sample_id = str(d["sample_id"].iloc[0]) if "sample_id" in d.columns and not d.empty else ""
+    chain_desc_map = {}
+    if descriptions:
+        job_name = get_job_name_from_sample_id(sample_id)
+        chain_descs = descriptions.get(job_name, {})
+        if not chain_descs:
+            for key, val in descriptions.items():
+                if key.lower() == job_name.lower():
+                    chain_descs = val
+                    break
+        chain_desc_map = chain_descs
+
     for k, pred_id in enumerate(prediction_ids):
         r, c = divmod(k, ncols)
         ax = axes[r][c]
@@ -1146,8 +1230,18 @@ def plot_chain_bars_per_prediction(
         ax.set_xlabel("chain")
         ax.set_ylabel("mean pLDDT")
         ax.set_ylim(0, ymax)
+
+        # Build x-axis labels with descriptions
+        chain_labels = []
+        for cid in sub["chain_id"].tolist():
+            desc = chain_desc_map.get(cid, "")
+            if desc:
+                chain_labels.append(f"{cid}\n({desc[:20]})")
+            else:
+                chain_labels.append(cid)
+
         ax.set_xticks(x)
-        ax.set_xticklabels(sub["chain_id"].tolist(), rotation=0, ha="center")
+        ax.set_xticklabels(chain_labels, rotation=0, ha="center", fontsize=7)
 
         ax.axhline(50, color="gray", lw=0.8, ls="--", alpha=0.5)
         ax.axhline(70, color="gray", lw=0.8, ls="--", alpha=0.5)
@@ -1157,8 +1251,13 @@ def plot_chain_bars_per_prediction(
         r, c = divmod(k, ncols)
         axes[r][c].axis("off")
 
-    fig.suptitle("Per-chain mean pLDDT by prediction", fontsize=14)
-    fig.subplots_adjust(wspace=0.28, hspace=0.42, top=0.90)
+    # Build suptitle with descriptions
+    desc_str = build_description_string(sample_id, descriptions or {})
+    suptitle = "Per-chain mean pLDDT by prediction"
+    if desc_str:
+        suptitle += f"\n{desc_str}"
+    fig.suptitle(suptitle, fontsize=11)
+    fig.subplots_adjust(wspace=0.28, hspace=0.55, top=0.88)
 
     p = outdir / "plots" / "chain_plddt_multipanel.png"
     p.parent.mkdir(parents=True, exist_ok=True)
@@ -1173,10 +1272,6 @@ def plot_pair_heatmap_per_prediction(
     pred_id: str,
     title_suffix: str = ""
 ) -> str:
-    """
-    Generate a pair iptm heatmap for a single prediction.
-    Returns relative path to saved plot.
-    """
     d = df_pair[df_pair["prediction_id"] == pred_id].copy()
     if d.empty:
         return ""
@@ -1187,7 +1282,6 @@ def plot_pair_heatmap_per_prediction(
     sns.heatmap(piv, vmin=0, vmax=1, cmap="viridis", square=True, cbar_kws={"label": "pair ipTM"})
     plt.title(f"chain_pair_iptm ({pred_id}) {title_suffix}".strip())
 
-    # Save with prediction ID in filename
     fname = f"pair_iptm_heatmap_{pred_id}.png"
     p = outdir / "plots" / fname
     p.parent.mkdir(parents=True, exist_ok=True)
@@ -1199,18 +1293,6 @@ def plot_pair_heatmap_per_prediction(
 
 
 def df_to_html_table(df: pd.DataFrame, max_rows: int, table_id: str = None) -> str:
-    """
-    Convert a DataFrame to HTML with DataTables for interactive filtering, sorting, and pagination.
-    If the table is too large, it will be truncated with a note.
-
-    Args:
-        df: DataFrame to convert.
-        max_rows: Maximum rows to show (truncates if exceeded).
-        table_id: Optional unique ID for the table (e.g., "chains_table").
-
-    Returns:
-        HTML string with DataTables integration.
-    """
     if df.empty:
         return "<p><em>No data.</em></p>"
 
@@ -1223,10 +1305,8 @@ def df_to_html_table(df: pd.DataFrame, max_rows: int, table_id: str = None) -> s
     else:
         note = ""
 
-    # Generate unique ID if not provided
     table_id = table_id or f"table_{hash(str(df.head(10))) % 1000000}"
 
-    # Convert to HTML with DataTables
     html = f"""
     {note}
     <table id="{table_id}" class="table display" style="width:100%">
@@ -1259,18 +1339,25 @@ def df_to_html_table(df: pd.DataFrame, max_rows: int, table_id: str = None) -> s
 @click.argument("af3_output_dir", type=click.Path(exists=True, file_okay=False, path_type=Path))
 @click.option("-o", "--outdir", type=click.Path(file_okay=False, path_type=Path), required=True,
               help="Output directory for report + tables.")
+@click.option("--input-tsv", type=click.Path(exists=True, dir_okay=False, path_type=Path), default=None,
+              help="Input TSV with job_name, id, sequence, description columns for chain annotations.")
 @click.option("--html-name", default="report.html", show_default=True, help="HTML report filename.")
 @click.option("--max-rows", default=200, show_default=True, type=int, help="Max rows shown per table in HTML.")
 @click.option("--write-csv/--no-write-csv", default=True, show_default=True, help="Write CSV tables.")
 @click.option("--layout",type=click.Choice(["nagarnat", "dm"], case_sensitive=False), default="nagarnat", show_default=True, help="Output directory layout / AlphaFold version naming convention.")
-def main(af3_output_dir: Path, outdir: Path, html_name: str, max_rows: int, write_csv: bool, layout: str):
+def main(af3_output_dir: Path, outdir: Path, input_tsv: Optional[Path], html_name: str, max_rows: int, write_csv: bool, layout: str):
     """
     Generate an HTML report + tables from an AlphaFold 3 output directory.
 
     Uses *_summary_confidences.json for metrics and *_confidences.json to compute
     mean pLDDT from Full array output atom_plddts (total + per-chain).
+
+    Optionally accepts --input-tsv with chain descriptions to annotate plots.
     """
     outdir.mkdir(parents=True, exist_ok=True)
+
+    # Load input descriptions
+    descriptions = load_input_descriptions(input_tsv)
 
     df_pred, df_chain, df_pair = summarize_job(af3_output_dir, layout=layout.lower())
     df_pred, df_chain, df_pair = mark_and_filter_top(df_pred, df_chain, df_pair)
@@ -1284,34 +1371,27 @@ def main(af3_output_dir: Path, outdir: Path, html_name: str, max_rows: int, writ
     plots = {}
 
     # 1. Complex-wide plots (already per-prediction)
-    plots.update(plot_complex_overview(df_pred, outdir))
+    plots.update(plot_complex_overview(df_pred, outdir, descriptions=descriptions))
 
     # 2. Per-prediction chain bar plots
-    chain_multi_path = plot_chain_bars_per_prediction(df_chain, outdir, ncols=3)
+    chain_multi_path = plot_chain_bars_per_prediction(df_chain, outdir, ncols=3, descriptions=descriptions)
     if chain_multi_path:
         plots["chain_plddt_multipanel"] = chain_multi_path
 
-
-
     # 4. Per-prediction PAE plots
     pae_multi = outdir / "plots" / "pae_multipanel.png"
-    if plot_pae_multipanel_best_labeled(df_pred, pae_multi, ncols=3):
+    if plot_pae_multipanel_best_labeled(df_pred, pae_multi, ncols=3, descriptions=descriptions):
         plots["pae_multipanel"] = str(pae_multi.relative_to(outdir))
 
-
-    combined_plot_path = plot_plddt_combined_interactive(df_pred, outdir, max_rows=max_rows)
+    combined_plot_path = plot_plddt_combined_interactive(df_pred, outdir, max_rows=max_rows, descriptions=descriptions)
     plots["plddt_combined"] = combined_plot_path
 
-
     # 7. Generate **interactive ipTM matrix** (dropdown)
-    iptm_interactive_path = plot_iptm_interactive(df_pair, df_pred, outdir)
+    iptm_interactive_path = plot_iptm_interactive(df_pair, df_pred, outdir, descriptions=descriptions)
     plots["iptm_interactive"] = iptm_interactive_path
-    print("Plots=",plots)
+    print("Plots=", plots)
 
 
 
 if __name__ == "__main__":
     main()
-
-# chain borders for iptm and pae matrices should be clearly visualized using black lines.
-# color scales for pae and iptm should be red to blue (blue is good, red is bad)
