@@ -132,12 +132,47 @@ def plot_tm_score_distribution(
     n_total = len(d)
     use_cdf = n_total > 100
 
+    # --- Build baseline (all data, ignoring ground_truth_id) ---
+    if use_cdf:
+        d_sorted = d.sort_values("tm_score").reset_index(drop=True)
+        baseline_all_x = d_sorted["tm_score"].tolist()
+        baseline_all_y = [(i + 1) / len(d_sorted) for i in range(len(d_sorted))]
+        baseline_all_cd = d_sorted[meta_cols + ["is_top_str"]].values.tolist()
+
+        d_top = d[d["is_top"]].sort_values("tm_score").reset_index(drop=True)
+        if not d_top.empty:
+            baseline_top_x = d_top["tm_score"].tolist()
+            baseline_top_y = [(i + 1) / len(d_top) for i in range(len(d_top))]
+            baseline_top_cd = d_top[meta_cols + ["is_top_str"]].values.tolist()
+        else:
+            baseline_top_x, baseline_top_y, baseline_top_cd = [], [], []
+    else:
+        jitter = 0.01
+        d["jitter"] = np.random.uniform(-jitter, jitter, size=len(d))
+        baseline_all_x = (d["tm_score"] + d["jitter"]).tolist()
+        baseline_all_y = [0.5] * len(d)
+        baseline_all_cd = d[meta_cols + ["is_top_str"]].values.tolist()
+
+        d_top = d[d["is_top"]].copy()
+        if not d_top.empty:
+            d_top["jitter"] = np.random.uniform(-jitter, jitter, size=len(d_top))
+            baseline_top_x = (d_top["tm_score"] + d_top["jitter"]).tolist()
+            baseline_top_y = [0.5] * len(d_top)
+            baseline_top_cd = d_top[meta_cols + ["is_top_str"]].values.tolist()
+        else:
+            baseline_top_x, baseline_top_y, baseline_top_cd = [], [], []
+
+    baseline_data = {
+        "all_x": baseline_all_x, "all_y": baseline_all_y, "all_cd": baseline_all_cd,
+        "top_x": baseline_top_x, "top_y": baseline_top_y, "top_cd": baseline_top_cd,
+    }
+
+    # --- Build per-ground-truth overlay data ---
     gt_data_list = []
     for gt_id in gt_ids:
         dg = d[d["ground_truth_id"] == gt_id].copy()
         if dg.empty:
             continue
-
         color = gt_color_map[gt_id]
 
         if use_cdf:
@@ -154,7 +189,6 @@ def plot_tm_score_distribution(
             else:
                 top_x, top_y, top_cd = [], [], []
         else:
-            jitter = 0.01
             dg["jitter"] = np.random.uniform(-jitter, jitter, size=len(dg))
             all_x = (dg["tm_score"] + dg["jitter"]).tolist()
             all_y = [0.5] * len(dg)
@@ -170,23 +204,14 @@ def plot_tm_score_distribution(
                 top_x, top_y, top_cd = [], [], []
 
         gt_data_list.append({
-            "gt_id": gt_id,
-            "color": color,
-            "all_x": all_x,
-            "all_y": all_y,
-            "all_cd": all_cd,
-            "top_x": top_x,
-            "top_y": top_y,
-            "top_cd": top_cd,
+            "gt_id": gt_id, "color": color,
+            "all_x": all_x, "all_y": all_y, "all_cd": all_cd,
+            "top_x": top_x, "top_y": top_y, "top_cd": top_cd,
         })
 
+    baseline_json = json.dumps(baseline_data)
     gt_data_json = json.dumps(gt_data_list)
-
-    # Build the JSON for Choices.js options (with color in customProperties)
-    choices_options = json.dumps([
-        {"value": gt, "label": gt, "selected": True, "customProperties": {"color": gt_color_map[gt]}}
-        for gt in gt_ids
-    ])
+    gt_colors_json = json.dumps(gt_color_map)
 
     if use_cdf:
         hover_tpl = (
@@ -208,11 +233,8 @@ def plot_tm_score_distribution(
         )
         mode_all = "lines"
         mode_top = "lines"
-        yaxis_cfg = {
-            "title": "Cumulative fraction",
-            "range": [0, 1.02],
-            "tickvals": [0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
-        }
+        yaxis_cfg = {"title": "Cumulative fraction", "range": [0, 1.02],
+                     "tickvals": [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]}
         plot_height = 700
     else:
         hover_tpl = (
@@ -233,11 +255,7 @@ def plot_tm_score_distribution(
         )
         mode_all = "markers"
         mode_top = "markers"
-        yaxis_cfg = {
-            "showticklabels": False,
-            "title": "",
-            "range": [0, 1],
-        }
+        yaxis_cfg = {"showticklabels": False, "title": "", "range": [0, 1]}
         plot_height = 450
 
     html = f"""<!DOCTYPE html>
@@ -246,25 +264,23 @@ def plot_tm_score_distribution(
 <meta charset="utf-8">
 <title>TM Score Distribution</title>
 <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css">
-<script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 <style>
   body {{ font-family: Arial, sans-serif; margin: 20px; }}
   .container {{ max-width: 1400px; margin: 0 auto; }}
 
   .controls {{
       margin-bottom: 16px; padding: 14px 16px;
-      background: #f8f9fa; border: 1px solid #dee2e6;
-      border-radius: 6px;
+      background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px;
   }}
-  .controls h3 {{
-      margin: 0 0 10px 0; font-size: 14px; color: #495057;
-  }}
+  .controls h3 {{ margin: 0 0 10px 0; font-size: 14px; color: #495057; }}
   .controls-row {{
       display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap;
   }}
-  .select-wrapper {{ flex: 1; min-width: 280px; max-width: 700px; }}
-  .btn-group {{ display: flex; gap: 6px; padding-top: 2px; }}
+  .select-wrapper {{ flex: 1; min-width: 300px; max-width: 750px; }}
+  .btn-group {{ display: flex; gap: 6px; padding-top: 4px; }}
   .btn-group button {{
       padding: 6px 14px; font-size: 13px; cursor: pointer;
       border: 1px solid #adb5bd; border-radius: 4px;
@@ -272,23 +288,26 @@ def plot_tm_score_distribution(
   }}
   .btn-group button:hover {{ background: #e9ecef; }}
 
-  /* Color swatches inside Choices.js items */
+  /* Color swatches in Select2 dropdown and tags */
   .gt-swatch {{
       display: inline-block; width: 10px; height: 10px;
-      border-radius: 2px; margin-right: 5px; vertical-align: middle;
+      border-radius: 2px; margin-right: 6px; vertical-align: middle;
       border: 1px solid rgba(0,0,0,0.15);
   }}
-
-  /* Make the Choices.js dropdown a bit taller for many items */
-  .choices__list--dropdown .choices__list {{
-      max-height: 320px;
+  /* Style selected tags with ground-truth color */
+  .select2-container--default .select2-selection--multiple .select2-selection__choice {{
+      border: none; color: #fff; font-size: 12px; padding: 3px 8px;
+      border-radius: 3px;
   }}
-
-  /* Compact selected items */
-  .choices__list--multiple .choices__item {{
-      font-size: 12px; padding: 2px 8px;
-      margin-bottom: 2px; border-radius: 3px;
+  .select2-container--default .select2-selection--multiple .select2-selection__choice__remove {{
+      color: rgba(255,255,255,0.7); margin-right: 4px;
   }}
+  .select2-container--default .select2-selection--multiple .select2-selection__choice__remove:hover {{
+      color: #fff;
+  }}
+  .select2-container {{ min-width: 100%; }}
+
+  .hint {{ font-size: 12px; color: #6c757d; margin-top: 6px; }}
 
   #plot {{ margin-top: 12px; }}
 </style>
@@ -296,15 +315,18 @@ def plot_tm_score_distribution(
 <body>
 <div class="container">
   <div class="controls">
-    <h3>Ground truth references</h3>
+    <h3>Highlight ground truth references</h3>
     <div class="controls-row">
       <div class="select-wrapper">
-        <select id="gt-select" multiple>
+        <select id="gt-select" multiple="multiple" style="width:100%">
         </select>
+        <div class="hint">
+          Baseline (all data) is always shown. Select references to highlight them in color.
+        </div>
       </div>
       <div class="btn-group">
-        <button id="btn-all" title="Select all references">Select All</button>
-        <button id="btn-none" title="Clear all references">Clear All</button>
+        <button id="btn-all" title="Highlight all references">All</button>
+        <button id="btn-none" title="Remove all highlights">None</button>
       </div>
     </div>
   </div>
@@ -312,8 +334,9 @@ def plot_tm_score_distribution(
 </div>
 
 <script>
-// ---- Data ----
+const BASELINE   = {baseline_json};
 const GT_DATA    = {gt_data_json};
+const GT_COLORS  = {gt_colors_json};
 const USE_CDF    = {'true' if use_cdf else 'false'};
 const HOVER_TPL  = {json.dumps(hover_tpl)};
 const MODE_ALL   = {json.dumps(mode_all)};
@@ -322,176 +345,159 @@ const YAXIS_CFG  = {json.dumps(yaxis_cfg)};
 const PLOT_HEIGHT = {plot_height};
 const TITLE      = {json.dumps(title)};
 
-// Build a gt_id -> color lookup
-const GT_COLORS = {{}};
-GT_DATA.forEach(function(gt) {{ GT_COLORS[gt.gt_id] = gt.color; }});
-
-// ---- Choices.js setup ----
-const selectEl = document.getElementById('gt-select');
-
-// Create <option> elements
+// Populate Select2 options
+var $sel = $('#gt-select');
 GT_DATA.forEach(function(gt) {{
-    const opt = document.createElement('option');
-    opt.value = gt.gt_id;
-    opt.textContent = gt.gt_id;
-    opt.selected = true;
-    selectEl.appendChild(opt);
+    $sel.append(new Option(gt.gt_id, gt.gt_id, false, false));
 }});
 
-const choicesInstance = new Choices(selectEl, {{
-    removeItemButton: true,
-    placeholderValue: 'Select ground truth references...',
-    searchPlaceholderValue: 'Search...',
-    shouldSort: false,
-    itemSelectText: '',
-    classNames: {{
-        containerOuter: 'choices',
-    }},
-    callbackOnCreateTemplates: function(template) {{
-        const self = this;
-        return {{
-            // Custom template for items in the dropdown list
-            choice: function(classNames, data) {{
-                const color = GT_COLORS[data.value] || '#999';
-                const div = document.createElement('div');
-                div.className = classNames.item + ' ' + classNames.itemChoice + ' ' +
-                    (data.disabled ? classNames.itemDisabled : classNames.itemSelectable);
-                div.setAttribute('data-select-text', self.config.itemSelectText);
-                div.setAttribute('data-choice', '');
-                div.setAttribute('data-id', data.id);
-                div.setAttribute('data-value', data.value);
-                if (data.disabled) {{
-                    div.setAttribute('aria-disabled', 'true');
-                }}
-                div.innerHTML =
-                    '<span class="gt-swatch" style="background-color:' + color + '"></span>' +
-                    data.label;
-                return div;
-            }},
-            // Custom template for selected items (tags)
-            item: function(classNames, data) {{
-                const color = GT_COLORS[data.value] || '#999';
-                const div = document.createElement('div');
-                div.className = classNames.item + ' ' +
-                    (data.highlighted ? classNames.highlightedState : classNames.itemSelectable);
-                div.setAttribute('data-item', '');
-                div.setAttribute('data-id', data.id);
-                div.setAttribute('data-value', data.value);
-                if (data.active) div.setAttribute('aria-selected', 'true');
-                if (data.disabled) div.setAttribute('aria-disabled', 'true');
-                div.style.backgroundColor = color;
-                div.style.borderColor = color;
-                div.style.color = '#fff';
-                div.style.fontSize = '12px';
-                div.innerHTML = data.label;
-                if (self.config.removeItemButton) {{
-                    const btn = document.createElement('button');
-                    btn.type = 'button';
-                    btn.className = classNames.button;
-                    btn.setAttribute('data-button', '');
-                    btn.innerHTML = 'Remove item';
-                    btn.style.borderLeft = '1px solid rgba(255,255,255,0.4)';
-                    div.appendChild(btn);
-                }}
-                return div;
-            }},
-        }};
-    }},
+// Custom rendering for Select2 dropdown items and selected tags
+function formatGtOption(opt) {{
+    if (!opt.id) return opt.text;
+    var color = GT_COLORS[opt.id] || '#999';
+    return $('<span><span class="gt-swatch" style="background-color:' + color + '"></span>' + opt.text + '</span>');
+}}
+
+$sel.select2({{
+    placeholder: 'Select references to highlight...',
+    allowClear: true,
+    closeOnSelect: false,
+    templateResult: formatGtOption,
+    templateSelection: formatGtOption,
 }});
 
-// Listen for changes
-selectEl.addEventListener('change', rebuildPlot);
+// Color the selected tags
+function colorTags() {{
+    $sel.next('.select2-container').find('.select2-selection__choice').each(function() {{
+        // Select2 stores the value in data or in the title/text
+        var text = $(this).attr('title') || $(this).text().trim();
+        // Strip the "×" remove button text
+        text = text.replace(/^×\\s*/, '');
+        var color = GT_COLORS[text];
+        if (color) {{
+            $(this).css({{
+                'background-color': color,
+                'border-color': color,
+            }});
+        }}
+    }});
+}}
+
+$sel.on('change', function() {{
+    colorTags();
+    rebuildPlot();
+}});
 
 // Select All / Clear All
-document.getElementById('btn-all').addEventListener('click', function() {{
-    // Remove all then re-add all
-    choicesInstance.removeActiveItems();
-    GT_DATA.forEach(function(gt) {{
-        choicesInstance.setChoiceByValue(gt.gt_id);
-    }});
-    rebuildPlot();
+$('#btn-all').on('click', function() {{
+    var allVals = GT_DATA.map(function(gt) {{ return gt.gt_id; }});
+    $sel.val(allVals).trigger('change');
+}});
+$('#btn-none').on('click', function() {{
+    $sel.val([]).trigger('change');
 }});
 
-document.getElementById('btn-none').addEventListener('click', function() {{
-    choicesInstance.removeActiveItems();
-    rebuildPlot();
-}});
-
-// ---- Plot rebuild ----
 function rebuildPlot() {{
-    const selected = new Set(choicesInstance.getValue(true));
+    var selected = new Set($sel.val() || []);
+    var traces = [];
 
-    const traces = [];
+    // ---- Baseline: always visible ----
+    if (BASELINE.all_x.length > 0) {{
+        var baseAll = {{
+            x: BASELINE.all_x, y: BASELINE.all_y,
+            mode: MODE_ALL, name: 'All predictions (baseline)',
+            customdata: BASELINE.all_cd, hovertemplate: HOVER_TPL,
+            showlegend: true, opacity: 0.35,
+        }};
+        if (MODE_ALL === 'lines') {{
+            baseAll.line = {{ color: '#4C72B0', width: 2.5 }};
+        }} else {{
+            baseAll.marker = {{
+                color: '#4C72B0', size: 5, opacity: 0.3,
+                line: {{ width: 0.5, color: '#999' }}
+            }};
+        }}
+        traces.push(baseAll);
+    }}
 
+    if (BASELINE.top_x.length > 0) {{
+        var baseTop = {{
+            x: BASELINE.top_x, y: BASELINE.top_y,
+            mode: MODE_TOP, name: 'Top predictions (baseline)',
+            customdata: BASELINE.top_cd, hovertemplate: HOVER_TPL,
+            showlegend: true, opacity: 0.35,
+        }};
+        if (MODE_TOP === 'lines') {{
+            baseTop.line = {{ color: '#D55E00', width: 2.5, dash: 'dot' }};
+        }} else {{
+            baseTop.marker = {{
+                color: '#D55E00', size: 7, opacity: 0.35,
+                symbol: 'diamond',
+                line: {{ width: 0.5, color: '#999' }}
+            }};
+        }}
+        traces.push(baseTop);
+    }}
+
+    // ---- Highlighted ground truths ----
     GT_DATA.forEach(function(gt) {{
         if (!selected.has(gt.gt_id)) return;
 
         if (gt.all_x.length > 0) {{
-            const traceAll = {{
-                x: gt.all_x,
-                y: gt.all_y,
-                mode: MODE_ALL,
-                name: gt.gt_id + ' (all)',
-                customdata: gt.all_cd,
-                hovertemplate: HOVER_TPL,
+            var trAll = {{
+                x: gt.all_x, y: gt.all_y,
+                mode: MODE_ALL, name: gt.gt_id + ' (all)',
+                customdata: gt.all_cd, hovertemplate: HOVER_TPL,
                 showlegend: true,
             }};
             if (MODE_ALL === 'lines') {{
-                traceAll.line = {{ color: gt.color, width: 2.5 }};
+                trAll.line = {{ color: gt.color, width: 3 }};
             }} else {{
-                traceAll.marker = {{
-                    color: gt.color, size: 6, opacity: 0.7,
-                    line: {{ width: 0.5, color: 'black' }}
+                trAll.marker = {{
+                    color: gt.color, size: 8, opacity: 0.85,
+                    line: {{ width: 1, color: 'black' }}
                 }};
             }}
-            traces.push(traceAll);
+            traces.push(trAll);
         }}
 
         if (gt.top_x.length > 0) {{
-            const traceTop = {{
-                x: gt.top_x,
-                y: gt.top_y,
-                mode: MODE_TOP,
-                name: gt.gt_id + ' (top)',
-                customdata: gt.top_cd,
-                hovertemplate: HOVER_TPL,
+            var trTop = {{
+                x: gt.top_x, y: gt.top_y,
+                mode: MODE_TOP, name: gt.gt_id + ' (top)',
+                customdata: gt.top_cd, hovertemplate: HOVER_TPL,
                 showlegend: true,
             }};
             if (MODE_TOP === 'lines') {{
-                traceTop.line = {{ color: gt.color, width: 2.5, dash: 'dash' }};
+                trTop.line = {{ color: gt.color, width: 3, dash: 'dash' }};
             }} else {{
-                traceTop.marker = {{
-                    color: gt.color, size: 9, opacity: 0.9,
+                trTop.marker = {{
+                    color: gt.color, size: 10, opacity: 0.95,
                     symbol: 'star',
                     line: {{ width: 1.5, color: 'black' }}
                 }};
             }}
-            traces.push(traceTop);
+            traces.push(trTop);
         }}
     }});
 
-    const layout = {{
+    var layout = {{
         title: {{ text: TITLE, x: 0.5, xanchor: 'center' }},
-        xaxis: {{
-            title: 'TM score',
-            range: [0, 1],
-            tickvals: [0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
-        }},
+        xaxis: {{ title: 'TM score', range: [0, 1],
+                  tickvals: [0.0, 0.2, 0.4, 0.6, 0.8, 1.0] }},
         yaxis: YAXIS_CFG,
         template: 'plotly_white',
         hovermode: 'closest',
         height: PLOT_HEIGHT,
         margin: {{ l: 70, r: 50, t: 80, b: 70 }},
-        legend: {{
-            orientation: 'h', yanchor: 'bottom', y: 1.02,
-            xanchor: 'center', x: 0.5,
-        }},
+        legend: {{ orientation: 'h', yanchor: 'bottom', y: 1.02,
+                   xanchor: 'center', x: 0.5 }},
     }};
 
     Plotly.newPlot('plot', traces, layout, {{ responsive: true }});
 }}
 
-// Initial render
+// Initial render (no highlights, just baseline)
 rebuildPlot();
 </script>
 </body>
