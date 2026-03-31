@@ -605,7 +605,7 @@ def plot_chain_pair_iptm_cumulative(
     default=None,
     help="Optional: Path to all_master.tsv (contains TM1, TM2)."
 )
-def main(pair_tsv: Path, master_tsv: Optional[Path], out_html: Path, tm_plot: Optional[Path], master_tsv: Optional[Path]):
+def main(pair_tsv: Path, master_tsv: Optional[Path], out_html: Path, tm_plot: Optional[Path]):
     """
     Create two interactive plots:
     1. Distribution of chain-pair ipTM across all predictions.
