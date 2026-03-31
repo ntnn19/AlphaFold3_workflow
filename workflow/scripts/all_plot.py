@@ -187,7 +187,7 @@ def plot_tm_score_distribution(
         fig.update_layout(
             title=dict(text=title, x=0.5, xanchor="center"),
             xaxis=dict(
-                title="Normalized TM score (min(TM1, TM2))",
+                title="TM score",
                 range=[0, 1],
                 tickvals=[0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
             ),
@@ -268,7 +268,7 @@ def plot_tm_score_distribution(
         fig.update_layout(
             title=dict(text=title, x=0.5, xanchor="center"),
             xaxis=dict(
-                title="Normalized TM score (min(TM1, TM2))",
+                title="TM score",
                 range=[0, 1],
                 tickvals=[0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
             ),

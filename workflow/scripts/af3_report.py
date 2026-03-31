@@ -1510,7 +1510,6 @@ def main(af3_output_dir: Path, outdir: Path, input_tsv: Optional[Path], html_nam
     # 7. Generate **interactive ipTM matrix** (dropdown)
     iptm_interactive_path = plot_iptm_interactive(df_pair, df_pred, outdir, descriptions=descriptions)
     plots["iptm_interactive"] = iptm_interactive_path
-    print("Plots=", plots)
 
 
 
