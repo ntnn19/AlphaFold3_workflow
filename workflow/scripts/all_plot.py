@@ -11,7 +11,7 @@ import plotly.graph_objects as go
 def load_tsv(path: Path) -> pd.DataFrame:
     if not path.exists():
         return pd.DataFrame()
-    return pd.read_csv(path, sep="\s+", dtype=str).fillna("")
+    return pd.read_csv(path, sep="\t", dtype=str).fillna("")
 
 
 def coerce_numeric(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
