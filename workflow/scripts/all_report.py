@@ -346,6 +346,7 @@ def main(
         "sample_id",
         "prediction_id",
         "sample_pred_id",
+        "description",
         "seed",
         "sample",
         "is_top",
