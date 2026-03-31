@@ -222,12 +222,22 @@ def build_master(
     if not df_usalign.empty:
         d_u = df_usalign.copy()
 
+        # The usalign prediction_id now contains the ref name:
+        #   seed-1_sample-0_ref-7WR6
+        # Split into the real prediction_id and a ground_truth_id
         if "prediction_id" not in d_u.columns and "usalign_id" in d_u.columns:
             d_u["prediction_id"] = d_u["usalign_id"].astype(str)
+
+        # Extract ground_truth_id from prediction_id (the _ref-XXX suffix)
+        d_u["prediction_id"] = d_u["prediction_id"].astype(str)
+        d_u["ground_truth_id"] = d_u["prediction_id"].str.extract(r"_ref-(.+)$", expand=False).fillna("")
+        # Strip the _ref-XXX suffix to recover the original prediction_id
+        d_u["prediction_id"] = d_u["prediction_id"].str.replace(r"_ref-.+$", "", regex=True)
 
         u_keep = [
             "sample_id",
             "prediction_id",
+            "ground_truth_id",
             "TM1",
             "TM2",
             "RMSD",
@@ -241,6 +251,8 @@ def build_master(
         u_keep = [c for c in u_keep if c in d_u.columns]
         d_u = d_u[u_keep].drop_duplicates()
 
+        # This is now a one-to-many merge: each prediction gets one row
+        # per ground truth it was compared against
         master = master.merge(
             d_u,
             on=["sample_id", "prediction_id"],
@@ -347,6 +359,7 @@ def main(
         "prediction_id",
         "sample_pred_id",
         "description",
+        "ground_truth_id",
         "seed",
         "sample",
         "is_top",
