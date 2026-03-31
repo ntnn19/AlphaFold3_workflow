@@ -33,6 +33,31 @@ def write_no_data_html(path: Path, message: str = "No data to plot.") -> None:
     path.write_text(html, encoding="utf-8")
 
 
+def _prepare_description_col(d: pd.DataFrame) -> pd.DataFrame:
+    """
+    Ensure a 'description' column exists and is suitable for display.
+    Also builds 'chain_i_desc' and 'chain_j_desc' display strings if
+    chain_i_description / chain_j_description columns are present.
+    """
+    # For prediction-level description
+    if "description" not in d.columns:
+        d["description"] = "N/A"
+    else:
+        d["description"] = d["description"].astype(str).replace("", "N/A").replace("nan", "N/A")
+
+    # For chain-pair-level descriptions
+    for src, dst in [
+        ("chain_i_description", "chain_i_desc"),
+        ("chain_j_description", "chain_j_desc"),
+    ]:
+        if src in d.columns:
+            d[dst] = d[src].astype(str).replace("", "N/A").replace("nan", "N/A")
+        else:
+            d[dst] = "N/A"
+
+    return d
+
+
 def plot_tm_score_distribution(
     df_pred: pd.DataFrame,
     out_html: Path,
@@ -80,9 +105,12 @@ def plot_tm_score_distribution(
     else:
         d["is_top"] = False
 
+    # Prepare description column
+    d = _prepare_description_col(d)
+
     meta_cols = [
         "name", "sample", "seed", "ranking_score", "ptm", "iptm",
-        "mean_plddt_total", "fraction_disordered", "has_clash"
+        "mean_plddt_total", "fraction_disordered", "has_clash", "description"
     ]
     for c in meta_cols:
         if c not in d.columns:
@@ -108,6 +136,7 @@ def plot_tm_score_distribution(
             ),
             hovertemplate=(
                 "<b>name:</b> %{customdata[0]}<br>"
+                "<b>description:</b> %{customdata[9]}<br>"
                 "<b>sample:</b> %{customdata[1]}<br>"
                 "<b>seed:</b> %{customdata[2]}<br>"
                 "<b>ranking score:</b> %{customdata[3]}<br>"
@@ -116,7 +145,7 @@ def plot_tm_score_distribution(
                 "<b>mean pLDDT:</b> %{customdata[6]}<br>"
                 "<b>fraction disordered:</b> %{customdata[7]}<br>"
                 "<b>has clash:</b> %{customdata[8]}<br>"
-                "<b>is top:</b> %{customdata[9]}<br>"
+                "<b>is top:</b> %{customdata[10]}<br>"
                 "<b>normalized TM:</b> %{x:.3f}<br>"
                 "<extra></extra>"
             ),
@@ -138,6 +167,7 @@ def plot_tm_score_distribution(
                 ),
                 hovertemplate=(
                     "<b>name:</b> %{customdata[0]}<br>"
+                    "<b>description:</b> %{customdata[9]}<br>"
                     "<b>sample:</b> %{customdata[1]}<br>"
                     "<b>seed:</b> %{customdata[2]}<br>"
                     "<b>ranking score:</b> %{customdata[3]}<br>"
@@ -146,7 +176,7 @@ def plot_tm_score_distribution(
                     "<b>mean pLDDT:</b> %{customdata[6]}<br>"
                     "<b>fraction disordered:</b> %{customdata[7]}<br>"
                     "<b>has clash:</b> %{customdata[8]}<br>"
-                    "<b>is top:</b> %{customdata[9]}<br>"
+                    "<b>is top:</b> %{customdata[10]}<br>"
                     "<b>normalized TM:</b> %{x:.3f}<br>"
                     "<extra></extra>"
                 ),
@@ -187,6 +217,7 @@ def plot_tm_score_distribution(
                 line=dict(color="#4C72B0", width=2.5),
                 hovertemplate=(
                     "<b>name:</b> %{customdata[0]}<br>"
+                    "<b>description:</b> %{customdata[9]}<br>"
                     "<b>sample:</b> %{customdata[1]}<br>"
                     "<b>seed:</b> %{customdata[2]}<br>"
                     "<b>ranking score:</b> %{customdata[3]}<br>"
@@ -195,7 +226,7 @@ def plot_tm_score_distribution(
                     "<b>mean pLDDT:</b> %{customdata[6]}<br>"
                     "<b>fraction disordered:</b> %{customdata[7]}<br>"
                     "<b>has clash:</b> %{customdata[8]}<br>"
-                    "<b>is top:</b> %{customdata[9]}<br>"
+                    "<b>is top:</b> %{customdata[10]}<br>"
                     "<b>normalized TM ≤</b> %{x:.2f}<br>"
                     "<b>Fraction:</b> %{y:.3f}<br>"
                     "<extra></extra>"
@@ -216,6 +247,7 @@ def plot_tm_score_distribution(
                     line=dict(color="#D55E00", width=2.5, dash="solid"),
                     hovertemplate=(
                         "<b>name:</b> %{customdata[0]}<br>"
+                        "<b>description:</b> %{customdata[9]}<br>"
                         "<b>sample:</b> %{customdata[1]}<br>"
                         "<b>seed:</b> %{customdata[2]}<br>"
                         "<b>ranking score:</b> %{customdata[3]}<br>"
@@ -224,7 +256,7 @@ def plot_tm_score_distribution(
                         "<b>mean pLDDT:</b> %{customdata[6]}<br>"
                         "<b>fraction disordered:</b> %{customdata[7]}<br>"
                         "<b>has clash:</b> %{customdata[8]}<br>"
-                        "<b>is top:</b> %{customdata[9]}<br>"
+                        "<b>is top:</b> %{customdata[10]}<br>"
                         "<b>normalized TM ≤</b> %{x:.2f}<br>"
                         "<b>Fraction:</b> %{y:.3f}<br>"
                         "<extra></extra>"
@@ -311,6 +343,7 @@ def add_prediction_metadata(df_pair: pd.DataFrame, df_pred: pd.DataFrame) -> pd.
         "iptm",
         "ptm",
         "mean_plddt_total",
+        "description",
     ]
     keep = [c for c in keep if c in p.columns]
     # Add columns that are missing from pair data
@@ -368,6 +401,9 @@ def plot_chain_pair_iptm_cumulative(
         else:
             d[c] = "N/A"
 
+    # Prepare description columns
+    d = _prepare_description_col(d)
+
     # Normalise is_top to boolean then to string for display
     if "is_top" in d.columns:
         if d["is_top"].dtype == bool:
@@ -382,7 +418,10 @@ def plot_chain_pair_iptm_cumulative(
     n_predictions = len(d)
     fig = go.Figure()
 
-    hover_cols = ["name", "seed", "sample", "chain_i", "chain_j", "is_top_str"]
+    hover_cols = [
+        "name", "seed", "sample", "chain_i", "chain_j",
+        "chain_i_desc", "chain_j_desc", "description", "is_top_str",
+    ]
 
     if n_predictions <= 100:
         jitter = 0.01
@@ -399,12 +438,13 @@ def plot_chain_pair_iptm_cumulative(
             ),
             hovertemplate=(
                 "<b>name:</b> %{customdata[0]}<br>"
+                "<b>description:</b> %{customdata[7]}<br>"
                 "<b>pair ipTM:</b> %{x:.3f}<br>"
                 "<b>seed:</b> %{customdata[1]}<br>"
                 "<b>sample:</b> %{customdata[2]}<br>"
-                "<b>chain i:</b> %{customdata[3]}<br>"
-                "<b>chain j:</b> %{customdata[4]}<br>"
-                "<b>is top:</b> %{customdata[5]}<br>"
+                "<b>chain i:</b> %{customdata[3]} (%{customdata[5]})<br>"
+                "<b>chain j:</b> %{customdata[4]} (%{customdata[6]})<br>"
+                "<b>is top:</b> %{customdata[8]}<br>"
                 "<extra></extra>"
             ),
             customdata=d[hover_cols].values,
@@ -425,12 +465,13 @@ def plot_chain_pair_iptm_cumulative(
                 ),
                 hovertemplate=(
                     "<b>name:</b> %{customdata[0]}<br>"
+                    "<b>description:</b> %{customdata[7]}<br>"
                     "<b>pair ipTM:</b> %{x:.3f}<br>"
                     "<b>seed:</b> %{customdata[1]}<br>"
                     "<b>sample:</b> %{customdata[2]}<br>"
-                    "<b>chain i:</b> %{customdata[3]}<br>"
-                    "<b>chain j:</b> %{customdata[4]}<br>"
-                    "<b>is top:</b> %{customdata[5]}<br>"
+                    "<b>chain i:</b> %{customdata[3]} (%{customdata[5]})<br>"
+                    "<b>chain j:</b> %{customdata[4]} (%{customdata[6]})<br>"
+                    "<b>is top:</b> %{customdata[8]}<br>"
                     "<extra></extra>"
                 ),
                 customdata=d_top[hover_cols].values,
@@ -466,13 +507,14 @@ def plot_chain_pair_iptm_cumulative(
                 line=dict(color="#4C72B0", width=2.5),
                 hovertemplate=(
                     "<b>name:</b> %{customdata[0]}<br>"
+                    "<b>description:</b> %{customdata[7]}<br>"
                     "<b>pair ipTM ≤</b> %{x:.2f}<br>"
                     "<b>Fraction:</b> %{y:.3f}<br>"
                     "<b>seed:</b> %{customdata[1]}<br>"
                     "<b>sample:</b> %{customdata[2]}<br>"
-                    "<b>chain i:</b> %{customdata[3]}<br>"
-                    "<b>chain j:</b> %{customdata[4]}<br>"
-                    "<b>is top:</b> %{customdata[5]}<br>"
+                    "<b>chain i:</b> %{customdata[3]} (%{customdata[5]})<br>"
+                    "<b>chain j:</b> %{customdata[4]} (%{customdata[6]})<br>"
+                    "<b>is top:</b> %{customdata[8]}<br>"
                     "<extra></extra>"
                 ),
                 customdata=d_sorted[hover_cols].values,
@@ -491,13 +533,14 @@ def plot_chain_pair_iptm_cumulative(
                     line=dict(color="#D55E00", width=2.5, dash="solid"),
                     hovertemplate=(
                         "<b>name:</b> %{customdata[0]}<br>"
+                        "<b>description:</b> %{customdata[7]}<br>"
                         "<b>pair ipTM ≤</b> %{x:.2f}<br>"
                         "<b>Fraction:</b> %{y:.3f}<br>"
                         "<b>seed:</b> %{customdata[1]}<br>"
                         "<b>sample:</b> %{customdata[2]}<br>"
-                        "<b>chain i:</b> %{customdata[3]}<br>"
-                        "<b>chain j:</b> %{customdata[4]}<br>"
-                        "<b>is top:</b> %{customdata[5]}<br>"
+                        "<b>chain i:</b> %{customdata[3]} (%{customdata[5]})<br>"
+                        "<b>chain j:</b> %{customdata[4]} (%{customdata[6]})<br>"
+                        "<b>is top:</b> %{customdata[8]}<br>"
                         "<extra></extra>"
                     ),
                     customdata=d_top_sorted[hover_cols].values,
@@ -576,7 +619,7 @@ def main(pair_tsv: Path, pred_tsv: Optional[Path], out_html: Path, tm_plot: Opti
     df_pred = load_tsv(pred_tsv) if pred_tsv is not None and pred_tsv.exists() else pd.DataFrame()
     df_pred = coerce_numeric(df_pred, ["ranking_score", "iptm", "ptm", "mean_plddt_total"])
 
-    # Add prediction metadata (ranking_score, etc.) — preserves is_top/sample/seed from pair data
+    # Add prediction metadata (ranking_score, description, etc.) — preserves is_top/sample/seed from pair data
     d = add_prediction_metadata(df_pair, df_pred)
 
     # Plot 1: ipTM
