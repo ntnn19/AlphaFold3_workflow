@@ -582,12 +582,6 @@ def plot_chain_pair_iptm_cumulative(
     help="Aggregated cohort chain-pair table, e.g. cohort_chain_pairs.tsv"
 )
 @click.option(
-    "--msater-tsv",
-    type=click.Path(exists=False, dir_okay=False, path_type=Path),
-    default=None,
-    help="Optional aggregated cohort predictions table, e.g. cohort_predictions.tsv"
-)
-@click.option(
     "-o", "--out-html",
     type=click.Path(dir_okay=False, path_type=Path),
     required=True,
@@ -603,9 +597,9 @@ def plot_chain_pair_iptm_cumulative(
     "--master-tsv",
     type=click.Path(exists=False, dir_okay=False, path_type=Path),
     default=None,
-    help="Optional: Path to all_master.tsv (contains TM1, TM2)."
+    help="Optional: Path to all_master.tsv (contains TM1, TM2, description, etc.)."
 )
-def main(pair_tsv: Path, master_tsv: Optional[Path], out_html: Path, tm_plot: Optional[Path]):
+def main(pair_tsv: Path, out_html: Path, tm_plot: Optional[Path], master_tsv: Optional[Path]):
     """
     Create two interactive plots:
     1. Distribution of chain-pair ipTM across all predictions.
@@ -615,11 +609,11 @@ def main(pair_tsv: Path, master_tsv: Optional[Path], out_html: Path, tm_plot: Op
     df_pair = load_tsv(pair_tsv)
     df_pair = coerce_numeric(df_pair, ["pair_iptm", "pair_pae_min"])
 
-    # Load predictions data (for metadata)
+    # Load master table (for prediction metadata including description)
     df_master = load_tsv(master_tsv) if master_tsv is not None and master_tsv.exists() else pd.DataFrame()
     df_master = coerce_numeric(df_master, ["ranking_score", "iptm", "ptm", "mean_plddt_total"])
 
-    # Add prediction metadata (ranking_score, description, etc.) — preserves is_top/sample/seed from pair data
+    # Add prediction metadata (ranking_score, description, etc.)
     d = add_prediction_metadata(df_pair, df_master)
 
     # Plot 1: ipTM
@@ -628,8 +622,6 @@ def main(pair_tsv: Path, master_tsv: Optional[Path], out_html: Path, tm_plot: Op
     # Plot 2: TM score
     if tm_plot is not None:
         if master_tsv is not None and master_tsv.exists():
-            tm_source = master_tsv
-        elif master_tsv is not None and master_tsv.exists():
             tm_source = master_tsv
         else:
             tm_source = Path("reports/all/all_master.tsv")
@@ -647,7 +639,6 @@ def main(pair_tsv: Path, master_tsv: Optional[Path], out_html: Path, tm_plot: Op
     click.echo(f"✅ ipTM plot saved to: {out_html}")
     if tm_plot is not None:
         click.echo(f"✅ TM score plot saved to: {tm_plot}")
-
 
 if __name__ == "__main__":
     main()
