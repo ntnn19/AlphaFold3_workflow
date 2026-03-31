@@ -22,10 +22,21 @@ def coerce_numeric(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
     return d
 
 
+def write_no_data_html(path: Path, message: str = "No data to plot.") -> None:
+    html = f"""<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>chain-pair ipTM cumulative histogram</title></head>
+<body><p><em>{message}</em></p></body>
+</html>
+"""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(html, encoding="utf-8")
+
+
 def plot_tm_score_distribution(
     df_pred: pd.DataFrame,
     out_html: Path,
-    title: str = "Distribution of normalized TM scores across all predictions",
+    title: str = "Distribution of TM scores across all predictions",
 ) -> bool:
     required = {"sample_id", "prediction_id", "TM1", "TM2"}
     if df_pred.empty or not required.issubset(df_pred.columns):
@@ -36,15 +47,12 @@ def plot_tm_score_distribution(
     d["sample_id"] = d["sample_id"].astype(str)
     d["prediction_id"] = d["prediction_id"].astype(str)
 
-    # Coerce TM columns to numeric
     for c in ["TM1", "TM2"]:
         d[c] = pd.to_numeric(d[c], errors="coerce")
 
-    # Extract name from sample_id
     d["name"] = d["sample_id"].str.split("_seed-").str[0]
     d["name"] = d["name"].astype(str).replace("nan", "N/A")
 
-    # Use seed/sample columns directly if present, otherwise extract from sample_id
     if "seed" not in d.columns or d["seed"].astype(str).eq("").all():
         d["seed"] = d["sample_id"].str.extract(r"_seed-(\d+)", expand=False).fillna("N/A")
     else:
@@ -55,56 +63,47 @@ def plot_tm_score_distribution(
     else:
         d["sample"] = d["sample"].astype(str).replace("", "N/A").replace("nan", "N/A")
 
-    # Normalize TM score: use min(TM1, TM2)
     d["tm_score"] = d[["TM1", "TM2"]].min(axis=1)
     d["tm_score"] = pd.to_numeric(d["tm_score"], errors="coerce")
 
-    # Drop invalid values
     d = d[d["tm_score"].notna()].copy()
     if d.empty:
         write_no_data_html(out_html, "No valid TM scores available.")
         return False
 
-    # Coerce metadata columns to numeric where appropriate
     for c in ["ranking_score", "ptm", "iptm", "mean_plddt_total", "fraction_disordered"]:
         if c in d.columns:
             d[c] = pd.to_numeric(d[c], errors="coerce")
 
-    # Add is_top as string
     if "is_top" in d.columns:
-        d["is_top"] = d["is_top"].astype(str).str.title()
+        d["is_top"] = d["is_top"].astype(str).str.lower().isin(["true", "1", "yes"])
     else:
-        d["is_top"] = "False"
+        d["is_top"] = False
 
-    # Define metadata columns for hover
     meta_cols = [
         "name", "sample", "seed", "ranking_score", "ptm", "iptm",
         "mean_plddt_total", "fraction_disordered", "has_clash"
     ]
-    # Ensure all meta_cols exist
     for c in meta_cols:
         if c not in d.columns:
             d[c] = "N/A"
 
-    n_predictions = len(d)
+    d["is_top_str"] = d["is_top"].map({True: "True", False: "False"})
 
+    n_predictions = len(d)
     fig = go.Figure()
 
     if n_predictions <= 100:
-        # Strip chart: jitter on x-axis
         jitter = 0.01
         d["jitter"] = np.random.uniform(-jitter, jitter, size=len(d))
 
-        # All predictions
         fig.add_trace(go.Scatter(
             x=d["tm_score"] + d["jitter"],
             y=[0.5] * len(d),
             mode='markers',
             name="All predictions",
             marker=dict(
-                color="#4C72B0",
-                size=6,
-                opacity=0.7,
+                color="#4C72B0", size=6, opacity=0.7,
                 line=dict(width=0.5, color="black")
             ),
             hovertemplate=(
@@ -121,14 +120,12 @@ def plot_tm_score_distribution(
                 "<b>normalized TM:</b> %{x:.3f}<br>"
                 "<extra></extra>"
             ),
-            customdata=d[meta_cols + ["is_top"]].values,
+            customdata=d[meta_cols + ["is_top_str"]].values,
             showlegend=True,
         ))
 
-        # Top predictions
-        d_top = d[d["is_top"].str.lower() == "true"]
+        d_top = d[d["is_top"]].copy()
         if not d_top.empty:
-            d_top = d_top.copy()
             d_top["jitter"] = np.random.uniform(-jitter, jitter, size=len(d_top))
             fig.add_trace(go.Scatter(
                 x=d_top["tm_score"] + d_top["jitter"],
@@ -136,9 +133,7 @@ def plot_tm_score_distribution(
                 mode='markers',
                 name="Top predictions",
                 marker=dict(
-                    color="#D55E00",
-                    size=8,
-                    opacity=0.8,
+                    color="#D55E00", size=8, opacity=0.8,
                     line=dict(width=1.5, color="black")
                 ),
                 hovertemplate=(
@@ -155,27 +150,20 @@ def plot_tm_score_distribution(
                     "<b>normalized TM:</b> %{x:.3f}<br>"
                     "<extra></extra>"
                 ),
-                customdata=d_top[meta_cols + ["is_top"]].values,
+                customdata=d_top[meta_cols + ["is_top_str"]].values,
                 showlegend=True,
             ))
 
         fig.update_layout(
-            title=dict(
-                text=title,
-                x=0.5,
-                xanchor="center"
-            ),
+            title=dict(text=title, x=0.5, xanchor="center"),
             xaxis=dict(
                 title="Normalized TM score (min(TM1, TM2))",
                 range=[0, 1],
                 tickvals=[0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
-                ticktext=["0.0", "0.2", "0.4", "0.6", "0.8", "1.0"]
             ),
             yaxis=dict(
-                showticklabels=True,
-                title="Prediction",
-                tickvals=[0.5],
-                ticktext=[""],
+                showticklabels=False,
+                title="",
                 range=[0, 1]
             ),
             template="plotly_white",
@@ -183,25 +171,19 @@ def plot_tm_score_distribution(
             height=400,
             margin=dict(l=70, r=50, t=80, b=70),
             legend=dict(
-                orientation="h",
-                yanchor="bottom",
-                y=1.02,
-                xanchor="center",
-                x=0.5
+                orientation="h", yanchor="bottom", y=1.02,
+                xanchor="center", x=0.5
             ),
         )
 
     else:
-        # CDF: smooth line
         d_sorted = d.sort_values("tm_score").reset_index(drop=True)
         all_tm = d_sorted["tm_score"]
         if len(all_tm) > 0:
             y_all = [(i + 1) / len(all_tm) for i in range(len(all_tm))]
             fig.add_trace(go.Scatter(
-                x=all_tm,
-                y=y_all,
-                mode='lines',
-                name="All predictions",
+                x=all_tm, y=y_all,
+                mode='lines', name="All predictions",
                 line=dict(color="#4C72B0", width=2.5),
                 hovertemplate=(
                     "<b>name:</b> %{customdata[0]}<br>"
@@ -218,21 +200,19 @@ def plot_tm_score_distribution(
                     "<b>Fraction:</b> %{y:.3f}<br>"
                     "<extra></extra>"
                 ),
-                customdata=d_sorted[meta_cols + ["is_top"]].values,
+                customdata=d_sorted[meta_cols + ["is_top_str"]].values,
                 showlegend=True,
             ))
 
-        d_top = d[d["is_top"].str.lower() == "true"]
+        d_top = d[d["is_top"]].copy()
         if not d_top.empty:
             d_top_sorted = d_top.sort_values("tm_score").reset_index(drop=True)
             top_tm = d_top_sorted["tm_score"]
             if len(top_tm) > 0:
                 y_top = [(i + 1) / len(top_tm) for i in range(len(top_tm))]
                 fig.add_trace(go.Scatter(
-                    x=top_tm,
-                    y=y_top,
-                    mode='lines',
-                    name="Top predictions",
+                    x=top_tm, y=y_top,
+                    mode='lines', name="Top predictions",
                     line=dict(color="#D55E00", width=2.5, dash="solid"),
                     hovertemplate=(
                         "<b>name:</b> %{customdata[0]}<br>"
@@ -249,38 +229,29 @@ def plot_tm_score_distribution(
                         "<b>Fraction:</b> %{y:.3f}<br>"
                         "<extra></extra>"
                     ),
-                    customdata=d_top_sorted[meta_cols + ["is_top"]].values,
+                    customdata=d_top_sorted[meta_cols + ["is_top_str"]].values,
                     showlegend=True,
                 ))
 
         fig.update_layout(
-            title=dict(
-                text=title,
-                x=0.5,
-                xanchor="center"
-            ),
+            title=dict(text=title, x=0.5, xanchor="center"),
             xaxis=dict(
                 title="Normalized TM score (min(TM1, TM2))",
                 range=[0, 1],
                 tickvals=[0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
-                ticktext=["0.0", "0.2", "0.4", "0.6", "0.8", "1.0"]
             ),
             yaxis=dict(
                 title="Cumulative fraction",
                 range=[0, 1.02],
                 tickvals=[0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
-                ticktext=["0.0", "0.2", "0.4", "0.6", "0.8", "1.0"]
             ),
             template="plotly_white",
             hovermode="x unified",
             height=650,
             margin=dict(l=70, r=50, t=80, b=70),
             legend=dict(
-                orientation="h",
-                yanchor="bottom",
-                y=1.02,
-                xanchor="center",
-                x=0.5
+                orientation="h", yanchor="bottom", y=1.02,
+                xanchor="center", x=0.5
             ),
         )
 
@@ -313,6 +284,18 @@ def add_prediction_metadata(df_pair: pd.DataFrame, df_pred: pd.DataFrame) -> pd.
         diag = d["is_diagonal"].astype(str).str.lower().isin(["true", "1", "yes"])
         d = d[~diag].copy()
 
+    # Normalise is_top already present in chain-pair data to boolean
+    if "is_top" in d.columns:
+        d["is_top"] = d["is_top"].astype(str).str.lower().isin(["true", "1", "yes"])
+    else:
+        d["is_top"] = False
+
+    # Normalise seed / sample that already exist in chain-pair data
+    if "seed" in d.columns:
+        d["seed"] = d["seed"].astype(str).replace("", "N/A").replace("nan", "N/A")
+    if "sample" in d.columns:
+        d["sample"] = d["sample"].astype(str).replace("", "N/A").replace("nan", "N/A")
+
     if df_pred.empty or not required.issubset(df_pred.columns):
         return d
 
@@ -320,28 +303,22 @@ def add_prediction_metadata(df_pair: pd.DataFrame, df_pred: pd.DataFrame) -> pd.
     p["sample_id"] = p["sample_id"].astype(str)
     p["prediction_id"] = p["prediction_id"].astype(str)
 
+    # Only pull columns from pred that are NOT already in pair data (except keys)
     keep = [
         "sample_id",
         "prediction_id",
-        "is_top",
         "ranking_score",
         "iptm",
         "ptm",
         "mean_plddt_total",
     ]
     keep = [c for c in keep if c in p.columns]
-    p = p[keep].drop_duplicates()
+    # Add columns that are missing from pair data
+    extra = [c for c in keep if c not in d.columns or c in ["sample_id", "prediction_id"]]
+    p = p[extra].drop_duplicates()
 
-    # Avoid suffixes: drop overlapping columns from d before merge (except join keys)
-    overlap = [c for c in p.columns if c in d.columns and c not in ["sample_id", "prediction_id"]]
-    d = d.drop(columns=overlap, errors="ignore")
-
-    d = d.merge(p, on=["sample_id", "prediction_id"], how="left")
-
-    if "is_top" in d.columns:
-        d["is_top"] = d["is_top"].astype(str).str.lower().isin(["true", "1", "yes"])
-    else:
-        d["is_top"] = False
+    if len(extra) > 2:  # more than just the join keys
+        d = d.merge(p, on=["sample_id", "prediction_id"], how="left")
 
     for c in ["ranking_score", "iptm", "ptm", "mean_plddt_total"]:
         if c in d.columns:
@@ -350,21 +327,10 @@ def add_prediction_metadata(df_pair: pd.DataFrame, df_pred: pd.DataFrame) -> pd.
     return d
 
 
-def write_no_data_html(path: Path, message: str = "No data to plot.") -> None:
-    html = f"""<!doctype html>
-<html>
-<head><meta charset="utf-8"><title>chain-pair ipTM cumulative histogram</title></head>
-<body><p><em>{message}</em></p></body>
-</html>
-"""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(html, encoding="utf-8")
-
-
 def plot_chain_pair_iptm_cumulative(
     df_pair: pd.DataFrame,
     out_html: Path,
-    title: str = "Cumulative distribution of chain-pair ipTM across all predictions",
+    title: str = "Distribution of chain-pair ipTM across all predictions",
 ) -> bool:
     required = {"sample_id", "prediction_id", "pair_iptm"}
     if df_pair.empty or not required.issubset(df_pair.columns):
@@ -385,49 +351,50 @@ def plot_chain_pair_iptm_cumulative(
     d["name"] = d["sample_id"].str.split("_seed-").str[0]
     d["name"] = d["name"].astype(str).replace("nan", "N/A")
 
-    # Use seed/sample columns directly if present, otherwise extract from sample_id
-    if "seed" not in d.columns or d["seed"].astype(str).eq("").all():
+    # Use seed/sample columns directly if present, otherwise extract
+    if "seed" not in d.columns or d["seed"].astype(str).isin(["", "N/A", "nan"]).all():
         d["seed"] = d["sample_id"].str.extract(r"_seed-(\d+)", expand=False).fillna("N/A")
     else:
         d["seed"] = d["seed"].astype(str).replace("", "N/A").replace("nan", "N/A")
 
-    if "sample" not in d.columns or d["sample"].astype(str).eq("").all():
+    if "sample" not in d.columns or d["sample"].astype(str).isin(["", "N/A", "nan"]).all():
         d["sample"] = d["sample_id"].str.extract(r"_sample-(\d+)", expand=False).fillna("N/A")
     else:
         d["sample"] = d["sample"].astype(str).replace("", "N/A").replace("nan", "N/A")
 
-    # Ensure chain_i, chain_j are strings
     for c in ["chain_i", "chain_j"]:
         if c in d.columns:
             d[c] = d[c].astype(str).replace("nan", "N/A")
         else:
             d[c] = "N/A"
 
-    # is_top as string
+    # Normalise is_top to boolean then to string for display
     if "is_top" in d.columns:
-        d["is_top"] = d["is_top"].astype(str).str.title()
+        if d["is_top"].dtype == bool:
+            pass  # already boolean
+        else:
+            d["is_top"] = d["is_top"].astype(str).str.lower().isin(["true", "1", "yes"])
     else:
-        d["is_top"] = "False"
+        d["is_top"] = False
+
+    d["is_top_str"] = d["is_top"].map({True: "True", False: "False"})
 
     n_predictions = len(d)
-
     fig = go.Figure()
 
+    hover_cols = ["name", "seed", "sample", "chain_i", "chain_j", "is_top_str"]
+
     if n_predictions <= 100:
-        # --- Jittered strip chart for small datasets ---
         jitter = 0.01
         d["jitter"] = np.random.uniform(-jitter, jitter, size=len(d))
 
-        # All predictions
         fig.add_trace(go.Scatter(
             x=d["pair_iptm"] + d["jitter"],
             y=[0.5] * len(d),
             mode='markers',
             name="All predictions",
             marker=dict(
-                color="#4C72B0",
-                size=6,
-                opacity=0.7,
+                color="#4C72B0", size=6, opacity=0.7,
                 line=dict(width=0.5, color="black")
             ),
             hovertemplate=(
@@ -440,14 +407,12 @@ def plot_chain_pair_iptm_cumulative(
                 "<b>is top:</b> %{customdata[5]}<br>"
                 "<extra></extra>"
             ),
-            customdata=d[["name", "seed", "sample", "chain_i", "chain_j", "is_top"]].values,
+            customdata=d[hover_cols].values,
             showlegend=True,
         ))
 
-        # Top predictions
-        d_top = d[d["is_top"].str.lower() == "true"]
+        d_top = d[d["is_top"]].copy()
         if not d_top.empty:
-            d_top = d_top.copy()
             d_top["jitter"] = np.random.uniform(-jitter, jitter, size=len(d_top))
             fig.add_trace(go.Scatter(
                 x=d_top["pair_iptm"] + d_top["jitter"],
@@ -455,9 +420,7 @@ def plot_chain_pair_iptm_cumulative(
                 mode='markers',
                 name="Top predictions",
                 marker=dict(
-                    color="#D55E00",
-                    size=8,
-                    opacity=0.8,
+                    color="#D55E00", size=8, opacity=0.8,
                     line=dict(width=1.5, color="black")
                 ),
                 hovertemplate=(
@@ -470,51 +433,36 @@ def plot_chain_pair_iptm_cumulative(
                     "<b>is top:</b> %{customdata[5]}<br>"
                     "<extra></extra>"
                 ),
-                customdata=d_top[["name", "seed", "sample", "chain_i", "chain_j", "is_top"]].values,
+                customdata=d_top[hover_cols].values,
                 showlegend=True,
             ))
 
         fig.update_layout(
-            title=dict(
-                text=title,
-                x=0.5,
-                xanchor="center"
-            ),
+            title=dict(text=title, x=0.5, xanchor="center"),
             xaxis=dict(
                 title="pair ipTM",
                 range=[0, 1],
                 tickvals=[0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
-                ticktext=["0.0", "0.2", "0.4", "0.6", "0.8", "1.0"]
             ),
-            yaxis=dict(
-                showticklabels=False,
-                title="",
-                range=[0, 1]
-            ),
+            yaxis=dict(showticklabels=False, title="", range=[0, 1]),
             template="plotly_white",
             hovermode="x unified",
             height=400,
             margin=dict(l=70, r=50, t=80, b=70),
             legend=dict(
-                orientation="h",
-                yanchor="bottom",
-                y=1.02,
-                xanchor="center",
-                x=0.5
+                orientation="h", yanchor="bottom", y=1.02,
+                xanchor="center", x=0.5
             ),
         )
 
     else:
-        # --- Smooth line-based CDF for large datasets ---
         d_sorted = d.sort_values("pair_iptm").reset_index(drop=True)
         all_iptm = d_sorted["pair_iptm"]
         if len(all_iptm) > 0:
             y_all = [(i + 1) / len(all_iptm) for i in range(len(all_iptm))]
             fig.add_trace(go.Scatter(
-                x=all_iptm,
-                y=y_all,
-                mode='lines',
-                name="All predictions",
+                x=all_iptm, y=y_all,
+                mode='lines', name="All predictions",
                 line=dict(color="#4C72B0", width=2.5),
                 hovertemplate=(
                     "<b>name:</b> %{customdata[0]}<br>"
@@ -527,21 +475,19 @@ def plot_chain_pair_iptm_cumulative(
                     "<b>is top:</b> %{customdata[5]}<br>"
                     "<extra></extra>"
                 ),
-                customdata=d_sorted[["name", "seed", "sample", "chain_i", "chain_j", "is_top"]].values,
+                customdata=d_sorted[hover_cols].values,
                 showlegend=True,
             ))
 
-        d_top = d[d["is_top"].str.lower() == "true"]
+        d_top = d[d["is_top"]].copy()
         if not d_top.empty:
             d_top_sorted = d_top.sort_values("pair_iptm").reset_index(drop=True)
             top_iptm = d_top_sorted["pair_iptm"]
             if len(top_iptm) > 0:
                 y_top = [(i + 1) / len(top_iptm) for i in range(len(top_iptm))]
                 fig.add_trace(go.Scatter(
-                    x=top_iptm,
-                    y=y_top,
-                    mode='lines',
-                    name="Top predictions",
+                    x=top_iptm, y=y_top,
+                    mode='lines', name="Top predictions",
                     line=dict(color="#D55E00", width=2.5, dash="solid"),
                     hovertemplate=(
                         "<b>name:</b> %{customdata[0]}<br>"
@@ -554,38 +500,29 @@ def plot_chain_pair_iptm_cumulative(
                         "<b>is top:</b> %{customdata[5]}<br>"
                         "<extra></extra>"
                     ),
-                    customdata=d_top_sorted[["name", "seed", "sample", "chain_i", "chain_j", "is_top"]].values,
+                    customdata=d_top_sorted[hover_cols].values,
                     showlegend=True,
                 ))
 
         fig.update_layout(
-            title=dict(
-                text=title,
-                x=0.5,
-                xanchor="center"
-            ),
+            title=dict(text=title, x=0.5, xanchor="center"),
             xaxis=dict(
                 title="pair ipTM",
                 range=[0, 1],
                 tickvals=[0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
-                ticktext=["0.0", "0.2", "0.4", "0.6", "0.8", "1.0"]
             ),
             yaxis=dict(
                 title="Cumulative fraction",
                 range=[0, 1.02],
                 tickvals=[0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
-                ticktext=["0.0", "0.2", "0.4", "0.6", "0.8", "1.0"]
             ),
             template="plotly_white",
             hovermode="x unified",
             height=650,
             margin=dict(l=70, r=50, t=80, b=70),
             legend=dict(
-                orientation="h",
-                yanchor="bottom",
-                y=1.02,
-                xanchor="center",
-                x=0.5
+                orientation="h", yanchor="bottom", y=1.02,
+                xanchor="center", x=0.5
             ),
         )
 
@@ -628,32 +565,30 @@ def plot_chain_pair_iptm_cumulative(
 def main(pair_tsv: Path, pred_tsv: Optional[Path], out_html: Path, tm_plot: Optional[Path], master_tsv: Optional[Path]):
     """
     Create two interactive plots:
-    1. Cumulative distribution of chain-pair ipTM across all predictions.
-    2. Distribution of normalized TM scores across all predictions.
+    1. Distribution of chain-pair ipTM across all predictions.
+    2. Distribution of TM scores across all predictions.
     """
     # Load chain-pair data
     df_pair = load_tsv(pair_tsv)
     df_pair = coerce_numeric(df_pair, ["pair_iptm", "pair_pae_min"])
 
-    # Load predictions data (for metadata and ipTM)
+    # Load predictions data (for metadata)
     df_pred = load_tsv(pred_tsv) if pred_tsv is not None and pred_tsv.exists() else pd.DataFrame()
     df_pred = coerce_numeric(df_pred, ["ranking_score", "iptm", "ptm", "mean_plddt_total"])
 
-    # Add prediction metadata (is_top, etc.)
+    # Add prediction metadata (ranking_score, etc.) — preserves is_top/sample/seed from pair data
     d = add_prediction_metadata(df_pair, df_pred)
 
     # Plot 1: ipTM
     plot_chain_pair_iptm_cumulative(d, out_html)
 
-    # Plot 2: TM score — use cohort_master.tsv or --pred-tsv
+    # Plot 2: TM score
     if tm_plot is not None:
-        # Determine source for TM data
         if master_tsv is not None and master_tsv.exists():
             tm_source = master_tsv
         elif pred_tsv is not None and pred_tsv.exists():
             tm_source = pred_tsv
         else:
-            # Fallback: try reports/cohort/cohort_master.tsv
             tm_source = Path("reports/cohort/cohort_master.tsv")
 
         if not tm_source.exists():
@@ -664,9 +599,6 @@ def main(pair_tsv: Path, pred_tsv: Optional[Path], out_html: Path, tm_plot: Opti
                 "TM1", "TM2", "ranking_score", "ptm", "iptm",
                 "mean_plddt_total", "fraction_disordered"
             ])
-
-            # Pass the full dataframe to plot_tm_score_distribution;
-            # the function handles column selection internally
             plot_tm_score_distribution(df_tm, tm_plot)
 
     click.echo(f"✅ ipTM plot saved to: {out_html}")
