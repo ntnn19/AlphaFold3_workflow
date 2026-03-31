@@ -582,7 +582,7 @@ def plot_chain_pair_iptm_cumulative(
     help="Aggregated cohort chain-pair table, e.g. cohort_chain_pairs.tsv"
 )
 @click.option(
-    "--pred-tsv",
+    "--msater-tsv",
     type=click.Path(exists=False, dir_okay=False, path_type=Path),
     default=None,
     help="Optional aggregated cohort predictions table, e.g. cohort_predictions.tsv"
@@ -605,7 +605,7 @@ def plot_chain_pair_iptm_cumulative(
     default=None,
     help="Optional: Path to all_master.tsv (contains TM1, TM2)."
 )
-def main(pair_tsv: Path, pred_tsv: Optional[Path], out_html: Path, tm_plot: Optional[Path], master_tsv: Optional[Path]):
+def main(pair_tsv: Path, master_tsv: Optional[Path], out_html: Path, tm_plot: Optional[Path], master_tsv: Optional[Path]):
     """
     Create two interactive plots:
     1. Distribution of chain-pair ipTM across all predictions.
@@ -616,11 +616,11 @@ def main(pair_tsv: Path, pred_tsv: Optional[Path], out_html: Path, tm_plot: Opti
     df_pair = coerce_numeric(df_pair, ["pair_iptm", "pair_pae_min"])
 
     # Load predictions data (for metadata)
-    df_pred = load_tsv(pred_tsv) if pred_tsv is not None and pred_tsv.exists() else pd.DataFrame()
-    df_pred = coerce_numeric(df_pred, ["ranking_score", "iptm", "ptm", "mean_plddt_total"])
+    df_master = load_tsv(master_tsv) if master_tsv is not None and master_tsv.exists() else pd.DataFrame()
+    df_master = coerce_numeric(df_master, ["ranking_score", "iptm", "ptm", "mean_plddt_total"])
 
     # Add prediction metadata (ranking_score, description, etc.) — preserves is_top/sample/seed from pair data
-    d = add_prediction_metadata(df_pair, df_pred)
+    d = add_prediction_metadata(df_pair, df_master)
 
     # Plot 1: ipTM
     plot_chain_pair_iptm_cumulative(d, out_html)
@@ -629,8 +629,8 @@ def main(pair_tsv: Path, pred_tsv: Optional[Path], out_html: Path, tm_plot: Opti
     if tm_plot is not None:
         if master_tsv is not None and master_tsv.exists():
             tm_source = master_tsv
-        elif pred_tsv is not None and pred_tsv.exists():
-            tm_source = pred_tsv
+        elif master_tsv is not None and master_tsv.exists():
+            tm_source = master_tsv
         else:
             tm_source = Path("reports/all/all_master.tsv")
 
