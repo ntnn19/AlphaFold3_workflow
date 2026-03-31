@@ -67,8 +67,32 @@ def get_job_name_from_sample_id(sample_id: str) -> str:
     e.g. "8SM3_template_free_afdb_seed-1" -> "8SM3_template_free_afdb"
     Also handles case-insensitive matching.
     """
-    # Remove _seed-N suffix
     return re.sub(r"_seed-\d+$", "", sample_id)
+
+
+def lookup_chain_description(
+    sample_id: str,
+    chain_id: str,
+    descriptions: dict[str, dict[str, str]],
+) -> str:
+    """
+    Look up a single chain's description given a sample_id and chain_id.
+    Returns the description string, or "" if not found.
+    """
+    if not descriptions:
+        return ""
+
+    job_name = get_job_name_from_sample_id(sample_id)
+
+    # Try exact match first, then case-insensitive
+    chain_descs = descriptions.get(job_name, {})
+    if not chain_descs:
+        for key, val in descriptions.items():
+            if key.lower() == job_name.lower():
+                chain_descs = val
+                break
+
+    return chain_descs.get(chain_id, "")
 
 
 def build_description_string(
@@ -112,6 +136,97 @@ def build_description_string(
             if desc:
                 parts.append(f"{cid}: {desc}")
         return "; ".join(parts) if parts else ""
+
+
+def build_all_descriptions_string(
+    sample_id: str,
+    descriptions: dict[str, dict[str, str]],
+) -> str:
+    """
+    Build a combined description string with all chains for a given sample_id.
+    E.g. "A: Endonuclease GajA; B: Gabija protein GajB"
+    """
+    return build_description_string(sample_id, descriptions, chain_ids=None)
+
+
+def add_descriptions_to_predictions(
+    df_pred: pd.DataFrame,
+    descriptions: dict[str, dict[str, str]],
+) -> pd.DataFrame:
+    """
+    Add a 'description' column to the predictions table.
+    Each row gets a combined description of all chains for that job.
+    """
+    if df_pred.empty or not descriptions:
+        if "description" not in df_pred.columns:
+            df_pred["description"] = ""
+        return df_pred
+
+    d = df_pred.copy()
+    d["description"] = d["sample_id"].astype(str).apply(
+        lambda sid: build_all_descriptions_string(sid, descriptions)
+    )
+    return d
+
+
+def add_descriptions_to_chains(
+    df_chain: pd.DataFrame,
+    descriptions: dict[str, dict[str, str]],
+) -> pd.DataFrame:
+    """
+    Add a 'chain_description' column to the chains table.
+    Each row gets the description for that specific chain_id.
+    """
+    if df_chain.empty or not descriptions:
+        if "chain_description" not in df_chain.columns:
+            df_chain["chain_description"] = ""
+        return df_chain
+
+    d = df_chain.copy()
+    d["chain_description"] = d.apply(
+        lambda row: lookup_chain_description(
+            str(row["sample_id"]),
+            str(row["chain_id"]),
+            descriptions,
+        ),
+        axis=1,
+    )
+    return d
+
+
+def add_descriptions_to_pairs(
+    df_pair: pd.DataFrame,
+    descriptions: dict[str, dict[str, str]],
+) -> pd.DataFrame:
+    """
+    Add 'chain_i_description' and 'chain_j_description' columns to the pairs table.
+    Each row gets the description for chain_i and chain_j respectively.
+    """
+    if df_pair.empty or not descriptions:
+        if "chain_i_description" not in df_pair.columns:
+            df_pair["chain_i_description"] = ""
+        if "chain_j_description" not in df_pair.columns:
+            df_pair["chain_j_description"] = ""
+        return df_pair
+
+    d = df_pair.copy()
+    d["chain_i_description"] = d.apply(
+        lambda row: lookup_chain_description(
+            str(row["sample_id"]),
+            str(row["chain_i"]),
+            descriptions,
+        ),
+        axis=1,
+    )
+    d["chain_j_description"] = d.apply(
+        lambda row: lookup_chain_description(
+            str(row["sample_id"]),
+            str(row["chain_j"]),
+            descriptions,
+        ),
+        axis=1,
+    )
+    return d
 
 
 def mark_and_filter_top(df_pred: pd.DataFrame,
@@ -794,7 +909,6 @@ def plot_pae_multipanel_best_labeled(
 
         title = f"TOP: {pid}" if is_top else pid
         if desc_str:
-            # Truncate if too long for title
             if len(desc_str) > 60:
                 title += f"\n{desc_str[:57]}..."
             else:
@@ -1354,7 +1468,7 @@ def main(af3_output_dir: Path, outdir: Path, input_tsv: Optional[Path], html_nam
     Uses *_summary_confidences.json for metrics and *_confidences.json to compute
     mean pLDDT from Full array output atom_plddts (total + per-chain).
 
-    Optionally accepts --input-tsv with chain descriptions to annotate plots.
+    Optionally accepts --input-tsv with chain descriptions to annotate plots and tables.
     """
     outdir.mkdir(parents=True, exist_ok=True)
 
@@ -1363,6 +1477,11 @@ def main(af3_output_dir: Path, outdir: Path, input_tsv: Optional[Path], html_nam
 
     df_pred, df_chain, df_pair = summarize_job(af3_output_dir, layout=layout.lower())
     df_pred, df_chain, df_pair = mark_and_filter_top(df_pred, df_chain, df_pair)
+
+    # ---- Add description columns to all three tables ----
+    df_pred = add_descriptions_to_predictions(df_pred, descriptions)
+    df_chain = add_descriptions_to_chains(df_chain, descriptions)
+    df_pair = add_descriptions_to_pairs(df_pair, descriptions)
 
     if write_csv:
         df_pred.to_csv(outdir / "predictions.tsv", sep="\t", index=False)
