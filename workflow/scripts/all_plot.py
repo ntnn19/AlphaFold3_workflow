@@ -26,7 +26,7 @@ def coerce_numeric(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
 def write_no_data_html(path: Path, message: str = "No data to plot.") -> None:
     html = f"""<!doctype html>
 <html>
-<head><meta charset="utf-8"><title>chain-pair ipTM cumulative histogram</title></head>
+<head><meta charset="utf-8"><title>plot</title></head>
 <body><p><em>{message}</em></p></body>
 </html>
 """
@@ -64,6 +64,12 @@ def _gt_color(idx: int) -> str:
     return _GT_PALETTE[idx % len(_GT_PALETTE)]
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# TM-score distribution
+#   • ground-truth multi-select checklist (preserved from reference)
+#   • baseline (all data) always shown
+#   • NEW: strip / CDF toggle
+# ═══════════════════════════════════════════════════════════════════════════
 def plot_tm_score_distribution(
     df_pred: pd.DataFrame,
     out_html: Path,
@@ -132,56 +138,68 @@ def plot_tm_score_distribution(
     n_total = len(d)
     default_mode = "cdf" if n_total > 100 else "strip"
 
-    # --- Build BOTH strip and CDF data for every ground-truth ---
+    # ── Build BOTH strip and CDF data for baseline + each GT ──
     jitter_val = 0.01
     d["jitter"] = np.random.uniform(-jitter_val, jitter_val, size=len(d))
 
+    def _build_both(df_all, df_top_src):
+        """Return dict with strip_* and cdf_* keys for a subset."""
+        # strip — all
+        s_all_x = (df_all["tm_score"] + df_all["jitter"]).tolist()
+        s_all_cd = df_all[meta_cols + ["is_top_str"]].values.tolist()
+
+        # strip — top
+        df_top = df_top_src.copy()
+        if not df_top.empty:
+            df_top["jitter"] = np.random.uniform(-jitter_val, jitter_val, size=len(df_top))
+            s_top_x = (df_top["tm_score"] + df_top["jitter"]).tolist()
+            s_top_cd = df_top[meta_cols + ["is_top_str"]].values.tolist()
+        else:
+            s_top_x, s_top_cd = [], []
+
+        # cdf — all
+        df_s = df_all.sort_values("tm_score").reset_index(drop=True)
+        n = len(df_s)
+        c_all_x = df_s["tm_score"].tolist()
+        c_all_y = [(i + 1) / n for i in range(n)]
+        c_all_cd = df_s[meta_cols + ["is_top_str"]].values.tolist()
+
+        # cdf — top
+        if not df_top.empty:
+            dt_s = df_top.sort_values("tm_score").reset_index(drop=True)
+            nt = len(dt_s)
+            c_top_x = dt_s["tm_score"].tolist()
+            c_top_y = [(i + 1) / nt for i in range(nt)]
+            c_top_cd = dt_s[meta_cols + ["is_top_str"]].values.tolist()
+        else:
+            c_top_x, c_top_y, c_top_cd = [], [], []
+
+        return {
+            "strip_all_x": s_all_x, "strip_all_cd": s_all_cd,
+            "strip_top_x": s_top_x, "strip_top_cd": s_top_cd,
+            "cdf_all_x": c_all_x, "cdf_all_y": c_all_y, "cdf_all_cd": c_all_cd,
+            "cdf_top_x": c_top_x, "cdf_top_y": c_top_y, "cdf_top_cd": c_top_cd,
+        }
+
+    # Baseline (all data combined)
+    baseline_data = _build_both(d, d[d["is_top"]])
+
+    # Per ground-truth
     gt_data_list = []
     for gt_id in gt_ids:
         dg = d[d["ground_truth_id"] == gt_id].copy()
         if dg.empty:
             continue
         color = gt_color_map[gt_id]
+        entry = _build_both(dg, dg[dg["is_top"]])
+        entry["gt_id"] = gt_id
+        entry["color"] = color
+        gt_data_list.append(entry)
 
-        # Strip data — all
-        strip_all_x = (dg["tm_score"] + dg["jitter"]).tolist()
-        strip_all_cd = dg[meta_cols + ["is_top_str"]].values.tolist()
-
-        # Strip data — top
-        dg_top = dg[dg["is_top"]].copy()
-        if not dg_top.empty:
-            dg_top["jitter"] = np.random.uniform(-jitter_val, jitter_val, size=len(dg_top))
-            strip_top_x = (dg_top["tm_score"] + dg_top["jitter"]).tolist()
-            strip_top_cd = dg_top[meta_cols + ["is_top_str"]].values.tolist()
-        else:
-            strip_top_x, strip_top_cd = [], []
-
-        # CDF data — all
-        dg_sorted = dg.sort_values("tm_score").reset_index(drop=True)
-        cdf_all_x = dg_sorted["tm_score"].tolist()
-        cdf_all_y = [(i + 1) / len(dg_sorted) for i in range(len(dg_sorted))]
-        cdf_all_cd = dg_sorted[meta_cols + ["is_top_str"]].values.tolist()
-
-        # CDF data — top
-        if not dg_top.empty:
-            dg_top_sorted = dg_top.sort_values("tm_score").reset_index(drop=True)
-            cdf_top_x = dg_top_sorted["tm_score"].tolist()
-            cdf_top_y = [(i + 1) / len(dg_top_sorted) for i in range(len(dg_top_sorted))]
-            cdf_top_cd = dg_top_sorted[meta_cols + ["is_top_str"]].values.tolist()
-        else:
-            cdf_top_x, cdf_top_y, cdf_top_cd = [], [], []
-
-        gt_data_list.append({
-            "gt_id": gt_id, "color": color,
-            "strip_all_x": strip_all_x, "strip_all_cd": strip_all_cd,
-            "strip_top_x": strip_top_x, "strip_top_cd": strip_top_cd,
-            "cdf_all_x": cdf_all_x, "cdf_all_y": cdf_all_y, "cdf_all_cd": cdf_all_cd,
-            "cdf_top_x": cdf_top_x, "cdf_top_y": cdf_top_y, "cdf_top_cd": cdf_top_cd,
-        })
-
+    baseline_json = json.dumps(baseline_data)
     gt_data_json = json.dumps(gt_data_list)
 
-    strip_hover_tpl = (
+    hover_strip = (
         "<b>name:</b> %{customdata[0]}<br>"
         "<b>description:</b> %{customdata[9]}<br>"
         "<b>ground truth:</b> %{customdata[10]}<br>"
@@ -197,7 +215,7 @@ def plot_tm_score_distribution(
         "<b>TM score:</b> %{x:.3f}<br>"
         "<extra></extra>"
     )
-    cdf_hover_tpl = (
+    hover_cdf = (
         "<b>name:</b> %{customdata[0]}<br>"
         "<b>description:</b> %{customdata[9]}<br>"
         "<b>ground truth:</b> %{customdata[10]}<br>"
@@ -210,7 +228,7 @@ def plot_tm_score_distribution(
         "<b>fraction disordered:</b> %{customdata[7]}<br>"
         "<b>has clash:</b> %{customdata[8]}<br>"
         "<b>is top:</b> %{customdata[11]}<br>"
-        "<b>TM score ≤</b> %{x:.3f}<br>"
+        "<b>TM score \u2264</b> %{x:.3f}<br>"
         "<b>Fraction:</b> %{y:.3f}<br>"
         "<extra></extra>"
     )
@@ -222,6 +240,9 @@ def plot_tm_score_distribution(
         f'&#9632; {gt}</option>'
         for gt in gt_ids
     )
+
+    strip_active = "active" if default_mode == "strip" else ""
+    cdf_active = "active" if default_mode == "cdf" else ""
 
     html = f"""<!DOCTYPE html>
 <html>
@@ -248,7 +269,6 @@ def plot_tm_score_distribution(
   }}
   .controls-row {{
       display: flex; align-items: flex-start; gap: 10px;
-      flex-wrap: wrap;
   }}
 
   #gt-select {{
@@ -256,8 +276,12 @@ def plot_tm_score_distribution(
       border: 1px solid #ced4da; border-radius: 4px;
       padding: 2px; min-width: 220px;
   }}
-  #gt-select option {{ padding: 2px 6px; }}
-  #gt-select option:checked {{ background: #e7f1ff; }}
+  #gt-select option {{
+      padding: 2px 6px;
+  }}
+  #gt-select option:checked {{
+      background: #e7f1ff;
+  }}
 
   .btn-col {{
       display: flex; flex-direction: column; gap: 4px;
@@ -314,12 +338,13 @@ def plot_tm_score_distribution(
         <button id="btn-none">Clear All</button>
       </div>
       <div class="toggle-group">
-        <button id="btn-strip" class="{"active" if default_mode == "strip" else ""}">Strip Chart</button>
-        <button id="btn-cdf" class="{"active" if default_mode == "cdf" else ""}">CDF</button>
+        <button id="btn-strip" class="{strip_active}">Strip Chart</button>
+        <button id="btn-cdf" class="{cdf_active}">CDF</button>
       </div>
     </div>
     <div class="hint">
-      Click ground truths to toggle. Use Strip Chart / CDF to switch view.
+      Click to toggle ground truths. Baseline (all data) is always shown.
+      Use Strip Chart / CDF to switch view.
     </div>
   </div>
 
@@ -328,9 +353,10 @@ def plot_tm_score_distribution(
 </div>
 
 <script>
+var BASELINE    = {baseline_json};
 var GT_DATA     = {gt_data_json};
-var STRIP_HOVER = {json.dumps(strip_hover_tpl)};
-var CDF_HOVER   = {json.dumps(cdf_hover_tpl)};
+var HOVER_STRIP = {json.dumps(hover_strip)};
+var HOVER_CDF   = {json.dumps(hover_cdf)};
 var currentMode = {json.dumps(default_mode)};
 
 var sel        = document.getElementById('gt-select');
@@ -390,8 +416,66 @@ function rebuildPlot() {{
 
     var traces = [];
     var isStrip = (currentMode === 'strip');
-    var hoverTpl = isStrip ? STRIP_HOVER : CDF_HOVER;
+    var HOVER   = isStrip ? HOVER_STRIP : HOVER_CDF;
 
+    // ---- Baseline: always visible ----
+    if (isStrip) {{
+        if (BASELINE.strip_all_x.length > 0) {{
+            traces.push({{
+                x: BASELINE.strip_all_x,
+                y: BASELINE.strip_all_x.map(function() {{ return 0.5; }}),
+                mode: 'markers',
+                name: 'All (baseline)',
+                customdata: BASELINE.strip_all_cd,
+                hovertemplate: HOVER,
+                showlegend: false,
+                marker: {{
+                    color: 'rgba(76,114,176,0.25)', size: 5,
+                    line: {{ width: 0.5, color: 'rgba(0,0,0,0.15)' }}
+                }}
+            }});
+        }}
+        if (BASELINE.strip_top_x.length > 0) {{
+            traces.push({{
+                x: BASELINE.strip_top_x,
+                y: BASELINE.strip_top_x.map(function() {{ return 0.5; }}),
+                mode: 'markers',
+                name: 'Top (baseline)',
+                customdata: BASELINE.strip_top_cd,
+                hovertemplate: HOVER,
+                showlegend: false,
+                marker: {{
+                    color: 'rgba(213,94,0,0.25)', size: 7, symbol: 'diamond',
+                    line: {{ width: 0.5, color: 'rgba(0,0,0,0.15)' }}
+                }}
+            }});
+        }}
+    }} else {{
+        if (BASELINE.cdf_all_x.length > 0) {{
+            traces.push({{
+                x: BASELINE.cdf_all_x, y: BASELINE.cdf_all_y,
+                mode: 'lines',
+                name: 'All (baseline)',
+                customdata: BASELINE.cdf_all_cd,
+                hovertemplate: HOVER,
+                showlegend: false,
+                line: {{ color: 'rgba(76,114,176,0.3)', width: 2.5 }}
+            }});
+        }}
+        if (BASELINE.cdf_top_x.length > 0) {{
+            traces.push({{
+                x: BASELINE.cdf_top_x, y: BASELINE.cdf_top_y,
+                mode: 'lines',
+                name: 'Top (baseline)',
+                customdata: BASELINE.cdf_top_cd,
+                hovertemplate: HOVER,
+                showlegend: false,
+                line: {{ color: 'rgba(213,94,0,0.25)', width: 2, dash: 'dot' }}
+            }});
+        }}
+    }}
+
+    // ---- Highlighted ground truths ----
     GT_DATA.forEach(function(gt) {{
         if (!selected.has(gt.gt_id)) return;
 
@@ -403,7 +487,7 @@ function rebuildPlot() {{
                     mode: 'markers',
                     name: gt.gt_id,
                     customdata: gt.strip_all_cd,
-                    hovertemplate: hoverTpl,
+                    hovertemplate: HOVER,
                     showlegend: true,
                     marker: {{
                         color: gt.color, size: 8, opacity: 0.85,
@@ -418,7 +502,7 @@ function rebuildPlot() {{
                     mode: 'markers',
                     name: gt.gt_id + ' (top)',
                     customdata: gt.strip_top_cd,
-                    hovertemplate: hoverTpl,
+                    hovertemplate: HOVER,
                     showlegend: true,
                     marker: {{
                         color: gt.color, size: 10, opacity: 0.95,
@@ -430,24 +514,22 @@ function rebuildPlot() {{
         }} else {{
             if (gt.cdf_all_x.length > 0) {{
                 traces.push({{
-                    x: gt.cdf_all_x,
-                    y: gt.cdf_all_y,
+                    x: gt.cdf_all_x, y: gt.cdf_all_y,
                     mode: 'lines',
                     name: gt.gt_id,
                     customdata: gt.cdf_all_cd,
-                    hovertemplate: hoverTpl,
+                    hovertemplate: HOVER,
                     showlegend: true,
                     line: {{ color: gt.color, width: 3 }}
                 }});
             }}
             if (gt.cdf_top_x.length > 0) {{
                 traces.push({{
-                    x: gt.cdf_top_x,
-                    y: gt.cdf_top_y,
+                    x: gt.cdf_top_x, y: gt.cdf_top_y,
                     mode: 'lines',
                     name: gt.gt_id + ' (top)',
                     customdata: gt.cdf_top_cd,
-                    hovertemplate: hoverTpl,
+                    hovertemplate: HOVER,
                     showlegend: true,
                     line: {{ color: gt.color, width: 3, dash: 'dash' }}
                 }});
@@ -455,19 +537,20 @@ function rebuildPlot() {{
         }}
     }});
 
-    var yaxis;
-    var plotHeight;
+    var yaxis, plotHeight;
     if (isStrip) {{
         yaxis = {{ showticklabels: false, title: '', range: [0, 1] }};
         plotHeight = 450;
-        legendNote.textContent = 'Circle = all predictions  |  \\u2605 = top predictions';
+        legendNote.textContent =
+            'Circle = all predictions  |  \u2605 = top predictions  |  Faint = baseline';
     }} else {{
         yaxis = {{
             title: 'Cumulative fraction', range: [0, 1.02],
             tickvals: [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
         }};
         plotHeight = 700;
-        legendNote.textContent = 'Solid = all predictions  |  Dashed = top predictions';
+        legendNote.textContent =
+            'Solid = all predictions  |  Dashed = top predictions  |  Faint = baseline';
     }}
 
     var layout = {{
@@ -496,7 +579,6 @@ rebuildPlot();
     out_html.parent.mkdir(parents=True, exist_ok=True)
     out_html.write_text(html, encoding="utf-8")
     return True
-
 
 
 def add_prediction_metadata(df_pair: pd.DataFrame, df_pred: pd.DataFrame) -> pd.DataFrame:
@@ -563,6 +645,11 @@ def add_prediction_metadata(df_pair: pd.DataFrame, df_pred: pd.DataFrame) -> pd.
     return d
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# chain-pair ipTM distribution
+#   • NO ground-truth selector (same as reference)
+#   • NEW: strip / CDF toggle
+# ═══════════════════════════════════════════════════════════════════════════
 def plot_chain_pair_iptm_cumulative(
     df_pair: pd.DataFrame,
     out_html: Path,
@@ -625,11 +712,9 @@ def plot_chain_pair_iptm_cumulative(
     jitter_val = 0.01
     d["jitter"] = np.random.uniform(-jitter_val, jitter_val, size=len(d))
 
-    # Strip: all
     strip_all_x = (d["pair_iptm"] + d["jitter"]).tolist()
     strip_all_cd = d[hover_cols].values.tolist()
 
-    # Strip: top
     d_top = d[d["is_top"]].copy()
     if not d_top.empty:
         d_top["jitter"] = np.random.uniform(-jitter_val, jitter_val, size=len(d_top))
@@ -638,18 +723,18 @@ def plot_chain_pair_iptm_cumulative(
     else:
         strip_top_x, strip_top_cd = [], []
 
-    # CDF: all
     d_sorted = d.sort_values("pair_iptm").reset_index(drop=True)
+    n_s = len(d_sorted)
     cdf_all_x = d_sorted["pair_iptm"].tolist()
-    cdf_all_y = [(i + 1) / len(d_sorted) for i in range(len(d_sorted))]
+    cdf_all_y = [(i + 1) / n_s for i in range(n_s)]
     cdf_all_cd = d_sorted[hover_cols].values.tolist()
 
-    # CDF: top
     if not d_top.empty:
-        d_top_sorted = d_top.sort_values("pair_iptm").reset_index(drop=True)
-        cdf_top_x = d_top_sorted["pair_iptm"].tolist()
-        cdf_top_y = [(i + 1) / len(d_top_sorted) for i in range(len(d_top_sorted))]
-        cdf_top_cd = d_top_sorted[hover_cols].values.tolist()
+        dt_s = d_top.sort_values("pair_iptm").reset_index(drop=True)
+        n_t = len(dt_s)
+        cdf_top_x = dt_s["pair_iptm"].tolist()
+        cdf_top_y = [(i + 1) / n_t for i in range(n_t)]
+        cdf_top_cd = dt_s[hover_cols].values.tolist()
     else:
         cdf_top_x, cdf_top_y, cdf_top_cd = [], [], []
 
@@ -675,7 +760,7 @@ def plot_chain_pair_iptm_cumulative(
     cdf_hover = (
         "<b>name:</b> %{customdata[0]}<br>"
         "<b>description:</b> %{customdata[7]}<br>"
-        "<b>pair ipTM ≤</b> %{x:.3f}<br>"
+        "<b>pair ipTM \u2264</b> %{x:.3f}<br>"
         "<b>Fraction:</b> %{y:.3f}<br>"
         "<b>seed:</b> %{customdata[1]}<br>"
         "<b>sample:</b> %{customdata[2]}<br>"
@@ -684,6 +769,9 @@ def plot_chain_pair_iptm_cumulative(
         "<b>is top:</b> %{customdata[8]}<br>"
         "<extra></extra>"
     )
+
+    strip_active = "active" if default_mode == "strip" else ""
+    cdf_active = "active" if default_mode == "cdf" else ""
 
     html = f"""<!DOCTYPE html>
 <html>
@@ -743,8 +831,8 @@ def plot_chain_pair_iptm_cumulative(
   <div class="controls">
     <span class="controls-label">View:</span>
     <div class="toggle-group">
-      <button id="btn-strip" class="{"active" if default_mode == "strip" else ""}">Strip Chart</button>
-      <button id="btn-cdf" class="{"active" if default_mode == "cdf" else ""}">CDF</button>
+      <button id="btn-strip" class="{strip_active}">Strip Chart</button>
+      <button id="btn-cdf" class="{cdf_active}">CDF</button>
     </div>
   </div>
 
@@ -837,8 +925,7 @@ function rebuildPlot() {{
         }}
     }}
 
-    var yaxis;
-    var plotHeight;
+    var yaxis, plotHeight;
     if (isStrip) {{
         yaxis = {{ showticklabels: false, title: '', range: [0, 1] }};
         plotHeight = 400;
