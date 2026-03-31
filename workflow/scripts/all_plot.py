@@ -345,7 +345,7 @@ def plot_tm_score_distribution(
       </div>
     </div>
     <div class="hint">
-      Click to toggle. Baseline (all data) is always shown.
+      Click to toggle. Only selected references are shown.
     </div>
   </div>
 
@@ -405,47 +405,6 @@ function rebuildPlot() {{
 
     var traces = [];
 
-    // ---- Baseline: always visible ----
-    if (BASELINE.all_x.length > 0) {{
-        var baseAll = {{
-            x: BASELINE.all_x, y: BASELINE.all_y,
-            mode: MODE_ALL,
-            name: 'All (baseline)',
-            customdata: BASELINE.all_cd,
-            hovertemplate: HOVER_TPL,
-            showlegend: false,
-        }};
-        if (MODE_ALL === 'lines') {{
-            baseAll.line = {{ color: 'rgba(76,114,176,0.3)', width: 2.5 }};
-        }} else {{
-            baseAll.marker = {{
-                color: 'rgba(76,114,176,0.25)', size: 5,
-                line: {{ width: 0.5, color: 'rgba(0,0,0,0.15)' }}
-            }};
-        }}
-        traces.push(baseAll);
-    }}
-    if (BASELINE.top_x.length > 0) {{
-        var baseTop = {{
-            x: BASELINE.top_x, y: BASELINE.top_y,
-            mode: MODE_TOP,
-            name: 'Top (baseline)',
-            customdata: BASELINE.top_cd,
-            hovertemplate: HOVER_TPL,
-            showlegend: false,
-        }};
-        if (MODE_TOP === 'lines') {{
-            baseTop.line = {{ color: 'rgba(213,94,0,0.25)', width: 2, dash: 'dot' }};
-        }} else {{
-            baseTop.marker = {{
-                color: 'rgba(213,94,0,0.25)', size: 7, symbol: 'diamond',
-                line: {{ width: 0.5, color: 'rgba(0,0,0,0.15)' }}
-            }};
-        }}
-        traces.push(baseTop);
-    }}
-
-    // ---- Highlighted ground truths ----
     GT_DATA.forEach(function(gt) {{
         if (!selected.has(gt.gt_id)) return;
 
