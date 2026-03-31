@@ -63,7 +63,7 @@ def plot_tm_score_distribution(
     else:
         d["sample"] = d["sample"].astype(str).replace("", "N/A").replace("nan", "N/A")
 
-    d["tm_score"] = d[["TM1", "TM2"]].min(axis=1)
+    d["tm_score"] = d["TM1"]
     d["tm_score"] = pd.to_numeric(d["tm_score"], errors="coerce")
 
     d = d[d["tm_score"].notna()].copy()
