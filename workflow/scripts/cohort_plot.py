@@ -21,15 +21,13 @@ def coerce_numeric(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
             d[c] = pd.to_numeric(d[c], errors="coerce")
     return d
 
+
 def plot_tm_score_distribution(
     df_pred: pd.DataFrame,
     out_html: Path,
     title: str = "Distribution of normalized TM scores across all predictions",
 ) -> bool:
     required = {"sample_id", "prediction_id", "TM1", "TM2"}
-    print(df_pred)
-    print(required.issubset(df_pred.columns))
-    exit()
     if df_pred.empty or not required.issubset(df_pred.columns):
         write_no_data_html(out_html, "No TM score data available.")
         return False
@@ -38,17 +36,27 @@ def plot_tm_score_distribution(
     d["sample_id"] = d["sample_id"].astype(str)
     d["prediction_id"] = d["prediction_id"].astype(str)
 
+    # Coerce TM columns to numeric
+    for c in ["TM1", "TM2"]:
+        d[c] = pd.to_numeric(d[c], errors="coerce")
+
     # Extract name from sample_id
     d["name"] = d["sample_id"].str.split("_seed-").str[0]
     d["name"] = d["name"].astype(str).replace("nan", "N/A")
 
-    # Extract seed and sample
-    d["seed"] = d["sample_id"].str.extract(r"_seed-(\d+)", expand=False).fillna("N/A")
-    d["sample"] = d["sample_id"].str.extract(r"_sample-(\d+)", expand=False).fillna("N/A")
+    # Use seed/sample columns directly if present, otherwise extract from sample_id
+    if "seed" not in d.columns or d["seed"].astype(str).eq("").all():
+        d["seed"] = d["sample_id"].str.extract(r"_seed-(\d+)", expand=False).fillna("N/A")
+    else:
+        d["seed"] = d["seed"].astype(str).replace("", "N/A").replace("nan", "N/A")
 
-    # Normalize TM score: use min(TM1, TM2) as the effective TM score
-    # This is standard in structural biology: TM score is limited by the shorter chain
-    d["tm_score"] = d[["tm1", "tm2"]].min(axis=1)
+    if "sample" not in d.columns or d["sample"].astype(str).eq("").all():
+        d["sample"] = d["sample_id"].str.extract(r"_sample-(\d+)", expand=False).fillna("N/A")
+    else:
+        d["sample"] = d["sample"].astype(str).replace("", "N/A").replace("nan", "N/A")
+
+    # Normalize TM score: use min(TM1, TM2)
+    d["tm_score"] = d[["TM1", "TM2"]].min(axis=1)
     d["tm_score"] = pd.to_numeric(d["tm_score"], errors="coerce")
 
     # Drop invalid values
@@ -57,16 +65,26 @@ def plot_tm_score_distribution(
         write_no_data_html(out_html, "No valid TM scores available.")
         return False
 
-    # Add is_top as string
-    d["is_top"] = d["is_top"].astype(str).str.title()
+    # Coerce metadata columns to numeric where appropriate
+    for c in ["ranking_score", "ptm", "iptm", "mean_plddt_total", "fraction_disordered"]:
+        if c in d.columns:
+            d[c] = pd.to_numeric(d[c], errors="coerce")
 
-    # Add metadata columns
+    # Add is_top as string
+    if "is_top" in d.columns:
+        d["is_top"] = d["is_top"].astype(str).str.title()
+    else:
+        d["is_top"] = "False"
+
+    # Define metadata columns for hover
     meta_cols = [
-        "sample", "seed", "name", "ranking_score", "ptm", "iptm",
+        "name", "sample", "seed", "ranking_score", "ptm", "iptm",
         "mean_plddt_total", "fraction_disordered", "has_clash"
     ]
-    available_meta = [c for c in meta_cols if c in d.columns]
-    d = d[["tm_score"] + available_meta + ["is_top"]].copy()
+    # Ensure all meta_cols exist
+    for c in meta_cols:
+        if c not in d.columns:
+            d[c] = "N/A"
 
     n_predictions = len(d)
 
@@ -93,11 +111,11 @@ def plot_tm_score_distribution(
                 "<b>name:</b> %{customdata[0]}<br>"
                 "<b>sample:</b> %{customdata[1]}<br>"
                 "<b>seed:</b> %{customdata[2]}<br>"
-                "<b>ranking score:</b> %{customdata[3]:.3f}<br>"
-                "<b>ptm:</b> %{customdata[4]:.3f}<br>"
-                "<b>iptm:</b> %{customdata[5]:.3f}<br>"
-                "<b>mean pLDDT:</b> %{customdata[6]:.2f}<br>"
-                "<b>fraction disordered:</b> %{customdata[7]:.3f}<br>"
+                "<b>ranking score:</b> %{customdata[3]}<br>"
+                "<b>ptm:</b> %{customdata[4]}<br>"
+                "<b>iptm:</b> %{customdata[5]}<br>"
+                "<b>mean pLDDT:</b> %{customdata[6]}<br>"
+                "<b>fraction disordered:</b> %{customdata[7]}<br>"
                 "<b>has clash:</b> %{customdata[8]}<br>"
                 "<b>is top:</b> %{customdata[9]}<br>"
                 "<b>normalized TM:</b> %{x:.3f}<br>"
@@ -110,6 +128,7 @@ def plot_tm_score_distribution(
         # Top predictions
         d_top = d[d["is_top"].str.lower() == "true"]
         if not d_top.empty:
+            d_top = d_top.copy()
             d_top["jitter"] = np.random.uniform(-jitter, jitter, size=len(d_top))
             fig.add_trace(go.Scatter(
                 x=d_top["tm_score"] + d_top["jitter"],
@@ -126,11 +145,11 @@ def plot_tm_score_distribution(
                     "<b>name:</b> %{customdata[0]}<br>"
                     "<b>sample:</b> %{customdata[1]}<br>"
                     "<b>seed:</b> %{customdata[2]}<br>"
-                    "<b>ranking score:</b> %{customdata[3]:.3f}<br>"
-                    "<b>ptm:</b> %{customdata[4]:.3f}<br>"
-                    "<b>iptm:</b> %{customdata[5]:.3f}<br>"
-                    "<b>mean pLDDT:</b> %{customdata[6]:.2f}<br>"
-                    "<b>fraction disordered:</b> %{customdata[7]:.3f}<br>"
+                    "<b>ranking score:</b> %{customdata[3]}<br>"
+                    "<b>ptm:</b> %{customdata[4]}<br>"
+                    "<b>iptm:</b> %{customdata[5]}<br>"
+                    "<b>mean pLDDT:</b> %{customdata[6]}<br>"
+                    "<b>fraction disordered:</b> %{customdata[7]}<br>"
                     "<b>has clash:</b> %{customdata[8]}<br>"
                     "<b>is top:</b> %{customdata[9]}<br>"
                     "<b>normalized TM:</b> %{x:.3f}<br>"
@@ -174,9 +193,10 @@ def plot_tm_score_distribution(
 
     else:
         # CDF: smooth line
-        all_tm = d["tm_score"].dropna().sort_values()
+        d_sorted = d.sort_values("tm_score").reset_index(drop=True)
+        all_tm = d_sorted["tm_score"]
         if len(all_tm) > 0:
-            y_all = [i / len(all_tm) for i in range(1, len(all_tm) + 1)]
+            y_all = [(i + 1) / len(all_tm) for i in range(len(all_tm))]
             fig.add_trace(go.Scatter(
                 x=all_tm,
                 y=y_all,
@@ -187,26 +207,27 @@ def plot_tm_score_distribution(
                     "<b>name:</b> %{customdata[0]}<br>"
                     "<b>sample:</b> %{customdata[1]}<br>"
                     "<b>seed:</b> %{customdata[2]}<br>"
-                    "<b>ranking score:</b> %{customdata[3]:.3f}<br>"
-                    "<b>ptm:</b> %{customdata[4]:.3f}<br>"
-                    "<b>iptm:</b> %{customdata[5]:.3f}<br>"
-                    "<b>mean pLDDT:</b> %{customdata[6]:.2f}<br>"
-                    "<b>fraction disordered:</b> %{customdata[7]:.3f}<br>"
+                    "<b>ranking score:</b> %{customdata[3]}<br>"
+                    "<b>ptm:</b> %{customdata[4]}<br>"
+                    "<b>iptm:</b> %{customdata[5]}<br>"
+                    "<b>mean pLDDT:</b> %{customdata[6]}<br>"
+                    "<b>fraction disordered:</b> %{customdata[7]}<br>"
                     "<b>has clash:</b> %{customdata[8]}<br>"
                     "<b>is top:</b> %{customdata[9]}<br>"
                     "<b>normalized TM ≤</b> %{x:.2f}<br>"
                     "<b>Fraction:</b> %{y:.3f}<br>"
                     "<extra></extra>"
                 ),
-                customdata=d[meta_cols + ["is_top"]].values,
+                customdata=d_sorted[meta_cols + ["is_top"]].values,
                 showlegend=True,
             ))
 
         d_top = d[d["is_top"].str.lower() == "true"]
         if not d_top.empty:
-            top_tm = d_top["tm_score"].dropna().sort_values()
+            d_top_sorted = d_top.sort_values("tm_score").reset_index(drop=True)
+            top_tm = d_top_sorted["tm_score"]
             if len(top_tm) > 0:
-                y_top = [i / len(top_tm) for i in range(1, len(top_tm) + 1)]
+                y_top = [(i + 1) / len(top_tm) for i in range(len(top_tm))]
                 fig.add_trace(go.Scatter(
                     x=top_tm,
                     y=y_top,
@@ -217,18 +238,18 @@ def plot_tm_score_distribution(
                         "<b>name:</b> %{customdata[0]}<br>"
                         "<b>sample:</b> %{customdata[1]}<br>"
                         "<b>seed:</b> %{customdata[2]}<br>"
-                        "<b>ranking score:</b> %{customdata[3]:.3f}<br>"
-                        "<b>ptm:</b> %{customdata[4]:.3f}<br>"
-                        "<b>iptm:</b> %{customdata[5]:.3f}<br>"
-                        "<b>mean pLDDT:</b> %{customdata[6]:.2f}<br>"
-                        "<b>fraction disordered:</b> %{customdata[7]:.3f}<br>"
+                        "<b>ranking score:</b> %{customdata[3]}<br>"
+                        "<b>ptm:</b> %{customdata[4]}<br>"
+                        "<b>iptm:</b> %{customdata[5]}<br>"
+                        "<b>mean pLDDT:</b> %{customdata[6]}<br>"
+                        "<b>fraction disordered:</b> %{customdata[7]}<br>"
                         "<b>has clash:</b> %{customdata[8]}<br>"
                         "<b>is top:</b> %{customdata[9]}<br>"
                         "<b>normalized TM ≤</b> %{x:.2f}<br>"
                         "<b>Fraction:</b> %{y:.3f}<br>"
                         "<extra></extra>"
                     ),
-                    customdata=d_top[meta_cols + ["is_top"]].values,
+                    customdata=d_top_sorted[meta_cols + ["is_top"]].values,
                     showlegend=True,
                 ))
 
@@ -266,6 +287,7 @@ def plot_tm_score_distribution(
     out_html.parent.mkdir(parents=True, exist_ok=True)
     fig.write_html(str(out_html), include_plotlyjs="cdn", full_html=True)
     return True
+
 
 def add_prediction_metadata(df_pair: pd.DataFrame, df_pred: pd.DataFrame) -> pd.DataFrame:
     d = df_pair.copy()
@@ -310,6 +332,10 @@ def add_prediction_metadata(df_pair: pd.DataFrame, df_pred: pd.DataFrame) -> pd.
     keep = [c for c in keep if c in p.columns]
     p = p[keep].drop_duplicates()
 
+    # Avoid suffixes: drop overlapping columns from d before merge (except join keys)
+    overlap = [c for c in p.columns if c in d.columns and c not in ["sample_id", "prediction_id"]]
+    d = d.drop(columns=overlap, errors="ignore")
+
     d = d.merge(p, on=["sample_id", "prediction_id"], how="left")
 
     if "is_top" in d.columns:
@@ -335,8 +361,6 @@ def write_no_data_html(path: Path, message: str = "No data to plot.") -> None:
     path.write_text(html, encoding="utf-8")
 
 
-import numpy as np  # Make sure this is at the top of the file
-
 def plot_chain_pair_iptm_cumulative(
     df_pair: pd.DataFrame,
     out_html: Path,
@@ -357,13 +381,20 @@ def plot_chain_pair_iptm_cumulative(
         write_no_data_html(out_html, "No valid chain-pair ipTM values available.")
         return False
 
-    # Extract name from sample_id: e.g., "8sm3_template_free_afdb_seed-1" → "8sm3_template_free_afdb"
+    # Extract name from sample_id
     d["name"] = d["sample_id"].str.split("_seed-").str[0]
     d["name"] = d["name"].astype(str).replace("nan", "N/A")
 
-    # Extract seed and sample (if available)
-    d["seed"] = d["sample_id"].str.extract(r"_seed-(\d+)", expand=False).fillna("N/A")
-    d["sample"] = d["sample_id"].str.extract(r"_sample-(\d+)", expand=False).fillna("N/A")
+    # Use seed/sample columns directly if present, otherwise extract from sample_id
+    if "seed" not in d.columns or d["seed"].astype(str).eq("").all():
+        d["seed"] = d["sample_id"].str.extract(r"_seed-(\d+)", expand=False).fillna("N/A")
+    else:
+        d["seed"] = d["seed"].astype(str).replace("", "N/A").replace("nan", "N/A")
+
+    if "sample" not in d.columns or d["sample"].astype(str).eq("").all():
+        d["sample"] = d["sample_id"].str.extract(r"_sample-(\d+)", expand=False).fillna("N/A")
+    else:
+        d["sample"] = d["sample"].astype(str).replace("", "N/A").replace("nan", "N/A")
 
     # Ensure chain_i, chain_j are strings
     for c in ["chain_i", "chain_j"]:
@@ -373,7 +404,10 @@ def plot_chain_pair_iptm_cumulative(
             d[c] = "N/A"
 
     # is_top as string
-    d["is_top"] = d["is_top"].astype(str).str.title()
+    if "is_top" in d.columns:
+        d["is_top"] = d["is_top"].astype(str).str.title()
+    else:
+        d["is_top"] = "False"
 
     n_predictions = len(d)
 
@@ -381,7 +415,7 @@ def plot_chain_pair_iptm_cumulative(
 
     if n_predictions <= 100:
         # --- Jittered strip chart for small datasets ---
-        jitter = 0.01  # Increased jitter for better visibility
+        jitter = 0.01
         d["jitter"] = np.random.uniform(-jitter, jitter, size=len(d))
 
         # All predictions
@@ -413,6 +447,7 @@ def plot_chain_pair_iptm_cumulative(
         # Top predictions
         d_top = d[d["is_top"].str.lower() == "true"]
         if not d_top.empty:
+            d_top = d_top.copy()
             d_top["jitter"] = np.random.uniform(-jitter, jitter, size=len(d_top))
             fig.add_trace(go.Scatter(
                 x=d_top["pair_iptm"] + d_top["jitter"],
@@ -471,9 +506,10 @@ def plot_chain_pair_iptm_cumulative(
 
     else:
         # --- Smooth line-based CDF for large datasets ---
-        all_iptm = d["pair_iptm"].dropna().sort_values()
+        d_sorted = d.sort_values("pair_iptm").reset_index(drop=True)
+        all_iptm = d_sorted["pair_iptm"]
         if len(all_iptm) > 0:
-            y_all = [i / len(all_iptm) for i in range(1, len(all_iptm) + 1)]
+            y_all = [(i + 1) / len(all_iptm) for i in range(len(all_iptm))]
             fig.add_trace(go.Scatter(
                 x=all_iptm,
                 y=y_all,
@@ -491,15 +527,16 @@ def plot_chain_pair_iptm_cumulative(
                     "<b>is top:</b> %{customdata[5]}<br>"
                     "<extra></extra>"
                 ),
-                customdata=d[["name", "seed", "sample", "chain_i", "chain_j", "is_top"]].values,
+                customdata=d_sorted[["name", "seed", "sample", "chain_i", "chain_j", "is_top"]].values,
                 showlegend=True,
             ))
 
         d_top = d[d["is_top"].str.lower() == "true"]
         if not d_top.empty:
-            top_iptm = d_top["pair_iptm"].dropna().sort_values()
+            d_top_sorted = d_top.sort_values("pair_iptm").reset_index(drop=True)
+            top_iptm = d_top_sorted["pair_iptm"]
             if len(top_iptm) > 0:
-                y_top = [i / len(top_iptm) for i in range(1, len(top_iptm) + 1)]
+                y_top = [(i + 1) / len(top_iptm) for i in range(len(top_iptm))]
                 fig.add_trace(go.Scatter(
                     x=top_iptm,
                     y=y_top,
@@ -517,7 +554,7 @@ def plot_chain_pair_iptm_cumulative(
                         "<b>is top:</b> %{customdata[5]}<br>"
                         "<extra></extra>"
                     ),
-                    customdata=d_top[["name", "seed", "sample", "chain_i", "chain_j", "is_top"]].values,
+                    customdata=d_top_sorted[["name", "seed", "sample", "chain_i", "chain_j", "is_top"]].values,
                     showlegend=True,
                 ))
 
@@ -586,7 +623,7 @@ def plot_chain_pair_iptm_cumulative(
     "--master-tsv",
     type=click.Path(exists=False, dir_okay=False, path_type=Path),
     default=None,
-    help="Optional: Path to cohort_master.tsv (contains tm1, tm2)."
+    help="Optional: Path to cohort_master.tsv (contains TM1, TM2)."
 )
 def main(pair_tsv: Path, pred_tsv: Optional[Path], out_html: Path, tm_plot: Optional[Path], master_tsv: Optional[Path]):
     """
@@ -608,61 +645,34 @@ def main(pair_tsv: Path, pred_tsv: Optional[Path], out_html: Path, tm_plot: Opti
     # Plot 1: ipTM
     plot_chain_pair_iptm_cumulative(d, out_html)
 
-    # Plot 2: TM score — use cohort_master.tsv if available
+    # Plot 2: TM score — use cohort_master.tsv or --pred-tsv
     if tm_plot is not None:
-        # Use --master-tsv if provided
-        if master_tsv is not None:
-            master_path = master_tsv
+        # Determine source for TM data
+        if master_tsv is not None and master_tsv.exists():
+            tm_source = master_tsv
+        elif pred_tsv is not None and pred_tsv.exists():
+            tm_source = pred_tsv
         else:
             # Fallback: try reports/cohort/cohort_master.tsv
-            master_path = Path("reports/cohort/cohort_master.tsv")
+            tm_source = Path("reports/cohort/cohort_master.tsv")
 
-        if not master_path.exists():
-            click.echo(f"⚠️  {master_path} not found. Skipping TM score plot.")
-            return
+        if not tm_source.exists():
+            click.echo(f"⚠️  {tm_source} not found. Skipping TM score plot.")
+        else:
+            df_tm = load_tsv(tm_source)
+            df_tm = coerce_numeric(df_tm, [
+                "TM1", "TM2", "ranking_score", "ptm", "iptm",
+                "mean_plddt_total", "fraction_disordered"
+            ])
 
-        df_master = load_tsv(master_path)
-
-        # ✅ Use exact column names as they appear in the file
-        df_master = coerce_numeric(df_master, ["TM1", "TM2"])
-
-        required_cols = {
-            *df_master.columns[:22].tolist()
-        }
-        available_cols = [c for c in required_cols if c in df_master.columns]
-        df_tm = df_master[available_cols].copy()
-
-        # Add name from sample_id
-        df_tm["name"] = df_tm["sample_id"].str.split("_seed-").str[0]
-        df_tm["name"] = df_tm["name"].astype(str).replace("nan", "N/A")
-
-        # ✅ Use TM1, TM2 — not tm1, tm2
-        df_tm["tm_score"] = df_tm[["TM1", "TM2"]].min(axis=1)
-        df_tm["tm_score"] = pd.to_numeric(df_tm["tm_score"], errors="coerce")
-        df_tm = df_tm[df_tm["tm_score"].notna()].copy()
-
-        if df_tm.empty:
-            click.echo("⚠️  No valid TM scores found. Skipping TM score plot.")
-            return
-
-        # Add is_top as string
-        df_tm["is_top"] = df_tm["is_top"].astype(str).str.title()
-
-        # Prepare metadata for hover
-        meta_cols = [
-            "name", "sample", "seed", "ranking_score", "ptm", "iptm",
-            "mean_plddt_total", "fraction_disordered", "has_clash"
-        ]
-        available_meta = [c for c in meta_cols if c in df_tm.columns]
-        df_tm = df_tm[["tm_score"] + available_meta + ["is_top"]].copy()
-        print(df_tm)
-        exit()
-        # Plot
-        plot_tm_score_distribution(df_tm, tm_plot)
+            # Pass the full dataframe to plot_tm_score_distribution;
+            # the function handles column selection internally
+            plot_tm_score_distribution(df_tm, tm_plot)
 
     click.echo(f"✅ ipTM plot saved to: {out_html}")
     if tm_plot is not None:
         click.echo(f"✅ TM score plot saved to: {tm_plot}")
+
 
 if __name__ == "__main__":
     main()
