@@ -167,7 +167,7 @@ def plot_tm_score_distribution(
                 range=[0, 1]
             ),
             template="plotly_white",
-            hovermode="x unified",
+            hovermode="closest",
             height=400,
             margin=dict(l=70, r=50, t=80, b=70),
             legend=dict(
@@ -246,7 +246,7 @@ def plot_tm_score_distribution(
                 tickvals=[0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
             ),
             template="plotly_white",
-            hovermode="x unified",
+            hovermode="closest",
             height=650,
             margin=dict(l=70, r=50, t=80, b=70),
             legend=dict(
@@ -446,7 +446,7 @@ def plot_chain_pair_iptm_cumulative(
             ),
             yaxis=dict(showticklabels=False, title="", range=[0, 1]),
             template="plotly_white",
-            hovermode="x unified",
+            hovermode="closest",
             height=400,
             margin=dict(l=70, r=50, t=80, b=70),
             legend=dict(
@@ -517,7 +517,7 @@ def plot_chain_pair_iptm_cumulative(
                 tickvals=[0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
             ),
             template="plotly_white",
-            hovermode="x unified",
+            hovermode="closest",
             height=650,
             margin=dict(l=70, r=50, t=80, b=70),
             legend=dict(

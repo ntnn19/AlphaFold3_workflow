@@ -261,7 +261,7 @@ def plot_plddt_combined_interactive(
             gridwidth=1,
             gridcolor="lightgray"
         ),
-        hovermode="x unified",
+        hovermode="closest",
         legend=dict(
             title="Prediction",
             orientation="h",
