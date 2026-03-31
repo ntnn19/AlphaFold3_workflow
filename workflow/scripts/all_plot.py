@@ -143,10 +143,11 @@ def plot_tm_score_distribution(
             continue
         color = gt_color_map[gt_id]
 
-        # Strip data
+        # Strip data — all
         strip_all_x = (dg["tm_score"] + dg["jitter"]).tolist()
         strip_all_cd = dg[meta_cols + ["is_top_str"]].values.tolist()
 
+        # Strip data — top
         dg_top = dg[dg["is_top"]].copy()
         if not dg_top.empty:
             dg_top["jitter"] = np.random.uniform(-jitter_val, jitter_val, size=len(dg_top))
@@ -155,12 +156,13 @@ def plot_tm_score_distribution(
         else:
             strip_top_x, strip_top_cd = [], []
 
-        # CDF data
+        # CDF data — all
         dg_sorted = dg.sort_values("tm_score").reset_index(drop=True)
         cdf_all_x = dg_sorted["tm_score"].tolist()
         cdf_all_y = [(i + 1) / len(dg_sorted) for i in range(len(dg_sorted))]
         cdf_all_cd = dg_sorted[meta_cols + ["is_top_str"]].values.tolist()
 
+        # CDF data — top
         if not dg_top.empty:
             dg_top_sorted = dg_top.sort_values("tm_score").reset_index(drop=True)
             cdf_top_x = dg_top_sorted["tm_score"].tolist()
@@ -326,16 +328,17 @@ def plot_tm_score_distribution(
 </div>
 
 <script>
-var GT_DATA       = {gt_data_json};
-var STRIP_HOVER   = {json.dumps(strip_hover_tpl)};
-var CDF_HOVER     = {json.dumps(cdf_hover_tpl)};
-var currentMode   = {json.dumps(default_mode)};
+var GT_DATA     = {gt_data_json};
+var STRIP_HOVER = {json.dumps(strip_hover_tpl)};
+var CDF_HOVER   = {json.dumps(cdf_hover_tpl)};
+var currentMode = {json.dumps(default_mode)};
 
-var sel      = document.getElementById('gt-select');
-var btnStrip = document.getElementById('btn-strip');
-var btnCdf   = document.getElementById('btn-cdf');
+var sel        = document.getElementById('gt-select');
+var btnStrip   = document.getElementById('btn-strip');
+var btnCdf     = document.getElementById('btn-cdf');
 var legendNote = document.getElementById('legend-note');
 
+// --- Toggle selection on plain click (no ctrl needed) ---
 sel.addEventListener('mousedown', function(e) {{
     if (e.target.tagName === 'OPTION') {{
         e.preventDefault();
@@ -343,6 +346,7 @@ sel.addEventListener('mousedown', function(e) {{
         sel.dispatchEvent(new Event('change'));
     }}
 }});
+
 sel.addEventListener('change', rebuildPlot);
 
 document.getElementById('btn-all').addEventListener('click', function() {{
@@ -367,6 +371,7 @@ btnCdf.addEventListener('click', function() {{
     rebuildPlot();
 }});
 
+// --- Color the options to match their trace color ---
 (function colorOptions() {{
     var gtColors = {{}};
     GT_DATA.forEach(function(gt) {{ gtColors[gt.gt_id] = gt.color; }});
@@ -455,7 +460,7 @@ function rebuildPlot() {{
     if (isStrip) {{
         yaxis = {{ showticklabels: false, title: '', range: [0, 1] }};
         plotHeight = 450;
-        legendNote.textContent = 'Circle = all predictions  |  ★ = top predictions';
+        legendNote.textContent = 'Circle = all predictions  |  \\u2605 = top predictions';
     }} else {{
         yaxis = {{
             title: 'Cumulative fraction', range: [0, 1.02],
@@ -491,6 +496,7 @@ rebuildPlot();
     out_html.parent.mkdir(parents=True, exist_ok=True)
     out_html.write_text(html, encoding="utf-8")
     return True
+
 
 
 def add_prediction_metadata(df_pair: pd.DataFrame, df_pred: pd.DataFrame) -> pd.DataFrame:
