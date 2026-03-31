@@ -560,7 +560,7 @@ def plot_chain_pair_iptm_cumulative(
     "--master-tsv",
     type=click.Path(exists=False, dir_okay=False, path_type=Path),
     default=None,
-    help="Optional: Path to cohort_master.tsv (contains TM1, TM2)."
+    help="Optional: Path to all_master.tsv (contains TM1, TM2)."
 )
 def main(pair_tsv: Path, pred_tsv: Optional[Path], out_html: Path, tm_plot: Optional[Path], master_tsv: Optional[Path]):
     """
@@ -589,7 +589,7 @@ def main(pair_tsv: Path, pred_tsv: Optional[Path], out_html: Path, tm_plot: Opti
         elif pred_tsv is not None and pred_tsv.exists():
             tm_source = pred_tsv
         else:
-            tm_source = Path("reports/cohort/cohort_master.tsv")
+            tm_source = Path("reports/all/all_master.tsv")
 
         if not tm_source.exists():
             click.echo(f"⚠️  {tm_source} not found. Skipping TM score plot.")

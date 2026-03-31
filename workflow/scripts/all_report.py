@@ -169,7 +169,7 @@ def build_master(
     usalign_base: Optional[Path],
 ) -> pd.DataFrame:
     """
-    cohort_master is the only prediction-level merged table:
+    all_master is the only prediction-level merged table:
       AF3 predictions + optional US-align + sample-level status/path metadata
     """
     master = df_pred.copy()
@@ -300,14 +300,14 @@ def main(
     Aggregate AF3 and optional US-align tables across all sample report directories.
 
     Outputs:
-      - cohort_chain_pairs.tsv        (aggregation only)
-      - cohort_chains.tsv            (aggregation only)
-      - cohort_predictions.tsv       (aggregation only)
-      - cohort_usalign.tsv           (aggregation only)
-      - cohort_sample_status.tsv     (derived sample-level merged/status table)
-      - cohort_master.tsv            (merged prediction-level table)
+      - all_chain_pairs.tsv        (aggregation only)
+      - all_chains.tsv            (aggregation only)
+      - all_predictions.tsv       (aggregation only)
+      - all_usalign.tsv           (aggregation only)
+      - all_sample_status.tsv     (derived sample-level merged/status table)
+      - all_master.tsv            (merged prediction-level table)
 
-    Only cohort_master.tsv and cohort_sample_status.tsv are merge/derived tables.
+    Only all_master.tsv and all_sample_status.tsv are merge/derived tables.
     """
     outdir.mkdir(parents=True, exist_ok=True)
 
@@ -334,13 +334,13 @@ def main(
     )
 
     # Write aggregation-only tables
-    df_pair.to_csv(outdir / "cohort_chain_pairs.tsv", sep="\t", index=False)
-    df_chain.to_csv(outdir / "cohort_chains.tsv", sep="\t", index=False)
-    df_pred.to_csv(outdir / "cohort_predictions.tsv", sep="\t", index=False)
-    df_usalign.to_csv(outdir / "cohort_usalign.tsv", sep="\t", index=False)
+    df_pair.to_csv(outdir / "all_chain_pairs.tsv", sep="\t", index=False)
+    df_chain.to_csv(outdir / "all_chains.tsv", sep="\t", index=False)
+    df_pred.to_csv(outdir / "all_predictions.tsv", sep="\t", index=False)
+    df_usalign.to_csv(outdir / "all_usalign.tsv", sep="\t", index=False)
 
     # Write merged/derived tables
-    df_status.to_csv(outdir / "cohort_sample_status.tsv", sep="\t", index=False)
+    df_status.to_csv(outdir / "all_sample_status.tsv", sep="\t", index=False)
 
     preferred = [
         "sample_id",
@@ -390,9 +390,9 @@ def main(
     ]
     cols = [c for c in preferred if c in master.columns] + [c for c in master.columns if c not in preferred]
     master = master[cols]
-    master.to_csv(outdir / "cohort_master.tsv", sep="\t", index=False)
+    master.to_csv(outdir / "all_master.tsv", sep="\t", index=False)
 
-    click.echo(str(outdir / "cohort_master.tsv"))
+    click.echo(str(outdir / "all_master.tsv"))
 
 
 if __name__ == "__main__":
