@@ -90,7 +90,29 @@ def merge_with_predictions(df_u: pd.DataFrame, df_pred: pd.DataFrame) -> pd.Data
         return df_u.copy()
 
     d = df_u.copy()
-    d["prediction_id"] = d["usalign_id"].astype(str)
+    d["usalign_id"] = d["usalign_id"].astype(str)
+
+    # Extract ground_truth_id and real prediction_id by stripping _ref-XXX suffix
+    d["ground_truth_id"] = d["usalign_id"].str.extract(r"_ref-(.+)$", expand=False).fillna("")
+    d["prediction_id"] = d["usalign_id"].str.replace(r"_ref-.+$", "", regex=True)
+
+    if df_pred.empty or "prediction_id" not in df_pred.columns:
+        d["ranking_score"] = np.nan
+        d["is_top"] = False
+        return d
+
+    p = df_pred.copy()
+    p["prediction_id"] = p["prediction_id"].astype(str)
+    p["ranking_score"] = pd.to_numeric(p.get("ranking_score"), errors="coerce")
+
+    top_pid = top_prediction_id(p)
+
+    d = d.merge(
+        p[["prediction_id", "ranking_score"]].drop_duplicates(),
+        on="prediction_id",
+        how="left"
+    )
+    d["is_top"] = d["prediction_id"].astype(str) == str(top_pid) if top_pid is not None else False
     return d
 
 
