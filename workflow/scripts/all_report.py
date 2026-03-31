@@ -1,412 +1,942 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-
+import json
+import numpy as np
 from pathlib import Path
 from typing import Optional
-
 import click
 import pandas as pd
+import plotly.graph_objects as go
 
 
-def read_report_samples(samplesheet: Path) -> pd.DataFrame:
-    df = pd.read_csv(samplesheet, sep="\t", dtype=str).fillna("")
-    required = {"sample_id", "af3_dir"}
-    if not required.issubset(df.columns):
-        raise ValueError(f"Report samplesheet must contain columns: {sorted(required)}")
-    if "ground_truth" not in df.columns:
-        df["ground_truth"] = ""
-    return df
-
-
-def load_optional_tsv(path: Path) -> pd.DataFrame:
+def load_tsv(path: Path) -> pd.DataFrame:
     if not path.exists():
         return pd.DataFrame()
     return pd.read_csv(path, sep="\t", dtype=str).fillna("")
 
 
-def add_sample_id_if_missing(df: pd.DataFrame, sample_id: str) -> pd.DataFrame:
-    if df.empty:
-        return df
+def coerce_numeric(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
     d = df.copy()
-    if "sample_id" not in d.columns:
-        d.insert(0, "sample_id", sample_id)
-    else:
-        d["sample_id"] = d["sample_id"].replace("", sample_id)
+    for c in cols:
+        if c in d.columns:
+            d[c] = pd.to_numeric(d[c], errors="coerce")
     return d
 
 
-def sample_status_table(df_samples: pd.DataFrame, af3_base: Path, usalign_base: Optional[Path]) -> pd.DataFrame:
-    """
-    This is a merged/derived sample-level table from the sample sheet plus file existence checks.
-    """
-    rows = []
-    for _, row in df_samples.iterrows():
-        sample_id = str(row["sample_id"])
-        af3_dir = str(row.get("af3_dir", ""))
-        ground_truth = str(row.get("ground_truth", "")).strip()
+def write_no_data_html(path: Path, message: str = "No data to plot.") -> None:
+    html = f"""<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>chain-pair ipTM cumulative histogram</title></head>
+<body><p><em>{message}</em></p></body>
+</html>
+"""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(html, encoding="utf-8")
 
-        af3_sample_dir = af3_base / sample_id
-        pred_path = af3_sample_dir / "predictions.tsv"
-        chains_path = af3_sample_dir / "chains.tsv"
-        pairs_path = af3_sample_dir / "chain_pairs.tsv"
 
-        has_ground_truth = bool(ground_truth)
-        usalign_expected = has_ground_truth
+def _prepare_description_col(d: pd.DataFrame) -> pd.DataFrame:
+    if "description" not in d.columns:
+        d["description"] = "N/A"
+    else:
+        d["description"] = d["description"].astype(str).replace("", "N/A").replace("nan", "N/A")
 
-        usalign_sample_dir = usalign_base / sample_id if usalign_base is not None else None
-        usalign_summary = usalign_sample_dir / "usalign_summary.tsv" if usalign_sample_dir is not None else None
+    for src, dst in [
+        ("chain_i_description", "chain_i_desc"),
+        ("chain_j_description", "chain_j_desc"),
+    ]:
+        if src in d.columns:
+            d[dst] = d[src].astype(str).replace("", "N/A").replace("nan", "N/A")
+        else:
+            d[dst] = "N/A"
 
-        rows.append({
-            "sample_id": sample_id,
-            "af3_dir": af3_dir,
-            "ground_truth": ground_truth,
-            "has_ground_truth": has_ground_truth,
-            "usalign_expected": usalign_expected,
-            "af3_report_dir": str(af3_sample_dir),
-            "af3_predictions_tsv": str(pred_path),
-            "af3_chains_tsv": str(chains_path),
-            "af3_chain_pairs_tsv": str(pairs_path),
-            "af3_predictions_found": pred_path.exists(),
-            "af3_chains_found": chains_path.exists(),
-            "af3_chain_pairs_found": pairs_path.exists(),
-            "usalign_report_dir": str(usalign_sample_dir) if usalign_sample_dir is not None else "",
-            "usalign_summary_tsv": str(usalign_summary) if usalign_summary is not None else "",
-            "usalign_found": bool(usalign_summary.exists()) if usalign_summary is not None else False,
-            "usalign_not_applicable": not usalign_expected,
-            "usalign_missing_expected": bool(usalign_expected and (usalign_summary is None or not usalign_summary.exists())),
+    return d
+
+
+_GT_PALETTE = [
+    "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
+    "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf",
+    "#aec7e8", "#ffbb78", "#98df8a", "#ff9896", "#c5b0d5",
+    "#c49c94", "#f7b6d2", "#c7c7c7", "#dbdb8d", "#9edae5",
+]
+
+
+def _gt_color(idx: int) -> str:
+    return _GT_PALETTE[idx % len(_GT_PALETTE)]
+
+
+def plot_tm_score_distribution(
+    df_pred: pd.DataFrame,
+    out_html: Path,
+    title: str = "Distribution of TM scores across all predictions",
+) -> bool:
+    required = {"sample_id", "prediction_id", "TM1", "TM2"}
+    if df_pred.empty or not required.issubset(df_pred.columns):
+        write_no_data_html(out_html, "No TM score data available.")
+        return False
+
+    d = df_pred.copy()
+    d["sample_id"] = d["sample_id"].astype(str)
+    d["prediction_id"] = d["prediction_id"].astype(str)
+
+    for c in ["TM1", "TM2"]:
+        d[c] = pd.to_numeric(d[c], errors="coerce")
+
+    d["name"] = d["sample_id"].str.split("_seed-").str[0].astype(str).replace("nan", "N/A")
+
+    if "seed" not in d.columns or d["seed"].astype(str).eq("").all():
+        d["seed"] = d["sample_id"].str.extract(r"_seed-(\d+)", expand=False).fillna("N/A")
+    else:
+        d["seed"] = d["seed"].astype(str).replace("", "N/A").replace("nan", "N/A")
+
+    if "sample" not in d.columns or d["sample"].astype(str).eq("").all():
+        d["sample"] = d["sample_id"].str.extract(r"_sample-(\d+)", expand=False).fillna("N/A")
+    else:
+        d["sample"] = d["sample"].astype(str).replace("", "N/A").replace("nan", "N/A")
+
+    d["tm_score"] = pd.to_numeric(d["TM2"], errors="coerce")
+    d = d[d["tm_score"].notna()].copy()
+    if d.empty:
+        write_no_data_html(out_html, "No valid TM scores available.")
+        return False
+
+    for c in ["ranking_score", "ptm", "iptm", "mean_plddt_total", "fraction_disordered"]:
+        if c in d.columns:
+            d[c] = pd.to_numeric(d[c], errors="coerce")
+
+    if "is_top" in d.columns:
+        d["is_top"] = d["is_top"].astype(str).str.lower().isin(["true", "1", "yes"])
+    else:
+        d["is_top"] = False
+
+    d = _prepare_description_col(d)
+
+    if "ground_truth_id" not in d.columns:
+        d["ground_truth_id"] = "default"
+    else:
+        d["ground_truth_id"] = d["ground_truth_id"].astype(str).replace("", "default").replace("nan", "default")
+
+    meta_cols = [
+        "name", "sample", "seed", "ranking_score", "ptm", "iptm",
+        "mean_plddt_total", "fraction_disordered", "has_clash", "description",
+        "ground_truth_id",
+    ]
+    for c in meta_cols:
+        if c not in d.columns:
+            d[c] = "N/A"
+
+    d["is_top_str"] = d["is_top"].map({True: "True", False: "False"})
+
+    gt_ids = sorted(d["ground_truth_id"].unique().tolist())
+    gt_color_map = {gt: _gt_color(i) for i, gt in enumerate(gt_ids)}
+
+    n_total = len(d)
+    default_mode = "cdf" if n_total > 100 else "strip"
+
+    # --- Build BOTH strip and CDF data for every ground-truth ---
+    jitter_val = 0.01
+    d["jitter"] = np.random.uniform(-jitter_val, jitter_val, size=len(d))
+
+    gt_data_list = []
+    for gt_id in gt_ids:
+        dg = d[d["ground_truth_id"] == gt_id].copy()
+        if dg.empty:
+            continue
+        color = gt_color_map[gt_id]
+
+        # Strip data
+        strip_all_x = (dg["tm_score"] + dg["jitter"]).tolist()
+        strip_all_cd = dg[meta_cols + ["is_top_str"]].values.tolist()
+
+        dg_top = dg[dg["is_top"]].copy()
+        if not dg_top.empty:
+            dg_top["jitter"] = np.random.uniform(-jitter_val, jitter_val, size=len(dg_top))
+            strip_top_x = (dg_top["tm_score"] + dg_top["jitter"]).tolist()
+            strip_top_cd = dg_top[meta_cols + ["is_top_str"]].values.tolist()
+        else:
+            strip_top_x, strip_top_cd = [], []
+
+        # CDF data
+        dg_sorted = dg.sort_values("tm_score").reset_index(drop=True)
+        cdf_all_x = dg_sorted["tm_score"].tolist()
+        cdf_all_y = [(i + 1) / len(dg_sorted) for i in range(len(dg_sorted))]
+        cdf_all_cd = dg_sorted[meta_cols + ["is_top_str"]].values.tolist()
+
+        if not dg_top.empty:
+            dg_top_sorted = dg_top.sort_values("tm_score").reset_index(drop=True)
+            cdf_top_x = dg_top_sorted["tm_score"].tolist()
+            cdf_top_y = [(i + 1) / len(dg_top_sorted) for i in range(len(dg_top_sorted))]
+            cdf_top_cd = dg_top_sorted[meta_cols + ["is_top_str"]].values.tolist()
+        else:
+            cdf_top_x, cdf_top_y, cdf_top_cd = [], [], []
+
+        gt_data_list.append({
+            "gt_id": gt_id, "color": color,
+            "strip_all_x": strip_all_x, "strip_all_cd": strip_all_cd,
+            "strip_top_x": strip_top_x, "strip_top_cd": strip_top_cd,
+            "cdf_all_x": cdf_all_x, "cdf_all_y": cdf_all_y, "cdf_all_cd": cdf_all_cd,
+            "cdf_top_x": cdf_top_x, "cdf_top_y": cdf_top_y, "cdf_top_cd": cdf_top_cd,
         })
 
-    return pd.DataFrame(rows)
+    gt_data_json = json.dumps(gt_data_list)
 
-
-def collect_af3_predictions(df_samples: pd.DataFrame, af3_base: Path) -> pd.DataFrame:
-    """
-    Pure aggregation only. No merge with status or US-align.
-    """
-    parts = []
-    for _, row in df_samples.iterrows():
-        sample_id = str(row["sample_id"])
-        p = af3_base / sample_id / "predictions.tsv"
-        df = load_optional_tsv(p)
-        if df.empty:
-            continue
-
-        df = add_sample_id_if_missing(df, sample_id)
-        parts.append(df)
-
-    return pd.concat(parts, ignore_index=True) if parts else pd.DataFrame()
-
-
-def collect_af3_chains(df_samples: pd.DataFrame, af3_base: Path) -> pd.DataFrame:
-    """
-    Pure aggregation only.
-    """
-    parts = []
-    for _, row in df_samples.iterrows():
-        sample_id = str(row["sample_id"])
-        p = af3_base / sample_id / "chains.tsv"
-        df = load_optional_tsv(p)
-        if df.empty:
-            continue
-
-        df = add_sample_id_if_missing(df, sample_id)
-        parts.append(df)
-
-    return pd.concat(parts, ignore_index=True) if parts else pd.DataFrame()
-
-
-def collect_af3_chain_pairs(df_samples: pd.DataFrame, af3_base: Path) -> pd.DataFrame:
-    """
-    Pure aggregation only.
-    """
-    parts = []
-    for _, row in df_samples.iterrows():
-        sample_id = str(row["sample_id"])
-        p = af3_base / sample_id / "chain_pairs.tsv"
-        df = load_optional_tsv(p)
-        if df.empty:
-            continue
-
-        df = add_sample_id_if_missing(df, sample_id)
-        parts.append(df)
-
-    return pd.concat(parts, ignore_index=True) if parts else pd.DataFrame()
-
-
-def collect_usalign(df_samples: pd.DataFrame, usalign_base: Optional[Path]) -> pd.DataFrame:
-    """
-    Pure aggregation only. No merge with AF3 predictions.
-    Only aggregate samples with non-empty ground_truth and existing US-align summary.
-    """
-    if usalign_base is None or not usalign_base.exists():
-        return pd.DataFrame()
-
-    parts = []
-    for _, row in df_samples.iterrows():
-        sample_id = str(row["sample_id"])
-        ground_truth = str(row.get("ground_truth", "")).strip()
-
-        if not ground_truth:
-            continue
-
-        p = usalign_base / sample_id / "usalign_summary.tsv"
-        df = load_optional_tsv(p)
-        if df.empty:
-            continue
-
-        df = add_sample_id_if_missing(df, sample_id)
-        parts.append(df)
-
-    return pd.concat(parts, ignore_index=True) if parts else pd.DataFrame()
-
-
-def build_master(
-    df_samples: pd.DataFrame,
-    df_pred: pd.DataFrame,
-    df_usalign: pd.DataFrame,
-    df_status: pd.DataFrame,
-    af3_base: Path,
-    usalign_base: Optional[Path],
-) -> pd.DataFrame:
-    """
-    all_master is the only prediction-level merged table:
-      AF3 predictions + optional US-align + sample-level status/path metadata
-    """
-    master = df_pred.copy()
-    if master.empty:
-        return master
-
-    # Merge sample metadata / status once
-    status_keep = [
-        "sample_id",
-        "af3_dir",
-        "ground_truth",
-        "has_ground_truth",
-        "usalign_expected",
-        "usalign_found",
-        "usalign_not_applicable",
-        "usalign_missing_expected",
-        "af3_report_dir",
-        "af3_predictions_tsv",
-        "af3_chains_tsv",
-        "af3_chain_pairs_tsv",
-        "usalign_report_dir",
-        "usalign_summary_tsv",
-    ]
-    status_keep = [c for c in status_keep if c in df_status.columns]
-
-    master = master.merge(
-        df_status[status_keep].drop_duplicates(),
-        on="sample_id",
-        how="left"
+    strip_hover_tpl = (
+        "<b>name:</b> %{customdata[0]}<br>"
+        "<b>description:</b> %{customdata[9]}<br>"
+        "<b>ground truth:</b> %{customdata[10]}<br>"
+        "<b>sample:</b> %{customdata[1]}<br>"
+        "<b>seed:</b> %{customdata[2]}<br>"
+        "<b>ranking score:</b> %{customdata[3]}<br>"
+        "<b>ptm:</b> %{customdata[4]}<br>"
+        "<b>iptm:</b> %{customdata[5]}<br>"
+        "<b>mean pLDDT:</b> %{customdata[6]}<br>"
+        "<b>fraction disordered:</b> %{customdata[7]}<br>"
+        "<b>has clash:</b> %{customdata[8]}<br>"
+        "<b>is top:</b> %{customdata[11]}<br>"
+        "<b>TM score:</b> %{x:.3f}<br>"
+        "<extra></extra>"
+    )
+    cdf_hover_tpl = (
+        "<b>name:</b> %{customdata[0]}<br>"
+        "<b>description:</b> %{customdata[9]}<br>"
+        "<b>ground truth:</b> %{customdata[10]}<br>"
+        "<b>sample:</b> %{customdata[1]}<br>"
+        "<b>seed:</b> %{customdata[2]}<br>"
+        "<b>ranking score:</b> %{customdata[3]}<br>"
+        "<b>ptm:</b> %{customdata[4]}<br>"
+        "<b>iptm:</b> %{customdata[5]}<br>"
+        "<b>mean pLDDT:</b> %{customdata[6]}<br>"
+        "<b>fraction disordered:</b> %{customdata[7]}<br>"
+        "<b>has clash:</b> %{customdata[8]}<br>"
+        "<b>is top:</b> %{customdata[11]}<br>"
+        "<b>TM score ≤</b> %{x:.3f}<br>"
+        "<b>Fraction:</b> %{y:.3f}<br>"
+        "<extra></extra>"
     )
 
-    # Add deterministic AF3 plot paths after merge
-    af3_plot_rows = []
-    for sample_id in master["sample_id"].astype(str).drop_duplicates():
-        plot_dir = af3_base / sample_id / "plots"
-        af3_plot_rows.append({
-            "sample_id": sample_id,
-            "af3_plot_plddt_combined": str(plot_dir / "plddt_combined.html"),
-            "af3_plot_iptm_interactive": str(plot_dir / "iptm_interactive.html"),
-            "af3_plot_pae_multipanel": str(plot_dir / "pae_multipanel.png"),
-            "af3_plot_chain_plddt_multipanel": str(plot_dir / "chain_plddt_multipanel.png"),
-            "af3_plot_plddt_by_prediction": str(plot_dir / "plddt_by_prediction.png"),
-            "af3_plot_ranking_by_prediction": str(plot_dir / "ranking_by_prediction.png"),
-        })
-    df_af3_plots = pd.DataFrame(af3_plot_rows)
+    n_visible = min(max(len(gt_ids), 2), 8)
+    options_html = "\n".join(
+        f'          <option value="{gt}" selected '
+        f'style="padding:3px 6px;">'
+        f'&#9632; {gt}</option>'
+        for gt in gt_ids
+    )
 
-    master = master.merge(df_af3_plots, on="sample_id", how="left")
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>TM Score Distribution</title>
+<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+<style>
+  body {{ font-family: Arial, sans-serif; margin: 20px; }}
+  .container {{ max-width: 1400px; margin: 0 auto; }}
 
-    # Merge optional US-align only into master
-    if not df_usalign.empty:
-        d_u = df_usalign.copy()
+  h2.plot-title {{
+      text-align: center; font-size: 18px; margin: 0 0 14px 0;
+      color: #333;
+  }}
 
-        # The usalign prediction_id now contains the ref name:
-        #   seed-1_sample-0_ref-7WR6
-        # Split into the real prediction_id and a ground_truth_id
-        if "prediction_id" not in d_u.columns and "usalign_id" in d_u.columns:
-            d_u["prediction_id"] = d_u["usalign_id"].astype(str)
+  .controls {{
+      margin-bottom: 12px; padding: 10px 14px;
+      background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px;
+  }}
+  .controls-label {{
+      font-size: 13px; font-weight: bold; color: #495057;
+      margin-bottom: 6px;
+  }}
+  .controls-row {{
+      display: flex; align-items: flex-start; gap: 10px;
+      flex-wrap: wrap;
+  }}
 
-        # Extract ground_truth_id from prediction_id (the _ref-XXX suffix)
-        d_u["prediction_id"] = d_u["prediction_id"].astype(str)
-        d_u["ground_truth_id"] = d_u["prediction_id"].str.extract(r"_ref-(.+)$", expand=False).fillna("")
-        # Strip the _ref-XXX suffix to recover the original prediction_id
-        d_u["prediction_id"] = d_u["prediction_id"].str.replace(r"_ref-.+$", "", regex=True)
+  #gt-select {{
+      font-family: monospace; font-size: 13px;
+      border: 1px solid #ced4da; border-radius: 4px;
+      padding: 2px; min-width: 220px;
+  }}
+  #gt-select option {{ padding: 2px 6px; }}
+  #gt-select option:checked {{ background: #e7f1ff; }}
 
-        u_keep = [
-            "sample_id",
-            "prediction_id",
-            "ground_truth_id",
-            "TM1",
-            "TM2",
-            "RMSD",
-            "ID1",
-            "ID2",
-            "IDali",
-            "L1",
-            "L2",
-            "Lali",
-        ]
-        u_keep = [c for c in u_keep if c in d_u.columns]
-        d_u = d_u[u_keep].drop_duplicates()
+  .btn-col {{
+      display: flex; flex-direction: column; gap: 4px;
+  }}
+  .btn-col button {{
+      padding: 4px 12px; font-size: 12px; cursor: pointer;
+      border: 1px solid #adb5bd; border-radius: 3px;
+      background: #fff; color: #495057; white-space: nowrap;
+  }}
+  .btn-col button:hover {{ background: #e9ecef; }}
 
-        # This is now a one-to-many merge: each prediction gets one row
-        # per ground truth it was compared against
-        master = master.merge(
-            d_u,
-            on=["sample_id", "prediction_id"],
-            how="left"
-        )
+  .toggle-group {{
+      display: flex; gap: 0; margin-left: 18px; align-self: flex-start;
+  }}
+  .toggle-group button {{
+      padding: 6px 16px; font-size: 13px; cursor: pointer;
+      border: 1px solid #adb5bd; background: #fff; color: #495057;
+  }}
+  .toggle-group button:first-child {{
+      border-radius: 4px 0 0 4px;
+  }}
+  .toggle-group button:last-child {{
+      border-radius: 0 4px 4px 0;
+      border-left: none;
+  }}
+  .toggle-group button.active {{
+      background: #4C72B0; color: #fff; border-color: #4C72B0;
+      font-weight: bold;
+  }}
 
-    # Add deterministic US-align plot path after merge, not from df_usalign
-    if usalign_base is not None:
-        usalign_plot_rows = []
-        for sample_id in master["sample_id"].astype(str).drop_duplicates():
-            udir = usalign_base / sample_id
-            usalign_plot_rows.append({
-                "sample_id": sample_id,
-                "usalign_plot_tm_rmsd": str(udir / "plots" / "usalign_tm_rmsd_interactive.html"),
-            })
-        df_usalign_plots = pd.DataFrame(usalign_plot_rows)
-        master = master.merge(df_usalign_plots, on="sample_id", how="left")
+  .hint {{
+      font-size: 11px; color: #6c757d; margin-top: 4px;
+  }}
+  .legend-note {{
+      font-size: 11px; color: #6c757d; text-align: center;
+      margin-top: 2px;
+  }}
 
-    return master
+  #plot {{ margin-top: 4px; }}
+</style>
+</head>
+<body>
+<div class="container">
+  <h2 class="plot-title">{title}</h2>
+
+  <div class="controls">
+    <div class="controls-label">Highlight ground truth references</div>
+    <div class="controls-row">
+      <select id="gt-select" multiple size="{n_visible}">
+{options_html}
+      </select>
+      <div class="btn-col">
+        <button id="btn-all">Select All</button>
+        <button id="btn-none">Clear All</button>
+      </div>
+      <div class="toggle-group">
+        <button id="btn-strip" class="{"active" if default_mode == "strip" else ""}">Strip Chart</button>
+        <button id="btn-cdf" class="{"active" if default_mode == "cdf" else ""}">CDF</button>
+      </div>
+    </div>
+    <div class="hint">
+      Click ground truths to toggle. Use Strip Chart / CDF to switch view.
+    </div>
+  </div>
+
+  <div id="plot"></div>
+  <div id="legend-note" class="legend-note"></div>
+</div>
+
+<script>
+var GT_DATA       = {gt_data_json};
+var STRIP_HOVER   = {json.dumps(strip_hover_tpl)};
+var CDF_HOVER     = {json.dumps(cdf_hover_tpl)};
+var currentMode   = {json.dumps(default_mode)};
+
+var sel      = document.getElementById('gt-select');
+var btnStrip = document.getElementById('btn-strip');
+var btnCdf   = document.getElementById('btn-cdf');
+var legendNote = document.getElementById('legend-note');
+
+sel.addEventListener('mousedown', function(e) {{
+    if (e.target.tagName === 'OPTION') {{
+        e.preventDefault();
+        e.target.selected = !e.target.selected;
+        sel.dispatchEvent(new Event('change'));
+    }}
+}});
+sel.addEventListener('change', rebuildPlot);
+
+document.getElementById('btn-all').addEventListener('click', function() {{
+    for (var i = 0; i < sel.options.length; i++) sel.options[i].selected = true;
+    rebuildPlot();
+}});
+document.getElementById('btn-none').addEventListener('click', function() {{
+    for (var i = 0; i < sel.options.length; i++) sel.options[i].selected = false;
+    rebuildPlot();
+}});
+
+btnStrip.addEventListener('click', function() {{
+    currentMode = 'strip';
+    btnStrip.classList.add('active');
+    btnCdf.classList.remove('active');
+    rebuildPlot();
+}});
+btnCdf.addEventListener('click', function() {{
+    currentMode = 'cdf';
+    btnCdf.classList.add('active');
+    btnStrip.classList.remove('active');
+    rebuildPlot();
+}});
+
+(function colorOptions() {{
+    var gtColors = {{}};
+    GT_DATA.forEach(function(gt) {{ gtColors[gt.gt_id] = gt.color; }});
+    for (var i = 0; i < sel.options.length; i++) {{
+        var c = gtColors[sel.options[i].value] || '#999';
+        sel.options[i].style.color = c;
+        sel.options[i].style.fontWeight = 'bold';
+    }}
+}})();
+
+function rebuildPlot() {{
+    var selected = new Set();
+    for (var i = 0; i < sel.options.length; i++) {{
+        if (sel.options[i].selected) selected.add(sel.options[i].value);
+    }}
+
+    var traces = [];
+    var isStrip = (currentMode === 'strip');
+    var hoverTpl = isStrip ? STRIP_HOVER : CDF_HOVER;
+
+    GT_DATA.forEach(function(gt) {{
+        if (!selected.has(gt.gt_id)) return;
+
+        if (isStrip) {{
+            if (gt.strip_all_x.length > 0) {{
+                traces.push({{
+                    x: gt.strip_all_x,
+                    y: gt.strip_all_x.map(function() {{ return 0.5; }}),
+                    mode: 'markers',
+                    name: gt.gt_id,
+                    customdata: gt.strip_all_cd,
+                    hovertemplate: hoverTpl,
+                    showlegend: true,
+                    marker: {{
+                        color: gt.color, size: 8, opacity: 0.85,
+                        line: {{ width: 1, color: 'black' }}
+                    }}
+                }});
+            }}
+            if (gt.strip_top_x.length > 0) {{
+                traces.push({{
+                    x: gt.strip_top_x,
+                    y: gt.strip_top_x.map(function() {{ return 0.5; }}),
+                    mode: 'markers',
+                    name: gt.gt_id + ' (top)',
+                    customdata: gt.strip_top_cd,
+                    hovertemplate: hoverTpl,
+                    showlegend: true,
+                    marker: {{
+                        color: gt.color, size: 10, opacity: 0.95,
+                        symbol: 'star',
+                        line: {{ width: 1.5, color: 'black' }}
+                    }}
+                }});
+            }}
+        }} else {{
+            if (gt.cdf_all_x.length > 0) {{
+                traces.push({{
+                    x: gt.cdf_all_x,
+                    y: gt.cdf_all_y,
+                    mode: 'lines',
+                    name: gt.gt_id,
+                    customdata: gt.cdf_all_cd,
+                    hovertemplate: hoverTpl,
+                    showlegend: true,
+                    line: {{ color: gt.color, width: 3 }}
+                }});
+            }}
+            if (gt.cdf_top_x.length > 0) {{
+                traces.push({{
+                    x: gt.cdf_top_x,
+                    y: gt.cdf_top_y,
+                    mode: 'lines',
+                    name: gt.gt_id + ' (top)',
+                    customdata: gt.cdf_top_cd,
+                    hovertemplate: hoverTpl,
+                    showlegend: true,
+                    line: {{ color: gt.color, width: 3, dash: 'dash' }}
+                }});
+            }}
+        }}
+    }});
+
+    var yaxis;
+    var plotHeight;
+    if (isStrip) {{
+        yaxis = {{ showticklabels: false, title: '', range: [0, 1] }};
+        plotHeight = 450;
+        legendNote.textContent = 'Circle = all predictions  |  ★ = top predictions';
+    }} else {{
+        yaxis = {{
+            title: 'Cumulative fraction', range: [0, 1.02],
+            tickvals: [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
+        }};
+        plotHeight = 700;
+        legendNote.textContent = 'Solid = all predictions  |  Dashed = top predictions';
+    }}
+
+    var layout = {{
+        xaxis: {{ title: 'TM score', range: [0, 1],
+                  tickvals: [0.0, 0.2, 0.4, 0.6, 0.8, 1.0] }},
+        yaxis: yaxis,
+        template: 'plotly_white',
+        hovermode: 'closest',
+        height: plotHeight,
+        margin: {{ l: 70, r: 30, t: 30, b: 60 }},
+        legend: {{
+            orientation: 'h', yanchor: 'bottom', y: 1.01,
+            xanchor: 'center', x: 0.5, font: {{ size: 11 }},
+        }},
+    }};
+
+    Plotly.newPlot('plot', traces, layout, {{ responsive: true }});
+}}
+
+rebuildPlot();
+</script>
+</body>
+</html>
+"""
+
+    out_html.parent.mkdir(parents=True, exist_ok=True)
+    out_html.write_text(html, encoding="utf-8")
+    return True
+
+
+def add_prediction_metadata(df_pair: pd.DataFrame, df_pred: pd.DataFrame) -> pd.DataFrame:
+    d = df_pair.copy()
+    if d.empty:
+        return d
+
+    required = {"sample_id", "prediction_id"}
+    if not required.issubset(d.columns):
+        return d
+
+    d["sample_id"] = d["sample_id"].astype(str)
+    d["prediction_id"] = d["prediction_id"].astype(str)
+
+    if "pair_iptm" in d.columns:
+        d["pair_iptm"] = pd.to_numeric(d["pair_iptm"], errors="coerce")
+
+    if "chain_i" in d.columns:
+        d["chain_i"] = d["chain_i"].astype(str)
+    if "chain_j" in d.columns:
+        d["chain_j"] = d["chain_j"].astype(str)
+
+    if "is_diagonal" in d.columns:
+        diag = d["is_diagonal"].astype(str).str.lower().isin(["true", "1", "yes"])
+        d = d[~diag].copy()
+
+    if "is_top" in d.columns:
+        d["is_top"] = d["is_top"].astype(str).str.lower().isin(["true", "1", "yes"])
+    else:
+        d["is_top"] = False
+
+    if "seed" in d.columns:
+        d["seed"] = d["seed"].astype(str).replace("", "N/A").replace("nan", "N/A")
+    if "sample" in d.columns:
+        d["sample"] = d["sample"].astype(str).replace("", "N/A").replace("nan", "N/A")
+
+    if df_pred.empty or not required.issubset(df_pred.columns):
+        return d
+
+    p = df_pred.copy()
+    p["sample_id"] = p["sample_id"].astype(str)
+    p["prediction_id"] = p["prediction_id"].astype(str)
+
+    keep = [
+        "sample_id",
+        "prediction_id",
+        "ranking_score",
+        "iptm",
+        "ptm",
+        "mean_plddt_total",
+        "description",
+    ]
+    keep = [c for c in keep if c in p.columns]
+    extra = [c for c in keep if c not in d.columns or c in ["sample_id", "prediction_id"]]
+    p = p[extra].drop_duplicates()
+
+    if len(extra) > 2:
+        d = d.merge(p, on=["sample_id", "prediction_id"], how="left")
+
+    for c in ["ranking_score", "iptm", "ptm", "mean_plddt_total"]:
+        if c in d.columns:
+            d[c] = pd.to_numeric(d[c], errors="coerce")
+
+    return d
+
+
+def plot_chain_pair_iptm_cumulative(
+    df_pair: pd.DataFrame,
+    out_html: Path,
+    title: str = "Distribution of chain-pair ipTM across all predictions",
+) -> bool:
+    required = {"sample_id", "prediction_id", "pair_iptm"}
+    if df_pair.empty or not required.issubset(df_pair.columns):
+        write_no_data_html(out_html, "No chain-pair ipTM data available.")
+        return False
+
+    d = df_pair.copy()
+    d["sample_id"] = d["sample_id"].astype(str)
+    d["prediction_id"] = d["prediction_id"].astype(str)
+    d["pair_iptm"] = pd.to_numeric(d["pair_iptm"], errors="coerce")
+    d = d[d["pair_iptm"].notna()].copy()
+
+    if d.empty:
+        write_no_data_html(out_html, "No valid chain-pair ipTM values available.")
+        return False
+
+    d["name"] = d["sample_id"].str.split("_seed-").str[0].astype(str).replace("nan", "N/A")
+
+    if "seed" not in d.columns or d["seed"].astype(str).isin(["", "N/A", "nan"]).all():
+        d["seed"] = d["sample_id"].str.extract(r"_seed-(\d+)", expand=False).fillna("N/A")
+    else:
+        d["seed"] = d["seed"].astype(str).replace("", "N/A").replace("nan", "N/A")
+
+    if "sample" not in d.columns or d["sample"].astype(str).isin(["", "N/A", "nan"]).all():
+        d["sample"] = d["sample_id"].str.extract(r"_sample-(\d+)", expand=False).fillna("N/A")
+    else:
+        d["sample"] = d["sample"].astype(str).replace("", "N/A").replace("nan", "N/A")
+
+    for c in ["chain_i", "chain_j"]:
+        if c in d.columns:
+            d[c] = d[c].astype(str).replace("nan", "N/A")
+        else:
+            d[c] = "N/A"
+
+    d = _prepare_description_col(d)
+
+    if "is_top" in d.columns:
+        if d["is_top"].dtype == bool:
+            pass
+        else:
+            d["is_top"] = d["is_top"].astype(str).str.lower().isin(["true", "1", "yes"])
+    else:
+        d["is_top"] = False
+
+    d["is_top_str"] = d["is_top"].map({True: "True", False: "False"})
+
+    n_predictions = len(d)
+    default_mode = "cdf" if n_predictions > 100 else "strip"
+
+    hover_cols = [
+        "name", "seed", "sample", "chain_i", "chain_j",
+        "chain_i_desc", "chain_j_desc", "description", "is_top_str",
+    ]
+
+    # --- Build BOTH strip and CDF data ---
+    jitter_val = 0.01
+    d["jitter"] = np.random.uniform(-jitter_val, jitter_val, size=len(d))
+
+    # Strip: all
+    strip_all_x = (d["pair_iptm"] + d["jitter"]).tolist()
+    strip_all_cd = d[hover_cols].values.tolist()
+
+    # Strip: top
+    d_top = d[d["is_top"]].copy()
+    if not d_top.empty:
+        d_top["jitter"] = np.random.uniform(-jitter_val, jitter_val, size=len(d_top))
+        strip_top_x = (d_top["pair_iptm"] + d_top["jitter"]).tolist()
+        strip_top_cd = d_top[hover_cols].values.tolist()
+    else:
+        strip_top_x, strip_top_cd = [], []
+
+    # CDF: all
+    d_sorted = d.sort_values("pair_iptm").reset_index(drop=True)
+    cdf_all_x = d_sorted["pair_iptm"].tolist()
+    cdf_all_y = [(i + 1) / len(d_sorted) for i in range(len(d_sorted))]
+    cdf_all_cd = d_sorted[hover_cols].values.tolist()
+
+    # CDF: top
+    if not d_top.empty:
+        d_top_sorted = d_top.sort_values("pair_iptm").reset_index(drop=True)
+        cdf_top_x = d_top_sorted["pair_iptm"].tolist()
+        cdf_top_y = [(i + 1) / len(d_top_sorted) for i in range(len(d_top_sorted))]
+        cdf_top_cd = d_top_sorted[hover_cols].values.tolist()
+    else:
+        cdf_top_x, cdf_top_y, cdf_top_cd = [], [], []
+
+    plot_data = {
+        "strip_all_x": strip_all_x, "strip_all_cd": strip_all_cd,
+        "strip_top_x": strip_top_x, "strip_top_cd": strip_top_cd,
+        "cdf_all_x": cdf_all_x, "cdf_all_y": cdf_all_y, "cdf_all_cd": cdf_all_cd,
+        "cdf_top_x": cdf_top_x, "cdf_top_y": cdf_top_y, "cdf_top_cd": cdf_top_cd,
+    }
+    plot_data_json = json.dumps(plot_data)
+
+    strip_hover = (
+        "<b>name:</b> %{customdata[0]}<br>"
+        "<b>description:</b> %{customdata[7]}<br>"
+        "<b>pair ipTM:</b> %{x:.3f}<br>"
+        "<b>seed:</b> %{customdata[1]}<br>"
+        "<b>sample:</b> %{customdata[2]}<br>"
+        "<b>chain i:</b> %{customdata[3]} (%{customdata[5]})<br>"
+        "<b>chain j:</b> %{customdata[4]} (%{customdata[6]})<br>"
+        "<b>is top:</b> %{customdata[8]}<br>"
+        "<extra></extra>"
+    )
+    cdf_hover = (
+        "<b>name:</b> %{customdata[0]}<br>"
+        "<b>description:</b> %{customdata[7]}<br>"
+        "<b>pair ipTM ≤</b> %{x:.3f}<br>"
+        "<b>Fraction:</b> %{y:.3f}<br>"
+        "<b>seed:</b> %{customdata[1]}<br>"
+        "<b>sample:</b> %{customdata[2]}<br>"
+        "<b>chain i:</b> %{customdata[3]} (%{customdata[5]})<br>"
+        "<b>chain j:</b> %{customdata[4]} (%{customdata[6]})<br>"
+        "<b>is top:</b> %{customdata[8]}<br>"
+        "<extra></extra>"
+    )
+
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>chain-pair ipTM distribution</title>
+<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+<style>
+  body {{ font-family: Arial, sans-serif; margin: 20px; }}
+  .container {{ max-width: 1400px; margin: 0 auto; }}
+
+  h2.plot-title {{
+      text-align: center; font-size: 18px; margin: 0 0 14px 0;
+      color: #333;
+  }}
+
+  .controls {{
+      margin-bottom: 12px; padding: 10px 14px;
+      background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px;
+      display: flex; align-items: center; gap: 18px;
+  }}
+  .controls-label {{
+      font-size: 13px; font-weight: bold; color: #495057;
+  }}
+
+  .toggle-group {{
+      display: flex; gap: 0;
+  }}
+  .toggle-group button {{
+      padding: 6px 16px; font-size: 13px; cursor: pointer;
+      border: 1px solid #adb5bd; background: #fff; color: #495057;
+  }}
+  .toggle-group button:first-child {{
+      border-radius: 4px 0 0 4px;
+  }}
+  .toggle-group button:last-child {{
+      border-radius: 0 4px 4px 0;
+      border-left: none;
+  }}
+  .toggle-group button.active {{
+      background: #4C72B0; color: #fff; border-color: #4C72B0;
+      font-weight: bold;
+  }}
+
+  .legend-note {{
+      font-size: 11px; color: #6c757d; text-align: center;
+      margin-top: 2px;
+  }}
+
+  #plot {{ margin-top: 4px; }}
+</style>
+</head>
+<body>
+<div class="container">
+  <h2 class="plot-title">{title}</h2>
+
+  <div class="controls">
+    <span class="controls-label">View:</span>
+    <div class="toggle-group">
+      <button id="btn-strip" class="{"active" if default_mode == "strip" else ""}">Strip Chart</button>
+      <button id="btn-cdf" class="{"active" if default_mode == "cdf" else ""}">CDF</button>
+    </div>
+  </div>
+
+  <div id="plot"></div>
+  <div id="legend-note" class="legend-note"></div>
+</div>
+
+<script>
+var DATA        = {plot_data_json};
+var STRIP_HOVER = {json.dumps(strip_hover)};
+var CDF_HOVER   = {json.dumps(cdf_hover)};
+var currentMode = {json.dumps(default_mode)};
+
+var btnStrip   = document.getElementById('btn-strip');
+var btnCdf     = document.getElementById('btn-cdf');
+var legendNote = document.getElementById('legend-note');
+
+btnStrip.addEventListener('click', function() {{
+    currentMode = 'strip';
+    btnStrip.classList.add('active');
+    btnCdf.classList.remove('active');
+    rebuildPlot();
+}});
+btnCdf.addEventListener('click', function() {{
+    currentMode = 'cdf';
+    btnCdf.classList.add('active');
+    btnStrip.classList.remove('active');
+    rebuildPlot();
+}});
+
+function rebuildPlot() {{
+    var traces = [];
+    var isStrip = (currentMode === 'strip');
+
+    if (isStrip) {{
+        if (DATA.strip_all_x.length > 0) {{
+            traces.push({{
+                x: DATA.strip_all_x,
+                y: DATA.strip_all_x.map(function() {{ return 0.5; }}),
+                mode: 'markers',
+                name: 'All predictions',
+                customdata: DATA.strip_all_cd,
+                hovertemplate: STRIP_HOVER,
+                showlegend: true,
+                marker: {{
+                    color: '#4C72B0', size: 6, opacity: 0.7,
+                    line: {{ width: 0.5, color: 'black' }}
+                }}
+            }});
+        }}
+        if (DATA.strip_top_x.length > 0) {{
+            traces.push({{
+                x: DATA.strip_top_x,
+                y: DATA.strip_top_x.map(function() {{ return 0.5; }}),
+                mode: 'markers',
+                name: 'Top predictions',
+                customdata: DATA.strip_top_cd,
+                hovertemplate: STRIP_HOVER,
+                showlegend: true,
+                marker: {{
+                    color: '#D55E00', size: 8, opacity: 0.8,
+                    line: {{ width: 1.5, color: 'black' }}
+                }}
+            }});
+        }}
+    }} else {{
+        if (DATA.cdf_all_x.length > 0) {{
+            traces.push({{
+                x: DATA.cdf_all_x,
+                y: DATA.cdf_all_y,
+                mode: 'lines',
+                name: 'All predictions',
+                customdata: DATA.cdf_all_cd,
+                hovertemplate: CDF_HOVER,
+                showlegend: true,
+                line: {{ color: '#4C72B0', width: 2.5 }}
+            }});
+        }}
+        if (DATA.cdf_top_x.length > 0) {{
+            traces.push({{
+                x: DATA.cdf_top_x,
+                y: DATA.cdf_top_y,
+                mode: 'lines',
+                name: 'Top predictions',
+                customdata: DATA.cdf_top_cd,
+                hovertemplate: CDF_HOVER,
+                showlegend: true,
+                line: {{ color: '#D55E00', width: 2.5, dash: 'solid' }}
+            }});
+        }}
+    }}
+
+    var yaxis;
+    var plotHeight;
+    if (isStrip) {{
+        yaxis = {{ showticklabels: false, title: '', range: [0, 1] }};
+        plotHeight = 400;
+        legendNote.textContent = 'Circle = all predictions  |  Large circle = top predictions';
+    }} else {{
+        yaxis = {{
+            title: 'Cumulative fraction', range: [0, 1.02],
+            tickvals: [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
+        }};
+        plotHeight = 650;
+        legendNote.textContent = 'Blue = all predictions  |  Orange = top predictions';
+    }}
+
+    var layout = {{
+        title: {{ text: '', x: 0.5, xanchor: 'center' }},
+        xaxis: {{
+            title: 'pair ipTM', range: [0, 1],
+            tickvals: [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
+        }},
+        yaxis: yaxis,
+        template: 'plotly_white',
+        hovermode: 'closest',
+        height: plotHeight,
+        margin: {{ l: 70, r: 50, t: 40, b: 70 }},
+        legend: {{
+            orientation: 'h', yanchor: 'bottom', y: 1.02,
+            xanchor: 'center', x: 0.5
+        }},
+    }};
+
+    Plotly.newPlot('plot', traces, layout, {{ responsive: true }});
+}}
+
+rebuildPlot();
+</script>
+</body>
+</html>
+"""
+
+    out_html.parent.mkdir(parents=True, exist_ok=True)
+    out_html.write_text(html, encoding="utf-8")
+    return True
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
 @click.option(
-    "--report-samples",
-    "report_samples_path",
+    "--pair-tsv",
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
     required=True,
-    help="TSV with sample_id, af3_dir, and optional ground_truth."
+    help="Aggregated cohort chain-pair table, e.g. cohort_chain_pairs.tsv"
 )
 @click.option(
-    "--af3-base",
-    type=click.Path(exists=True, file_okay=False, path_type=Path),
-    default=Path("reports/alphafold3"),
-    show_default=True,
-    help="Base directory containing per-sample AF3 report outputs."
-)
-@click.option(
-    "--usalign-base",
-    type=click.Path(exists=False, file_okay=False, path_type=Path),
-    default=Path("reports/usalign"),
-    show_default=True,
-    help="Base directory containing per-sample US-align report outputs. Optional."
-)
-@click.option(
-    "-o", "--outdir",
-    type=click.Path(file_okay=False, path_type=Path),
+    "-o", "--out-html",
+    type=click.Path(dir_okay=False, path_type=Path),
     required=True,
-    help="Output directory for cohort tables."
+    help="Output HTML path for ipTM plot."
 )
-def main(
-    report_samples_path: Path,
-    af3_base: Path,
-    usalign_base: Optional[Path],
-    outdir: Path
-):
+@click.option(
+    "--tm-plot",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=None,
+    help="Output HTML path for TM score distribution plot."
+)
+@click.option(
+    "--master-tsv",
+    type=click.Path(exists=False, dir_okay=False, path_type=Path),
+    default=None,
+    help="Optional: Path to all_master.tsv (contains TM1, TM2, description, etc.)."
+)
+def main(pair_tsv: Path, out_html: Path, tm_plot: Optional[Path], master_tsv: Optional[Path]):
     """
-    Aggregate AF3 and optional US-align tables across all sample report directories.
-
-    Outputs:
-      - all_chain_pairs.tsv        (aggregation only)
-      - all_chains.tsv            (aggregation only)
-      - all_predictions.tsv       (aggregation only)
-      - all_usalign.tsv           (aggregation only)
-      - all_sample_status.tsv     (derived sample-level merged/status table)
-      - all_master.tsv            (merged prediction-level table)
-
-    Only all_master.tsv and all_sample_status.tsv are merge/derived tables.
+    Create two interactive plots:
+    1. Distribution of chain-pair ipTM across all predictions.
+    2. Distribution of TM scores across all predictions.
     """
-    outdir.mkdir(parents=True, exist_ok=True)
+    df_pair = load_tsv(pair_tsv)
+    df_pair = coerce_numeric(df_pair, ["pair_iptm", "pair_pae_min"])
 
-    df_samples = read_report_samples(report_samples_path)
+    df_master = load_tsv(master_tsv) if master_tsv is not None and master_tsv.exists() else pd.DataFrame()
+    df_master = coerce_numeric(df_master, ["ranking_score", "iptm", "ptm", "mean_plddt_total"])
 
-    use_usalign = usalign_base is not None and Path(usalign_base).exists()
-    usalign_base_eff = Path(usalign_base) if use_usalign else None
+    d = add_prediction_metadata(df_pair, df_master)
 
-    # Aggregation-only tables
-    df_pred = collect_af3_predictions(df_samples, af3_base=af3_base)
-    df_chain = collect_af3_chains(df_samples, af3_base=af3_base)
-    df_pair = collect_af3_chain_pairs(df_samples, af3_base=af3_base)
-    df_usalign = collect_usalign(df_samples, usalign_base=usalign_base_eff)
+    plot_chain_pair_iptm_cumulative(d, out_html)
 
-    # Derived/merged tables
-    df_status = sample_status_table(df_samples, af3_base=af3_base, usalign_base=usalign_base_eff)
-    master = build_master(
-        df_samples=df_samples,
-        df_pred=df_pred,
-        df_usalign=df_usalign,
-        df_status=df_status,
-        af3_base=af3_base,
-        usalign_base=usalign_base_eff,
-    )
+    if tm_plot is not None:
+        if master_tsv is not None and master_tsv.exists():
+            tm_source = master_tsv
+        else:
+            tm_source = Path("reports/all/all_master.tsv")
 
-    # Write aggregation-only tables
-    df_pair.to_csv(outdir / "all_chain_pairs.tsv", sep="\t", index=False)
-    df_chain.to_csv(outdir / "all_chains.tsv", sep="\t", index=False)
-    df_pred.to_csv(outdir / "all_predictions.tsv", sep="\t", index=False)
-    df_usalign.to_csv(outdir / "all_usalign.tsv", sep="\t", index=False)
+        if not tm_source.exists():
+            click.echo(f"⚠️  {tm_source} not found. Skipping TM score plot.")
+        else:
+            df_tm = load_tsv(tm_source)
+            df_tm = coerce_numeric(df_tm, [
+                "TM1", "TM2", "ranking_score", "ptm", "iptm",
+                "mean_plddt_total", "fraction_disordered"
+            ])
+            plot_tm_score_distribution(df_tm, tm_plot)
 
-    # Write merged/derived tables
-    df_status.to_csv(outdir / "all_sample_status.tsv", sep="\t", index=False)
-
-    preferred = [
-        "sample_id",
-        "prediction_id",
-        "sample_pred_id",
-        "description",
-        "ground_truth_id",
-        "seed",
-        "sample",
-        "is_top",
-        "ranking_score",
-        "ptm",
-        "iptm",
-        "fraction_disordered",
-        "has_clash",
-        "mean_plddt_total",
-        "std_plddt_total",
-        "TM1",
-        "TM2",
-        "RMSD",
-        "ID1",
-        "ID2",
-        "IDali",
-        "L1",
-        "L2",
-        "Lali",
-        "af3_dir",
-        "ground_truth",
-        "has_ground_truth",
-        "usalign_expected",
-        "usalign_found",
-        "usalign_not_applicable",
-        "usalign_missing_expected",
-        "summary_path",
-        "confidences_path",
-        "af3_report_dir",
-        "af3_predictions_tsv",
-        "af3_chains_tsv",
-        "af3_chain_pairs_tsv",
-        "af3_plot_plddt_combined",
-        "af3_plot_iptm_interactive",
-        "af3_plot_pae_multipanel",
-        "af3_plot_chain_plddt_multipanel",
-        "af3_plot_plddt_by_prediction",
-        "af3_plot_ranking_by_prediction",
-        "usalign_report_dir",
-        "usalign_summary_tsv",
-        "usalign_plot_tm_rmsd",
-    ]
-    cols = [c for c in preferred if c in master.columns] + [c for c in master.columns if c not in preferred]
-    master = master[cols]
-    master.to_csv(outdir / "all_master.tsv", sep="\t", index=False)
-
-    click.echo(str(outdir / "all_master.tsv"))
+    click.echo(f"✅ ipTM plot saved to: {out_html}")
+    if tm_plot is not None:
+        click.echo(f"✅ TM score plot saved to: {tm_plot}")
 
 
 if __name__ == "__main__":

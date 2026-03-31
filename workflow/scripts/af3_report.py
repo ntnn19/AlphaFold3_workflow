@@ -861,7 +861,6 @@ def plot_pae_multipanel_best_labeled(
 
         bounds = _chain_boundaries_from_token_chain_ids(tchains)
 
-        # Build description for this prediction
         sample_id = str(row.get("sample_id", ""))
         chain_ids_unique = sorted(set(tchains.tolist()))
         desc_str = build_description_string(sample_id, descriptions or {}, chain_ids_unique)
@@ -879,9 +878,18 @@ def plot_pae_multipanel_best_labeled(
     ncols = max(1, int(ncols))
     nrows = int(math.ceil(n / ncols))
 
-    fig_w = 4.0 * ncols
-    fig_h = 4.0 * nrows
-    fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=(fig_w, fig_h), squeeze=False)
+    # ---- Extra width for the colorbar column ----
+    panel_size = 4.0
+    cbar_width = 0.6
+    fig_w = panel_size * ncols + cbar_width
+    fig_h = panel_size * nrows
+
+    fig, axes = plt.subplots(
+        nrows=nrows, ncols=ncols,
+        figsize=(fig_w, fig_h),
+        squeeze=False,
+        gridspec_kw={"wspace": 0.20, "hspace": 0.45},
+    )
 
     last_im = None
     for k, (pid, is_top, pae, bounds, desc_str) in enumerate(entries):
@@ -921,11 +929,13 @@ def plot_pae_multipanel_best_labeled(
         r, c = divmod(k, ncols)
         axes[r][c].axis("off")
 
+    # ---- Colorbar: dedicated space on the right, no subplot stealing ----
     if last_im is not None:
-        cbar = fig.colorbar(last_im, ax=axes.ravel().tolist(), fraction=0.02, pad=0.02)
+        fig.subplots_adjust(right=0.88)
+        cbar_ax = fig.add_axes([0.90, 0.15, 0.025, 0.7])   # [left, bottom, width, height]
+        cbar = fig.colorbar(last_im, cax=cbar_ax)
         cbar.set_label("PAE (Å)")
 
-    fig.subplots_adjust(wspace=0.15, hspace=0.45)
     outpath.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(outpath, dpi=180, bbox_inches="tight")
     plt.close(fig)
@@ -1220,39 +1230,41 @@ def plot_complex_overview(
     desc_str = build_description_string(sample_id, descriptions or {})
     suptitle_suffix = f"\n{desc_str}" if desc_str else ""
 
-    # ranking by prediction
-    plt.figure(figsize=(max(6, 0.35 * len(d)), 4.2))
-    sns.stripplot(data=d, x="prediction_label", y="ranking_score", dodge=True)
-    plt.xticks(rotation=60, ha="right")
-    plt.xlabel("prediction")
-    plt.ylabel("ranking_score")
+    # ---- ranking by prediction (horizontal) ----
+    plt.figure(figsize=(6, max(3, 0.35 * len(d))))
+    sns.stripplot(data=d, y="prediction_label", x="ranking_score", dodge=True,
+                  orient="h")
+    plt.ylabel("prediction")
+    plt.xlabel("ranking_score")
     if suptitle_suffix:
         plt.title(f"Ranking score by prediction{suptitle_suffix}", fontsize=10)
     p = outdir / "plots" / "ranking_by_prediction.png"
     save_fig(p)
     plots["ranking_by_prediction"] = str(p.relative_to(outdir))
 
-    # mean pLDDT per prediction with SD
+    # ---- mean pLDDT per prediction with SD (horizontal) ----
     d2 = d.copy()
     d2["mean_plddt_total"] = pd.to_numeric(d2["mean_plddt_total"], errors="coerce")
     d2["std_plddt_total"] = pd.to_numeric(d2.get("std_plddt_total"), errors="coerce")
 
-    plt.figure(figsize=(max(6, 0.45 * len(d2)), 4.5))
+    plt.figure(figsize=(6, max(3, 0.45 * len(d2))))
     ax = plt.gca()
 
-    x = np.arange(len(d2))
-    y = d2["mean_plddt_total"].to_numpy(dtype=float)
-    yerr = d2["std_plddt_total"].to_numpy(dtype=float)
+    y_pos = np.arange(len(d2))
+    x_vals = d2["mean_plddt_total"].to_numpy(dtype=float)
+    xerr = d2["std_plddt_total"].to_numpy(dtype=float)
     labels = d2["prediction_label"].astype(str).tolist()
 
-    ax.bar(x, y, color="#4C72B0", alpha=0.9)
-    ax.errorbar(x, y, yerr=yerr, fmt="none", ecolor="black", elinewidth=1, capsize=3)
+    ax.barh(y_pos, x_vals, color="#4C72B0", alpha=0.9)
+    ax.errorbar(x_vals, y_pos, xerr=xerr, fmt="none", ecolor="black",
+                elinewidth=1, capsize=3)
 
-    ax.set_xticks(x)
-    ax.set_xticklabels(labels, rotation=60, ha="right")
-    ax.set_xlabel("prediction")
-    ax.set_ylabel("mean pLDDT (atom mean ± SD)")
-    ax.set_ylim(0, max(100, np.nanmax(y + np.nan_to_num(yerr, nan=0)) * 1.05))
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(labels)
+    ax.set_ylabel("prediction")
+    ax.set_xlabel("mean pLDDT (atom mean ± SD)")
+    ax.set_xlim(0, max(100, np.nanmax(x_vals + np.nan_to_num(xerr, nan=0)) * 1.05))
+    ax.invert_yaxis()                       # top-ranked at the top
     if suptitle_suffix:
         ax.set_title(f"Mean pLDDT by prediction{suptitle_suffix}", fontsize=10)
 
@@ -1261,6 +1273,7 @@ def plot_complex_overview(
     plots["plddt_by_prediction"] = str(p.relative_to(outdir))
 
     return plots
+
 
 def plot_chain_bars_per_prediction(
     df_chain: pd.DataFrame,
@@ -1298,17 +1311,19 @@ def plot_chain_bars_per_prediction(
     ncols = max(1, int(ncols))
     nrows = int(math.ceil(n / ncols))
 
-    fig_w = 4.4 * ncols
+    fig_w = 4.8 * ncols
     fig_h = 3.9 * nrows
-    fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=(fig_w, fig_h), squeeze=False)
+    fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=(fig_w, fig_h),
+                             squeeze=False)
 
-    ymax_data = (d["mean_plddt_chain"] + d["std_plddt_chain"].fillna(0)).max()
-    if pd.isna(ymax_data):
-        ymax_data = 100
-    ymax = max(100, float(ymax_data) * 1.05)
+    xmax_data = (d["mean_plddt_chain"] + d["std_plddt_chain"].fillna(0)).max()
+    if pd.isna(xmax_data):
+        xmax_data = 100
+    xmax = max(100, float(xmax_data) * 1.05)
 
     # Build chain description map
-    sample_id = str(d["sample_id"].iloc[0]) if "sample_id" in d.columns and not d.empty else ""
+    sample_id = (str(d["sample_id"].iloc[0])
+                 if "sample_id" in d.columns and not d.empty else "")
     chain_desc_map = {}
     if descriptions:
         job_name = get_job_name_from_sample_id(sample_id)
@@ -1332,36 +1347,38 @@ def plot_chain_bars_per_prediction(
         sub["chain_id"] = sub["chain_id"].astype(str)
         sub = sub.sort_values("chain_id")
 
-        x = np.arange(len(sub))
-        y = sub["mean_plddt_chain"].to_numpy(dtype=float)
-        yerr = sub["std_plddt_chain"].to_numpy(dtype=float)
+        y_pos = np.arange(len(sub))
+        x_vals = sub["mean_plddt_chain"].to_numpy(dtype=float)
+        xerr = sub["std_plddt_chain"].to_numpy(dtype=float)
 
-        ax.bar(x, y, color="#4C72B0", alpha=0.9)
-        ax.errorbar(x, y, yerr=yerr, fmt="none", ecolor="black", elinewidth=1, capsize=3)
+        ax.barh(y_pos, x_vals, color="#4C72B0", alpha=0.9)
+        ax.errorbar(x_vals, y_pos, xerr=xerr, fmt="none", ecolor="black",
+                     elinewidth=1, capsize=3)
 
         is_top = bool(sub["is_top"].fillna(False).any())
         title = f"TOP: {pred_id}" if is_top else str(pred_id)
 
         ax.set_title(title, fontsize=9)
-        ax.set_xlabel("chain")
-        ax.set_ylabel("mean pLDDT")
-        ax.set_ylim(0, ymax)
+        ax.set_ylabel("chain")
+        ax.set_xlabel("mean pLDDT")
+        ax.set_xlim(0, xmax)
 
-        # Build x-axis labels with descriptions
+        # Build y-axis labels with descriptions
         chain_labels = []
         for cid in sub["chain_id"].tolist():
             desc = chain_desc_map.get(cid, "")
             if desc:
-                chain_labels.append(f"{cid}\n({desc[:20]})")
+                chain_labels.append(f"{cid} ({desc[:25]})")
             else:
                 chain_labels.append(cid)
 
-        ax.set_xticks(x)
-        ax.set_xticklabels(chain_labels, rotation=0, ha="center", fontsize=7)
+        ax.set_yticks(y_pos)
+        ax.set_yticklabels(chain_labels, fontsize=7)
+        ax.invert_yaxis()               # chain A at the top
 
-        ax.axhline(50, color="gray", lw=0.8, ls="--", alpha=0.5)
-        ax.axhline(70, color="gray", lw=0.8, ls="--", alpha=0.5)
-        ax.axhline(90, color="gray", lw=0.8, ls="--", alpha=0.5)
+        ax.axvline(50, color="gray", lw=0.8, ls="--", alpha=0.5)
+        ax.axvline(70, color="gray", lw=0.8, ls="--", alpha=0.5)
+        ax.axvline(90, color="gray", lw=0.8, ls="--", alpha=0.5)
 
     for k in range(n, nrows * ncols):
         r, c = divmod(k, ncols)
@@ -1373,7 +1390,7 @@ def plot_chain_bars_per_prediction(
     if desc_str:
         suptitle += f"\n{desc_str}"
     fig.suptitle(suptitle, fontsize=11)
-    fig.subplots_adjust(wspace=0.28, hspace=0.55, top=0.88)
+    fig.subplots_adjust(wspace=0.35, hspace=0.55, top=0.88)
 
     p = outdir / "plots" / "chain_plddt_multipanel.png"
     p.parent.mkdir(parents=True, exist_ok=True)
@@ -1381,6 +1398,7 @@ def plot_chain_bars_per_prediction(
     plt.close(fig)
 
     return str(p.relative_to(outdir))
+
 
 def plot_pair_heatmap_per_prediction(
     df_pair: pd.DataFrame,
