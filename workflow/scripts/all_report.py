@@ -36,9 +36,6 @@ def add_sample_id_if_missing(df: pd.DataFrame, sample_id: str) -> pd.DataFrame:
 
 
 def sample_status_table(df_samples: pd.DataFrame, af3_base: Path, usalign_base: Optional[Path]) -> pd.DataFrame:
-    """
-    This is a merged/derived sample-level table from the sample sheet plus file existence checks.
-    """
     rows = []
     for _, row in df_samples.iterrows():
         sample_id = str(row["sample_id"])
@@ -80,9 +77,6 @@ def sample_status_table(df_samples: pd.DataFrame, af3_base: Path, usalign_base: 
 
 
 def collect_af3_predictions(df_samples: pd.DataFrame, af3_base: Path) -> pd.DataFrame:
-    """
-    Pure aggregation only. No merge with status or US-align.
-    """
     parts = []
     for _, row in df_samples.iterrows():
         sample_id = str(row["sample_id"])
@@ -90,17 +84,12 @@ def collect_af3_predictions(df_samples: pd.DataFrame, af3_base: Path) -> pd.Data
         df = load_optional_tsv(p)
         if df.empty:
             continue
-
         df = add_sample_id_if_missing(df, sample_id)
         parts.append(df)
-
     return pd.concat(parts, ignore_index=True) if parts else pd.DataFrame()
 
 
 def collect_af3_chains(df_samples: pd.DataFrame, af3_base: Path) -> pd.DataFrame:
-    """
-    Pure aggregation only.
-    """
     parts = []
     for _, row in df_samples.iterrows():
         sample_id = str(row["sample_id"])
@@ -108,17 +97,12 @@ def collect_af3_chains(df_samples: pd.DataFrame, af3_base: Path) -> pd.DataFrame
         df = load_optional_tsv(p)
         if df.empty:
             continue
-
         df = add_sample_id_if_missing(df, sample_id)
         parts.append(df)
-
     return pd.concat(parts, ignore_index=True) if parts else pd.DataFrame()
 
 
 def collect_af3_chain_pairs(df_samples: pd.DataFrame, af3_base: Path) -> pd.DataFrame:
-    """
-    Pure aggregation only.
-    """
     parts = []
     for _, row in df_samples.iterrows():
         sample_id = str(row["sample_id"])
@@ -126,18 +110,12 @@ def collect_af3_chain_pairs(df_samples: pd.DataFrame, af3_base: Path) -> pd.Data
         df = load_optional_tsv(p)
         if df.empty:
             continue
-
         df = add_sample_id_if_missing(df, sample_id)
         parts.append(df)
-
     return pd.concat(parts, ignore_index=True) if parts else pd.DataFrame()
 
 
 def collect_usalign(df_samples: pd.DataFrame, usalign_base: Optional[Path]) -> pd.DataFrame:
-    """
-    Pure aggregation only. No merge with AF3 predictions.
-    Only aggregate samples with non-empty ground_truth and existing US-align summary.
-    """
     if usalign_base is None or not usalign_base.exists():
         return pd.DataFrame()
 
@@ -145,18 +123,14 @@ def collect_usalign(df_samples: pd.DataFrame, usalign_base: Optional[Path]) -> p
     for _, row in df_samples.iterrows():
         sample_id = str(row["sample_id"])
         ground_truth = str(row.get("ground_truth", "")).strip()
-
         if not ground_truth:
             continue
-
         p = usalign_base / sample_id / "usalign_summary.tsv"
         df = load_optional_tsv(p)
         if df.empty:
             continue
-
         df = add_sample_id_if_missing(df, sample_id)
         parts.append(df)
-
     return pd.concat(parts, ignore_index=True) if parts else pd.DataFrame()
 
 
@@ -168,40 +142,31 @@ def build_master(
     af3_base: Path,
     usalign_base: Optional[Path],
 ) -> pd.DataFrame:
-    """
-    all_master is the only prediction-level merged table:
-      AF3 predictions + optional US-align + sample-level status/path metadata
-    """
     master = df_pred.copy()
     if master.empty:
         return master
 
-    # Merge sample metadata / status once
+    # --- Drop any pre-existing empty ground_truth_id to avoid _x/_y collisions ---
+    if "ground_truth_id" in master.columns:
+        non_empty = master["ground_truth_id"].astype(str).replace("nan", "").str.strip()
+        if (non_empty == "").all():
+            master = master.drop(columns=["ground_truth_id"])
+
+    # Merge sample metadata / status
     status_keep = [
-        "sample_id",
-        "af3_dir",
-        "ground_truth",
-        "has_ground_truth",
-        "usalign_expected",
-        "usalign_found",
-        "usalign_not_applicable",
-        "usalign_missing_expected",
-        "af3_report_dir",
-        "af3_predictions_tsv",
-        "af3_chains_tsv",
-        "af3_chain_pairs_tsv",
-        "usalign_report_dir",
+        "sample_id", "af3_dir", "ground_truth", "has_ground_truth",
+        "usalign_expected", "usalign_found", "usalign_not_applicable",
+        "usalign_missing_expected", "af3_report_dir", "af3_predictions_tsv",
+        "af3_chains_tsv", "af3_chain_pairs_tsv", "usalign_report_dir",
         "usalign_summary_tsv",
     ]
     status_keep = [c for c in status_keep if c in df_status.columns]
-
     master = master.merge(
         df_status[status_keep].drop_duplicates(),
-        on="sample_id",
-        how="left"
+        on="sample_id", how="left"
     )
 
-    # Add deterministic AF3 plot paths after merge
+    # Add deterministic AF3 plot paths
     af3_plot_rows = []
     for sample_id in master["sample_id"].astype(str).drop_duplicates():
         plot_dir = af3_base / sample_id / "plots"
@@ -215,51 +180,70 @@ def build_master(
             "af3_plot_ranking_by_prediction": str(plot_dir / "ranking_by_prediction.png"),
         })
     df_af3_plots = pd.DataFrame(af3_plot_rows)
-
     master = master.merge(df_af3_plots, on="sample_id", how="left")
 
-    # Merge optional US-align only into master
+    # --- Merge US-align with proper ground_truth_id extraction ---
     if not df_usalign.empty:
         d_u = df_usalign.copy()
 
-        # The usalign prediction_id now contains the ref name:
-        #   seed-1_sample-0_ref-7WR6
-        # Split into the real prediction_id and a ground_truth_id
         if "prediction_id" not in d_u.columns and "usalign_id" in d_u.columns:
             d_u["prediction_id"] = d_u["usalign_id"].astype(str)
 
-        # Extract ground_truth_id from prediction_id (the _ref-XXX suffix)
         d_u["prediction_id"] = d_u["prediction_id"].astype(str)
-        d_u["ground_truth_id"] = d_u["prediction_id"].str.extract(r"_ref-(.+)$", expand=False).fillna("")
+
+        # Extract ground_truth_id from the _ref-XXX suffix
+        d_u["ground_truth_id"] = (
+            d_u["prediction_id"]
+            .str.extract(r"_ref-(.+)$", expand=False)
+            .fillna("")
+        )
+
+        # If regex extraction didn't work (no _ref- pattern), try deriving
+        # from the ground_truth column which has the actual reference path
+        if "ground_truth" in d_u.columns:
+            gt_from_path = (
+                d_u["ground_truth"]
+                .astype(str)
+                .apply(lambda p: Path(p).stem if p and p != "nan" else "")
+            )
+            # Use path-derived ID where regex extraction came up empty
+            mask = d_u["ground_truth_id"].eq("")
+            d_u.loc[mask, "ground_truth_id"] = gt_from_path[mask]
+
         # Strip the _ref-XXX suffix to recover the original prediction_id
-        d_u["prediction_id"] = d_u["prediction_id"].str.replace(r"_ref-.+$", "", regex=True)
+        d_u["prediction_id"] = (
+            d_u["prediction_id"]
+            .str.replace(r"_ref-.+$", "", regex=True)
+        )
+
+        # Replace any remaining empty ground_truth_id with "default"
+        d_u.loc[d_u["ground_truth_id"].eq(""), "ground_truth_id"] = "default"
 
         u_keep = [
-            "sample_id",
-            "prediction_id",
-            "ground_truth_id",
-            "TM1",
-            "TM2",
-            "RMSD",
-            "ID1",
-            "ID2",
-            "IDali",
-            "L1",
-            "L2",
-            "Lali",
+            "sample_id", "prediction_id", "ground_truth_id",
+            "TM1", "TM2", "RMSD", "ID1", "ID2", "IDali",
+            "L1", "L2", "Lali",
         ]
         u_keep = [c for c in u_keep if c in d_u.columns]
         d_u = d_u[u_keep].drop_duplicates()
 
-        # This is now a one-to-many merge: each prediction gets one row
-        # per ground truth it was compared against
+        # One-to-many merge: each prediction gets one row per ground truth
         master = master.merge(
-            d_u,
-            on=["sample_id", "prediction_id"],
-            how="left"
+            d_u, on=["sample_id", "prediction_id"], how="left"
         )
 
-    # Add deterministic US-align plot path after merge, not from df_usalign
+    # If ground_truth_id is still missing after everything, fill with "default"
+    if "ground_truth_id" not in master.columns:
+        master["ground_truth_id"] = "default"
+    else:
+        master["ground_truth_id"] = (
+            master["ground_truth_id"]
+            .astype(str)
+            .replace("", "default")
+            .replace("nan", "default")
+        )
+
+    # Add deterministic US-align plot path
     if usalign_base is not None:
         usalign_plot_rows = []
         for sample_id in master["sample_id"].astype(str).drop_duplicates():
@@ -276,8 +260,7 @@ def build_master(
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
 @click.option(
-    "--report-samples",
-    "report_samples_path",
+    "--report-samples", "report_samples_path",
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
     required=True,
     help="TSV with sample_id, af3_dir, and optional ground_truth."
@@ -285,15 +268,13 @@ def build_master(
 @click.option(
     "--af3-base",
     type=click.Path(exists=True, file_okay=False, path_type=Path),
-    default=Path("reports/alphafold3"),
-    show_default=True,
+    default=Path("reports/alphafold3"), show_default=True,
     help="Base directory containing per-sample AF3 report outputs."
 )
 @click.option(
     "--usalign-base",
     type=click.Path(exists=False, file_okay=False, path_type=Path),
-    default=Path("reports/usalign"),
-    show_default=True,
+    default=Path("reports/usalign"), show_default=True,
     help="Base directory containing per-sample US-align report outputs. Optional."
 )
 @click.option(
@@ -355,54 +336,24 @@ def main(
     df_status.to_csv(outdir / "all_sample_status.tsv", sep="\t", index=False)
 
     preferred = [
-        "sample_id",
-        "prediction_id",
-        "sample_pred_id",
-        "description",
-        "ground_truth_id",
-        "seed",
-        "sample",
-        "is_top",
-        "ranking_score",
-        "ptm",
-        "iptm",
-        "fraction_disordered",
-        "has_clash",
-        "mean_plddt_total",
-        "std_plddt_total",
-        "TM1",
-        "TM2",
-        "RMSD",
-        "ID1",
-        "ID2",
-        "IDali",
-        "L1",
-        "L2",
-        "Lali",
-        "af3_dir",
-        "ground_truth",
-        "has_ground_truth",
-        "usalign_expected",
-        "usalign_found",
-        "usalign_not_applicable",
-        "usalign_missing_expected",
-        "summary_path",
-        "confidences_path",
-        "af3_report_dir",
-        "af3_predictions_tsv",
-        "af3_chains_tsv",
-        "af3_chain_pairs_tsv",
-        "af3_plot_plddt_combined",
-        "af3_plot_iptm_interactive",
-        "af3_plot_pae_multipanel",
-        "af3_plot_chain_plddt_multipanel",
-        "af3_plot_plddt_by_prediction",
-        "af3_plot_ranking_by_prediction",
-        "usalign_report_dir",
-        "usalign_summary_tsv",
-        "usalign_plot_tm_rmsd",
+        "sample_id", "prediction_id", "sample_pred_id", "description",
+        "ground_truth_id", "seed", "sample", "is_top", "ranking_score",
+        "ptm", "iptm", "fraction_disordered", "has_clash",
+        "mean_plddt_total", "std_plddt_total",
+        "TM1", "TM2", "RMSD", "ID1", "ID2", "IDali", "L1", "L2", "Lali",
+        "af3_dir", "ground_truth", "has_ground_truth",
+        "usalign_expected", "usalign_found", "usalign_not_applicable",
+        "usalign_missing_expected", "summary_path", "confidences_path",
+        "af3_report_dir", "af3_predictions_tsv", "af3_chains_tsv",
+        "af3_chain_pairs_tsv", "af3_plot_plddt_combined",
+        "af3_plot_iptm_interactive", "af3_plot_pae_multipanel",
+        "af3_plot_chain_plddt_multipanel", "af3_plot_plddt_by_prediction",
+        "af3_plot_ranking_by_prediction", "usalign_report_dir",
+        "usalign_summary_tsv", "usalign_plot_tm_rmsd",
     ]
-    cols = [c for c in preferred if c in master.columns] + [c for c in master.columns if c not in preferred]
+    cols = [c for c in preferred if c in master.columns] + [
+        c for c in master.columns if c not in preferred
+    ]
     master = master[cols]
     master.to_csv(outdir / "all_master.tsv", sep="\t", index=False)
 
