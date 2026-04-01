@@ -217,8 +217,8 @@ def plot_tm_score_distribution(
 
     fig.update_layout(
         title=dict(text=title, x=0.5, xanchor="center", font=dict(size=16)),
-        xaxis=dict(title="Ground Truth", side="bottom",
-                   tickangle=-45 if n_gts > 6 else 0, tickfont=dict(size=11)),
+        xaxis=dict(title="Ground Truth", side="top",
+                   tickangle=-45, tickfont=dict(size=11)),
         yaxis=dict(title="Prediction", autorange="reversed", tickfont=dict(size=10)),
         template="plotly_white", height=plot_height, width=plot_width,
         margin=dict(l=250, r=80, t=80, b=120),
