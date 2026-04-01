@@ -52,6 +52,14 @@ def _prepare_description_col(d: pd.DataFrame) -> pd.DataFrame:
     return d
 
 
+def _split_description_lines(desc: str, max_width: int = 60) -> str:
+    """Split a semicolon-separated description so each chain is on its own line."""
+    if not desc or desc == "N/A":
+        return "N/A"
+    parts = [p.strip() for p in desc.split(";") if p.strip()]
+    return "<br>".join(parts)
+
+
 # ---------------------------------------------------------------------------
 # TM-score heatmap
 # ---------------------------------------------------------------------------
@@ -89,6 +97,12 @@ def plot_tm_score_distribution(
         d["sample"] = d["sample"].astype(str).replace("", "N/A").replace("nan", "N/A")
 
     d = _prepare_description_col(d)
+
+    # Build a per-chain description for hover
+    if "description" in d.columns:
+        d["description_hover"] = d["description"].apply(_split_description_lines)
+    else:
+        d["description_hover"] = "N/A"
 
     if "is_top" in d.columns:
         d["is_top"] = d["is_top"].astype(str).str.lower().isin(["true", "1", "yes"])
@@ -147,12 +161,13 @@ def plot_tm_score_distribution(
             if info is not None:
                 tm2_val = info["TM2"]
                 tm1_val = info.get("TM1", float("nan"))
+                desc_hover = info.get("description_hover", "N/A")
                 lines = [
                     f"<b>Prediction:</b> {pred}",
                     f"<b>Ground truth:</b> {gt}",
                     f"<b>TM2:</b> {tm2_val:.3f}" if pd.notna(tm2_val) else "<b>TM2:</b> N/A",
                     f"<b>TM1:</b> {tm1_val:.3f}" if pd.notna(tm1_val) else "<b>TM1:</b> N/A",
-                    f"<b>description:</b> {info.get('description', 'N/A')}",
+                    f"<b>Description:</b><br>{desc_hover}",
                     f"<b>seed:</b> {info.get('seed', 'N/A')}",
                     f"<b>sample:</b> {info.get('sample', 'N/A')}",
                     f"<b>ranking score:</b> {info.get('ranking_score', 'N/A')}",
@@ -328,15 +343,12 @@ def plot_chain_pair_iptm_cumulative(
         d["ranking_score"] = np.nan
 
     # ---- determine "top" pairs ----
-    # Top prediction = the prediction_id with the highest ranking_score.
-    # If is_top was already set upstream we respect it; otherwise derive it.
     if "is_top" in d.columns:
         if d["is_top"].dtype != bool:
             d["is_top"] = d["is_top"].astype(str).str.lower().isin(["true", "1", "yes"])
     else:
         d["is_top"] = False
 
-    # If no rows are marked top yet, pick the prediction with highest ranking_score
     if not d["is_top"].any() and d["ranking_score"].notna().any():
         best_pred = (
             d.groupby("prediction_id")["ranking_score"]
@@ -351,9 +363,29 @@ def plot_chain_pair_iptm_cumulative(
         if c in d.columns:
             d[c] = pd.to_numeric(d[c], errors="coerce")
 
+    # ---- Build pair-specific description ----
+    # Only show the descriptions for the two chains in this pair
+    def _pair_description(row):
+        parts = []
+        ci = str(row.get("chain_i", "N/A"))
+        cj = str(row.get("chain_j", "N/A"))
+        di = str(row.get("chain_i_desc", "N/A"))
+        dj = str(row.get("chain_j_desc", "N/A"))
+        if di and di != "N/A":
+            parts.append(f"{ci}: {di}")
+        elif ci != "N/A":
+            parts.append(f"{ci}: (no description)")
+        if dj and dj != "N/A":
+            parts.append(f"{cj}: {dj}")
+        elif cj != "N/A":
+            parts.append(f"{cj}: (no description)")
+        return "<br>".join(parts) if parts else "N/A"
+
+    d["pair_desc_hover"] = d.apply(_pair_description, axis=1)
+
     # ---- sort descending by pair_iptm ----
     d = d.sort_values("pair_iptm", ascending=False).reset_index(drop=True)
-    d["rank"] = d.index + 1  # 1-based rank
+    d["rank"] = d.index + 1
 
     # ---- split into regular vs top ----
     d_regular = d[~d["is_top"]].copy()
@@ -362,35 +394,36 @@ def plot_chain_pair_iptm_cumulative(
     # ---- hover columns ----
     hover_cols = [
         "name", "seed", "sample", "chain_i", "chain_j",
-        "chain_i_desc", "chain_j_desc", "description", "is_top_str",
+        "pair_desc_hover", "is_top_str",
         "ranking_score", "iptm", "ptm", "mean_plddt_total",
     ]
     for c in hover_cols:
         if c not in d.columns:
             d[c] = "N/A"
+        if c not in d_regular.columns:
             d_regular[c] = "N/A"
+        if c not in d_top.columns:
             d_top[c] = "N/A"
 
     hover_tpl = (
         "<b>rank:</b> %{x}<br>"
         "<b>pair ipTM:</b> %{y:.3f}<br>"
         "<b>name:</b> %{customdata[0]}<br>"
-        "<b>description:</b> %{customdata[7]}<br>"
+        "<b>chain i:</b> %{customdata[3]}<br>"
+        "<b>chain j:</b> %{customdata[4]}<br>"
+        "<b>Pair chains:</b><br>%{customdata[5]}<br>"
         "<b>seed:</b> %{customdata[1]}<br>"
         "<b>sample:</b> %{customdata[2]}<br>"
-        "<b>chain i:</b> %{customdata[3]} (%{customdata[5]})<br>"
-        "<b>chain j:</b> %{customdata[4]} (%{customdata[6]})<br>"
-        "<b>ranking score:</b> %{customdata[9]}<br>"
-        "<b>iptm:</b> %{customdata[10]}<br>"
-        "<b>ptm:</b> %{customdata[11]}<br>"
-        "<b>mean pLDDT:</b> %{customdata[12]}<br>"
-        "<b>is top:</b> %{customdata[8]}<br>"
+        "<b>ranking score:</b> %{customdata[7]}<br>"
+        "<b>iptm:</b> %{customdata[8]}<br>"
+        "<b>ptm:</b> %{customdata[9]}<br>"
+        "<b>mean pLDDT:</b> %{customdata[10]}<br>"
+        "<b>is top:</b> %{customdata[6]}<br>"
         "<extra></extra>"
     )
 
     fig = go.Figure()
 
-    # Regular points
     if not d_regular.empty:
         fig.add_trace(go.Scatter(
             x=d_regular["rank"],
@@ -404,7 +437,6 @@ def plot_chain_pair_iptm_cumulative(
             showlegend=True,
         ))
 
-    # Top-ranked prediction
     if not d_top.empty:
         fig.add_trace(go.Scatter(
             x=d_top["rank"],
@@ -419,7 +451,6 @@ def plot_chain_pair_iptm_cumulative(
             showlegend=True,
         ))
 
-    # Reference lines
     fig.add_hline(y=0.4, line_dash="dot", line_color="#999", line_width=1,
                   annotation_text="0.4", annotation_position="bottom right",
                   annotation_font_size=10, annotation_font_color="#999")
