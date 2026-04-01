@@ -26,7 +26,7 @@ def coerce_numeric(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
 def write_no_data_html(path: Path, message: str = "No data to plot.") -> None:
     html = f"""<!doctype html>
 <html>
-<head><meta charset="utf-8"><title>plot</title></head>
+<head><meta charset="utf-8"><title>chain-pair ipTM cumulative histogram</title></head>
 <body><p><em>{message}</em></p></body>
 </html>
 """
@@ -52,6 +52,9 @@ def _prepare_description_col(d: pd.DataFrame) -> pd.DataFrame:
     return d
 
 
+# ---------------------------------------------------------------------------
+# A fixed colour palette for ground-truth references (up to 20 distinct)
+# ---------------------------------------------------------------------------
 _GT_PALETTE = [
     "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
     "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf",
@@ -64,12 +67,6 @@ def _gt_color(idx: int) -> str:
     return _GT_PALETTE[idx % len(_GT_PALETTE)]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# TM-score distribution
-#   • ground-truth multi-select checklist (preserved from reference)
-#   • baseline (all data) always shown
-#   • NEW: strip / CDF toggle
-# ═══════════════════════════════════════════════════════════════════════════
 def plot_tm_score_distribution(
     df_pred: pd.DataFrame,
     out_html: Path,
@@ -136,103 +133,134 @@ def plot_tm_score_distribution(
     gt_color_map = {gt: _gt_color(i) for i, gt in enumerate(gt_ids)}
 
     n_total = len(d)
-    default_mode = "cdf" if n_total > 100 else "strip"
+    use_cdf = n_total > 100
 
-    # ── Build BOTH strip and CDF data for baseline + each GT ──
-    jitter_val = 0.01
-    d["jitter"] = np.random.uniform(-jitter_val, jitter_val, size=len(d))
+    # --- Baseline data (all ground truths combined) ---
+    if use_cdf:
+        d_sorted = d.sort_values("tm_score").reset_index(drop=True)
+        baseline_all_x = d_sorted["tm_score"].tolist()
+        baseline_all_y = [(i + 1) / len(d_sorted) for i in range(len(d_sorted))]
+        baseline_all_cd = d_sorted[meta_cols + ["is_top_str"]].values.tolist()
 
-    def _build_both(df_all, df_top_src):
-        """Return dict with strip_* and cdf_* keys for a subset."""
-        # strip — all
-        s_all_x = (df_all["tm_score"] + df_all["jitter"]).tolist()
-        s_all_cd = df_all[meta_cols + ["is_top_str"]].values.tolist()
-
-        # strip — top
-        df_top = df_top_src.copy()
-        if not df_top.empty:
-            df_top["jitter"] = np.random.uniform(-jitter_val, jitter_val, size=len(df_top))
-            s_top_x = (df_top["tm_score"] + df_top["jitter"]).tolist()
-            s_top_cd = df_top[meta_cols + ["is_top_str"]].values.tolist()
+        d_top = d[d["is_top"]].sort_values("tm_score").reset_index(drop=True)
+        if not d_top.empty:
+            baseline_top_x = d_top["tm_score"].tolist()
+            baseline_top_y = [(i + 1) / len(d_top) for i in range(len(d_top))]
+            baseline_top_cd = d_top[meta_cols + ["is_top_str"]].values.tolist()
         else:
-            s_top_x, s_top_cd = [], []
+            baseline_top_x, baseline_top_y, baseline_top_cd = [], [], []
+    else:
+        jitter_val = 0.01
+        d["jitter"] = np.random.uniform(-jitter_val, jitter_val, size=len(d))
+        baseline_all_x = (d["tm_score"] + d["jitter"]).tolist()
+        baseline_all_y = [0.5] * len(d)
+        baseline_all_cd = d[meta_cols + ["is_top_str"]].values.tolist()
 
-        # cdf — all
-        df_s = df_all.sort_values("tm_score").reset_index(drop=True)
-        n = len(df_s)
-        c_all_x = df_s["tm_score"].tolist()
-        c_all_y = [(i + 1) / n for i in range(n)]
-        c_all_cd = df_s[meta_cols + ["is_top_str"]].values.tolist()
-
-        # cdf — top
-        if not df_top.empty:
-            dt_s = df_top.sort_values("tm_score").reset_index(drop=True)
-            nt = len(dt_s)
-            c_top_x = dt_s["tm_score"].tolist()
-            c_top_y = [(i + 1) / nt for i in range(nt)]
-            c_top_cd = dt_s[meta_cols + ["is_top_str"]].values.tolist()
+        d_top = d[d["is_top"]].copy()
+        if not d_top.empty:
+            d_top["jitter"] = np.random.uniform(-jitter_val, jitter_val, size=len(d_top))
+            baseline_top_x = (d_top["tm_score"] + d_top["jitter"]).tolist()
+            baseline_top_y = [0.5] * len(d_top)
+            baseline_top_cd = d_top[meta_cols + ["is_top_str"]].values.tolist()
         else:
-            c_top_x, c_top_y, c_top_cd = [], [], []
+            baseline_top_x, baseline_top_y, baseline_top_cd = [], [], []
 
-        return {
-            "strip_all_x": s_all_x, "strip_all_cd": s_all_cd,
-            "strip_top_x": s_top_x, "strip_top_cd": s_top_cd,
-            "cdf_all_x": c_all_x, "cdf_all_y": c_all_y, "cdf_all_cd": c_all_cd,
-            "cdf_top_x": c_top_x, "cdf_top_y": c_top_y, "cdf_top_cd": c_top_cd,
-        }
+    baseline_data = {
+        "all_x": baseline_all_x, "all_y": baseline_all_y, "all_cd": baseline_all_cd,
+        "top_x": baseline_top_x, "top_y": baseline_top_y, "top_cd": baseline_top_cd,
+    }
 
-    # Baseline (all data combined)
-    baseline_data = _build_both(d, d[d["is_top"]])
-
-    # Per ground-truth
+    # --- Per-ground-truth overlay data ---
     gt_data_list = []
     for gt_id in gt_ids:
         dg = d[d["ground_truth_id"] == gt_id].copy()
         if dg.empty:
             continue
         color = gt_color_map[gt_id]
-        entry = _build_both(dg, dg[dg["is_top"]])
-        entry["gt_id"] = gt_id
-        entry["color"] = color
-        gt_data_list.append(entry)
+
+        if use_cdf:
+            dg_sorted = dg.sort_values("tm_score").reset_index(drop=True)
+            all_x = dg_sorted["tm_score"].tolist()
+            all_y = [(i + 1) / len(dg_sorted) for i in range(len(dg_sorted))]
+            all_cd = dg_sorted[meta_cols + ["is_top_str"]].values.tolist()
+
+            dg_top = dg[dg["is_top"]].sort_values("tm_score").reset_index(drop=True)
+            if not dg_top.empty:
+                top_x = dg_top["tm_score"].tolist()
+                top_y = [(i + 1) / len(dg_top) for i in range(len(dg_top))]
+                top_cd = dg_top[meta_cols + ["is_top_str"]].values.tolist()
+            else:
+                top_x, top_y, top_cd = [], [], []
+        else:
+            dg["jitter"] = np.random.uniform(-jitter_val, jitter_val, size=len(dg))
+            all_x = (dg["tm_score"] + dg["jitter"]).tolist()
+            all_y = [0.5] * len(dg)
+            all_cd = dg[meta_cols + ["is_top_str"]].values.tolist()
+
+            dg_top = dg[dg["is_top"]].copy()
+            if not dg_top.empty:
+                dg_top["jitter"] = np.random.uniform(-jitter_val, jitter_val, size=len(dg_top))
+                top_x = (dg_top["tm_score"] + dg_top["jitter"]).tolist()
+                top_y = [0.5] * len(dg_top)
+                top_cd = dg_top[meta_cols + ["is_top_str"]].values.tolist()
+            else:
+                top_x, top_y, top_cd = [], [], []
+
+        gt_data_list.append({
+            "gt_id": gt_id, "color": color,
+            "all_x": all_x, "all_y": all_y, "all_cd": all_cd,
+            "top_x": top_x, "top_y": top_y, "top_cd": top_cd,
+        })
 
     baseline_json = json.dumps(baseline_data)
     gt_data_json = json.dumps(gt_data_list)
 
-    hover_strip = (
-        "<b>name:</b> %{customdata[0]}<br>"
-        "<b>description:</b> %{customdata[9]}<br>"
-        "<b>ground truth:</b> %{customdata[10]}<br>"
-        "<b>sample:</b> %{customdata[1]}<br>"
-        "<b>seed:</b> %{customdata[2]}<br>"
-        "<b>ranking score:</b> %{customdata[3]}<br>"
-        "<b>ptm:</b> %{customdata[4]}<br>"
-        "<b>iptm:</b> %{customdata[5]}<br>"
-        "<b>mean pLDDT:</b> %{customdata[6]}<br>"
-        "<b>fraction disordered:</b> %{customdata[7]}<br>"
-        "<b>has clash:</b> %{customdata[8]}<br>"
-        "<b>is top:</b> %{customdata[11]}<br>"
-        "<b>TM score:</b> %{x:.3f}<br>"
-        "<extra></extra>"
-    )
-    hover_cdf = (
-        "<b>name:</b> %{customdata[0]}<br>"
-        "<b>description:</b> %{customdata[9]}<br>"
-        "<b>ground truth:</b> %{customdata[10]}<br>"
-        "<b>sample:</b> %{customdata[1]}<br>"
-        "<b>seed:</b> %{customdata[2]}<br>"
-        "<b>ranking score:</b> %{customdata[3]}<br>"
-        "<b>ptm:</b> %{customdata[4]}<br>"
-        "<b>iptm:</b> %{customdata[5]}<br>"
-        "<b>mean pLDDT:</b> %{customdata[6]}<br>"
-        "<b>fraction disordered:</b> %{customdata[7]}<br>"
-        "<b>has clash:</b> %{customdata[8]}<br>"
-        "<b>is top:</b> %{customdata[11]}<br>"
-        "<b>TM score \u2264</b> %{x:.3f}<br>"
-        "<b>Fraction:</b> %{y:.3f}<br>"
-        "<extra></extra>"
-    )
+    if use_cdf:
+        hover_tpl = (
+            "<b>name:</b> %{customdata[0]}<br>"
+            "<b>description:</b> %{customdata[9]}<br>"
+            "<b>ground truth:</b> %{customdata[10]}<br>"
+            "<b>sample:</b> %{customdata[1]}<br>"
+            "<b>seed:</b> %{customdata[2]}<br>"
+            "<b>ranking score:</b> %{customdata[3]}<br>"
+            "<b>ptm:</b> %{customdata[4]}<br>"
+            "<b>iptm:</b> %{customdata[5]}<br>"
+            "<b>mean pLDDT:</b> %{customdata[6]}<br>"
+            "<b>fraction disordered:</b> %{customdata[7]}<br>"
+            "<b>has clash:</b> %{customdata[8]}<br>"
+            "<b>is top:</b> %{customdata[11]}<br>"
+            "<b>TM score ≤</b> %{x:.3f}<br>"
+            "<b>Fraction:</b> %{y:.3f}<br>"
+            "<extra></extra>"
+        )
+        mode_all = "lines"
+        mode_top = "lines"
+        yaxis_cfg = {"title": "Cumulative fraction", "range": [0, 1.02],
+                     "tickvals": [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]}
+        plot_height = 700
+    else:
+        hover_tpl = (
+            "<b>name:</b> %{customdata[0]}<br>"
+            "<b>description:</b> %{customdata[9]}<br>"
+            "<b>ground truth:</b> %{customdata[10]}<br>"
+            "<b>sample:</b> %{customdata[1]}<br>"
+            "<b>seed:</b> %{customdata[2]}<br>"
+            "<b>ranking score:</b> %{customdata[3]}<br>"
+            "<b>ptm:</b> %{customdata[4]}<br>"
+            "<b>iptm:</b> %{customdata[5]}<br>"
+            "<b>mean pLDDT:</b> %{customdata[6]}<br>"
+            "<b>fraction disordered:</b> %{customdata[7]}<br>"
+            "<b>has clash:</b> %{customdata[8]}<br>"
+            "<b>is top:</b> %{customdata[11]}<br>"
+            "<b>TM score:</b> %{x:.3f}<br>"
+            "<extra></extra>"
+        )
+        mode_all = "markers"
+        mode_top = "markers"
+        yaxis_cfg = {"showticklabels": False, "title": "", "range": [0, 1]}
+        plot_height = 450
 
+    # Build <option> tags for the native select
     n_visible = min(max(len(gt_ids), 2), 8)
     options_html = "\n".join(
         f'          <option value="{gt}" selected '
@@ -240,9 +268,6 @@ def plot_tm_score_distribution(
         f'&#9632; {gt}</option>'
         for gt in gt_ids
     )
-
-    strip_active = "active" if default_mode == "strip" else ""
-    cdf_active = "active" if default_mode == "cdf" else ""
 
     html = f"""<!DOCTYPE html>
 <html>
@@ -293,25 +318,6 @@ def plot_tm_score_distribution(
   }}
   .btn-col button:hover {{ background: #e9ecef; }}
 
-  .toggle-group {{
-      display: flex; gap: 0; margin-left: 18px; align-self: flex-start;
-  }}
-  .toggle-group button {{
-      padding: 6px 16px; font-size: 13px; cursor: pointer;
-      border: 1px solid #adb5bd; background: #fff; color: #495057;
-  }}
-  .toggle-group button:first-child {{
-      border-radius: 4px 0 0 4px;
-  }}
-  .toggle-group button:last-child {{
-      border-radius: 0 4px 4px 0;
-      border-left: none;
-  }}
-  .toggle-group button.active {{
-      background: #4C72B0; color: #fff; border-color: #4C72B0;
-      font-weight: bold;
-  }}
-
   .hint {{
       font-size: 11px; color: #6c757d; margin-top: 4px;
   }}
@@ -337,34 +343,30 @@ def plot_tm_score_distribution(
         <button id="btn-all">Select All</button>
         <button id="btn-none">Clear All</button>
       </div>
-      <div class="toggle-group">
-        <button id="btn-strip" class="{strip_active}">Strip Chart</button>
-        <button id="btn-cdf" class="{cdf_active}">CDF</button>
-      </div>
     </div>
     <div class="hint">
-      Click to toggle ground truths. Baseline (all data) is always shown.
-      Use Strip Chart / CDF to switch view.
+      Click to toggle. Baseline (all data) is always shown.
     </div>
   </div>
 
   <div id="plot"></div>
-  <div id="legend-note" class="legend-note"></div>
+  <div class="legend-note">
+    Solid = all predictions &nbsp;|&nbsp; {"Dashed" if use_cdf else "★"} = top predictions
+  </div>
 </div>
 
 <script>
-var BASELINE    = {baseline_json};
-var GT_DATA     = {gt_data_json};
-var HOVER_STRIP = {json.dumps(hover_strip)};
-var HOVER_CDF   = {json.dumps(hover_cdf)};
-var currentMode = {json.dumps(default_mode)};
-
-var sel        = document.getElementById('gt-select');
-var btnStrip   = document.getElementById('btn-strip');
-var btnCdf     = document.getElementById('btn-cdf');
-var legendNote = document.getElementById('legend-note');
+var BASELINE   = {baseline_json};
+var GT_DATA    = {gt_data_json};
+var USE_CDF    = {'true' if use_cdf else 'false'};
+var HOVER_TPL  = {json.dumps(hover_tpl)};
+var MODE_ALL   = {json.dumps(mode_all)};
+var MODE_TOP   = {json.dumps(mode_top)};
+var YAXIS_CFG  = {json.dumps(yaxis_cfg)};
+var PLOT_HEIGHT = {plot_height};
 
 // --- Toggle selection on plain click (no ctrl needed) ---
+var sel = document.getElementById('gt-select');
 sel.addEventListener('mousedown', function(e) {{
     if (e.target.tagName === 'OPTION') {{
         e.preventDefault();
@@ -381,19 +383,6 @@ document.getElementById('btn-all').addEventListener('click', function() {{
 }});
 document.getElementById('btn-none').addEventListener('click', function() {{
     for (var i = 0; i < sel.options.length; i++) sel.options[i].selected = false;
-    rebuildPlot();
-}});
-
-btnStrip.addEventListener('click', function() {{
-    currentMode = 'strip';
-    btnStrip.classList.add('active');
-    btnCdf.classList.remove('active');
-    rebuildPlot();
-}});
-btnCdf.addEventListener('click', function() {{
-    currentMode = 'cdf';
-    btnCdf.classList.add('active');
-    btnStrip.classList.remove('active');
     rebuildPlot();
 }});
 
@@ -415,151 +404,100 @@ function rebuildPlot() {{
     }}
 
     var traces = [];
-    var isStrip = (currentMode === 'strip');
-    var HOVER   = isStrip ? HOVER_STRIP : HOVER_CDF;
 
     // ---- Baseline: always visible ----
-    if (isStrip) {{
-        if (BASELINE.strip_all_x.length > 0) {{
-            traces.push({{
-                x: BASELINE.strip_all_x,
-                y: BASELINE.strip_all_x.map(function() {{ return 0.5; }}),
-                mode: 'markers',
-                name: 'All (baseline)',
-                customdata: BASELINE.strip_all_cd,
-                hovertemplate: HOVER,
-                showlegend: false,
-                marker: {{
-                    color: 'rgba(76,114,176,0.25)', size: 5,
-                    line: {{ width: 0.5, color: 'rgba(0,0,0,0.15)' }}
-                }}
-            }});
+    if (BASELINE.all_x.length > 0) {{
+        var baseAll = {{
+            x: BASELINE.all_x, y: BASELINE.all_y,
+            mode: MODE_ALL,
+            name: 'All (baseline)',
+            customdata: BASELINE.all_cd,
+            hovertemplate: HOVER_TPL,
+            showlegend: false,
+        }};
+        if (MODE_ALL === 'lines') {{
+            baseAll.line = {{ color: 'rgba(76,114,176,0.3)', width: 2.5 }};
+        }} else {{
+            baseAll.marker = {{
+                color: 'rgba(76,114,176,0.25)', size: 5,
+                line: {{ width: 0.5, color: 'rgba(0,0,0,0.15)' }}
+            }};
         }}
-        if (BASELINE.strip_top_x.length > 0) {{
-            traces.push({{
-                x: BASELINE.strip_top_x,
-                y: BASELINE.strip_top_x.map(function() {{ return 0.5; }}),
-                mode: 'markers',
-                name: 'Top (baseline)',
-                customdata: BASELINE.strip_top_cd,
-                hovertemplate: HOVER,
-                showlegend: false,
-                marker: {{
-                    color: 'rgba(213,94,0,0.25)', size: 7, symbol: 'diamond',
-                    line: {{ width: 0.5, color: 'rgba(0,0,0,0.15)' }}
-                }}
-            }});
+        traces.push(baseAll);
+    }}
+    if (BASELINE.top_x.length > 0) {{
+        var baseTop = {{
+            x: BASELINE.top_x, y: BASELINE.top_y,
+            mode: MODE_TOP,
+            name: 'Top (baseline)',
+            customdata: BASELINE.top_cd,
+            hovertemplate: HOVER_TPL,
+            showlegend: false,
+        }};
+        if (MODE_TOP === 'lines') {{
+            baseTop.line = {{ color: 'rgba(213,94,0,0.25)', width: 2, dash: 'dot' }};
+        }} else {{
+            baseTop.marker = {{
+                color: 'rgba(213,94,0,0.25)', size: 7, symbol: 'diamond',
+                line: {{ width: 0.5, color: 'rgba(0,0,0,0.15)' }}
+            }};
         }}
-    }} else {{
-        if (BASELINE.cdf_all_x.length > 0) {{
-            traces.push({{
-                x: BASELINE.cdf_all_x, y: BASELINE.cdf_all_y,
-                mode: 'lines',
-                name: 'All (baseline)',
-                customdata: BASELINE.cdf_all_cd,
-                hovertemplate: HOVER,
-                showlegend: false,
-                line: {{ color: 'rgba(76,114,176,0.3)', width: 2.5 }}
-            }});
-        }}
-        if (BASELINE.cdf_top_x.length > 0) {{
-            traces.push({{
-                x: BASELINE.cdf_top_x, y: BASELINE.cdf_top_y,
-                mode: 'lines',
-                name: 'Top (baseline)',
-                customdata: BASELINE.cdf_top_cd,
-                hovertemplate: HOVER,
-                showlegend: false,
-                line: {{ color: 'rgba(213,94,0,0.25)', width: 2, dash: 'dot' }}
-            }});
-        }}
+        traces.push(baseTop);
     }}
 
     // ---- Highlighted ground truths ----
     GT_DATA.forEach(function(gt) {{
         if (!selected.has(gt.gt_id)) return;
 
-        if (isStrip) {{
-            if (gt.strip_all_x.length > 0) {{
-                traces.push({{
-                    x: gt.strip_all_x,
-                    y: gt.strip_all_x.map(function() {{ return 0.5; }}),
-                    mode: 'markers',
-                    name: gt.gt_id,
-                    customdata: gt.strip_all_cd,
-                    hovertemplate: HOVER,
-                    showlegend: true,
-                    marker: {{
-                        color: gt.color, size: 8, opacity: 0.85,
-                        line: {{ width: 1, color: 'black' }}
-                    }}
-                }});
+        if (gt.all_x.length > 0) {{
+            var trAll = {{
+                x: gt.all_x, y: gt.all_y,
+                mode: MODE_ALL,
+                name: gt.gt_id,
+                customdata: gt.all_cd,
+                hovertemplate: HOVER_TPL,
+                showlegend: true,
+            }};
+            if (MODE_ALL === 'lines') {{
+                trAll.line = {{ color: gt.color, width: 3 }};
+            }} else {{
+                trAll.marker = {{
+                    color: gt.color, size: 8, opacity: 0.85,
+                    line: {{ width: 1, color: 'black' }}
+                }};
             }}
-            if (gt.strip_top_x.length > 0) {{
-                traces.push({{
-                    x: gt.strip_top_x,
-                    y: gt.strip_top_x.map(function() {{ return 0.5; }}),
-                    mode: 'markers',
-                    name: gt.gt_id + ' (top)',
-                    customdata: gt.strip_top_cd,
-                    hovertemplate: HOVER,
-                    showlegend: true,
-                    marker: {{
-                        color: gt.color, size: 10, opacity: 0.95,
-                        symbol: 'star',
-                        line: {{ width: 1.5, color: 'black' }}
-                    }}
-                }});
+            traces.push(trAll);
+        }}
+
+        if (gt.top_x.length > 0) {{
+            var trTop = {{
+                x: gt.top_x, y: gt.top_y,
+                mode: MODE_TOP,
+                name: gt.gt_id + ' (top)',
+                customdata: gt.top_cd,
+                hovertemplate: HOVER_TPL,
+                showlegend: true,
+            }};
+            if (MODE_TOP === 'lines') {{
+                trTop.line = {{ color: gt.color, width: 3, dash: 'dash' }};
+            }} else {{
+                trTop.marker = {{
+                    color: gt.color, size: 10, opacity: 0.95,
+                    symbol: 'star',
+                    line: {{ width: 1.5, color: 'black' }}
+                }};
             }}
-        }} else {{
-            if (gt.cdf_all_x.length > 0) {{
-                traces.push({{
-                    x: gt.cdf_all_x, y: gt.cdf_all_y,
-                    mode: 'lines',
-                    name: gt.gt_id,
-                    customdata: gt.cdf_all_cd,
-                    hovertemplate: HOVER,
-                    showlegend: true,
-                    line: {{ color: gt.color, width: 3 }}
-                }});
-            }}
-            if (gt.cdf_top_x.length > 0) {{
-                traces.push({{
-                    x: gt.cdf_top_x, y: gt.cdf_top_y,
-                    mode: 'lines',
-                    name: gt.gt_id + ' (top)',
-                    customdata: gt.cdf_top_cd,
-                    hovertemplate: HOVER,
-                    showlegend: true,
-                    line: {{ color: gt.color, width: 3, dash: 'dash' }}
-                }});
-            }}
+            traces.push(trTop);
         }}
     }});
-
-    var yaxis, plotHeight;
-    if (isStrip) {{
-        yaxis = {{ showticklabels: false, title: '', range: [0, 1] }};
-        plotHeight = 450;
-        legendNote.textContent =
-            'Circle = all predictions  |  \u2605 = top predictions  |  Faint = baseline';
-    }} else {{
-        yaxis = {{
-            title: 'Cumulative fraction', range: [0, 1.02],
-            tickvals: [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
-        }};
-        plotHeight = 700;
-        legendNote.textContent =
-            'Solid = all predictions  |  Dashed = top predictions  |  Faint = baseline';
-    }}
 
     var layout = {{
         xaxis: {{ title: 'TM score', range: [0, 1],
                   tickvals: [0.0, 0.2, 0.4, 0.6, 0.8, 1.0] }},
-        yaxis: yaxis,
+        yaxis: YAXIS_CFG,
         template: 'plotly_white',
         hovermode: 'closest',
-        height: plotHeight,
+        height: PLOT_HEIGHT,
         margin: {{ l: 70, r: 30, t: 30, b: 60 }},
         legend: {{
             orientation: 'h', yanchor: 'bottom', y: 1.01,
@@ -645,11 +583,6 @@ def add_prediction_metadata(df_pair: pd.DataFrame, df_pred: pd.DataFrame) -> pd.
     return d
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# chain-pair ipTM distribution
-#   • NO ground-truth selector (same as reference)
-#   • NEW: strip / CDF toggle
-# ═══════════════════════════════════════════════════════════════════════════
 def plot_chain_pair_iptm_cumulative(
     df_pair: pd.DataFrame,
     out_html: Path,
@@ -701,272 +634,161 @@ def plot_chain_pair_iptm_cumulative(
     d["is_top_str"] = d["is_top"].map({True: "True", False: "False"})
 
     n_predictions = len(d)
-    default_mode = "cdf" if n_predictions > 100 else "strip"
+    fig = go.Figure()
 
     hover_cols = [
         "name", "seed", "sample", "chain_i", "chain_j",
         "chain_i_desc", "chain_j_desc", "description", "is_top_str",
     ]
 
-    # --- Build BOTH strip and CDF data ---
-    jitter_val = 0.01
-    d["jitter"] = np.random.uniform(-jitter_val, jitter_val, size=len(d))
+    if n_predictions <= 100:
+        jitter = 0.01
+        d["jitter"] = np.random.uniform(-jitter, jitter, size=len(d))
 
-    strip_all_x = (d["pair_iptm"] + d["jitter"]).tolist()
-    strip_all_cd = d[hover_cols].values.tolist()
+        fig.add_trace(go.Scatter(
+            x=d["pair_iptm"] + d["jitter"],
+            y=[0.5] * len(d),
+            mode='markers',
+            name="All predictions",
+            marker=dict(
+                color="#4C72B0", size=6, opacity=0.7,
+                line=dict(width=0.5, color="black")
+            ),
+            hovertemplate=(
+                "<b>name:</b> %{customdata[0]}<br>"
+                "<b>description:</b> %{customdata[7]}<br>"
+                "<b>pair ipTM:</b> %{x:.3f}<br>"
+                "<b>seed:</b> %{customdata[1]}<br>"
+                "<b>sample:</b> %{customdata[2]}<br>"
+                "<b>chain i:</b> %{customdata[3]} (%{customdata[5]})<br>"
+                "<b>chain j:</b> %{customdata[4]} (%{customdata[6]})<br>"
+                "<b>is top:</b> %{customdata[8]}<br>"
+                "<extra></extra>"
+            ),
+            customdata=d[hover_cols].values,
+            showlegend=True,
+        ))
 
-    d_top = d[d["is_top"]].copy()
-    if not d_top.empty:
-        d_top["jitter"] = np.random.uniform(-jitter_val, jitter_val, size=len(d_top))
-        strip_top_x = (d_top["pair_iptm"] + d_top["jitter"]).tolist()
-        strip_top_cd = d_top[hover_cols].values.tolist()
+        d_top = d[d["is_top"]].copy()
+        if not d_top.empty:
+            d_top["jitter"] = np.random.uniform(-jitter, jitter, size=len(d_top))
+            fig.add_trace(go.Scatter(
+                x=d_top["pair_iptm"] + d_top["jitter"],
+                y=[0.5] * len(d_top),
+                mode='markers',
+                name="Top predictions",
+                marker=dict(
+                    color="#D55E00", size=8, opacity=0.8,
+                    line=dict(width=1.5, color="black")
+                ),
+                hovertemplate=(
+                    "<b>name:</b> %{customdata[0]}<br>"
+                    "<b>description:</b> %{customdata[7]}<br>"
+                    "<b>pair ipTM:</b> %{x:.3f}<br>"
+                    "<b>seed:</b> %{customdata[1]}<br>"
+                    "<b>sample:</b> %{customdata[2]}<br>"
+                    "<b>chain i:</b> %{customdata[3]} (%{customdata[5]})<br>"
+                    "<b>chain j:</b> %{customdata[4]} (%{customdata[6]})<br>"
+                    "<b>is top:</b> %{customdata[8]}<br>"
+                    "<extra></extra>"
+                ),
+                customdata=d_top[hover_cols].values,
+                showlegend=True,
+            ))
+
+        fig.update_layout(
+            title=dict(text=title, x=0.5, xanchor="center"),
+            xaxis=dict(
+                title="pair ipTM",
+                range=[0, 1],
+                tickvals=[0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
+            ),
+            yaxis=dict(showticklabels=False, title="", range=[0, 1]),
+            template="plotly_white",
+            hovermode="closest",
+            height=400,
+            margin=dict(l=70, r=50, t=80, b=70),
+            legend=dict(
+                orientation="h", yanchor="bottom", y=1.02,
+                xanchor="center", x=0.5
+            ),
+        )
+
     else:
-        strip_top_x, strip_top_cd = [], []
+        d_sorted = d.sort_values("pair_iptm").reset_index(drop=True)
+        all_iptm = d_sorted["pair_iptm"]
+        if len(all_iptm) > 0:
+            y_all = [(i + 1) / len(all_iptm) for i in range(len(all_iptm))]
+            fig.add_trace(go.Scatter(
+                x=all_iptm, y=y_all,
+                mode='lines', name="All predictions",
+                line=dict(color="#4C72B0", width=2.5),
+                hovertemplate=(
+                    "<b>name:</b> %{customdata[0]}<br>"
+                    "<b>description:</b> %{customdata[7]}<br>"
+                    "<b>pair ipTM ≤</b> %{x:.2f}<br>"
+                    "<b>Fraction:</b> %{y:.3f}<br>"
+                    "<b>seed:</b> %{customdata[1]}<br>"
+                    "<b>sample:</b> %{customdata[2]}<br>"
+                    "<b>chain i:</b> %{customdata[3]} (%{customdata[5]})<br>"
+                    "<b>chain j:</b> %{customdata[4]} (%{customdata[6]})<br>"
+                    "<b>is top:</b> %{customdata[8]}<br>"
+                    "<extra></extra>"
+                ),
+                customdata=d_sorted[hover_cols].values,
+                showlegend=True,
+            ))
 
-    d_sorted = d.sort_values("pair_iptm").reset_index(drop=True)
-    n_s = len(d_sorted)
-    cdf_all_x = d_sorted["pair_iptm"].tolist()
-    cdf_all_y = [(i + 1) / n_s for i in range(n_s)]
-    cdf_all_cd = d_sorted[hover_cols].values.tolist()
+        d_top = d[d["is_top"]].copy()
+        if not d_top.empty:
+            d_top_sorted = d_top.sort_values("pair_iptm").reset_index(drop=True)
+            top_iptm = d_top_sorted["pair_iptm"]
+            if len(top_iptm) > 0:
+                y_top = [(i + 1) / len(top_iptm) for i in range(len(top_iptm))]
+                fig.add_trace(go.Scatter(
+                    x=top_iptm, y=y_top,
+                    mode='lines', name="Top predictions",
+                    line=dict(color="#D55E00", width=2.5, dash="solid"),
+                    hovertemplate=(
+                        "<b>name:</b> %{customdata[0]}<br>"
+                        "<b>description:</b> %{customdata[7]}<br>"
+                        "<b>pair ipTM ≤</b> %{x:.2f}<br>"
+                        "<b>Fraction:</b> %{y:.3f}<br>"
+                        "<b>seed:</b> %{customdata[1]}<br>"
+                        "<b>sample:</b> %{customdata[2]}<br>"
+                        "<b>chain i:</b> %{customdata[3]} (%{customdata[5]})<br>"
+                        "<b>chain j:</b> %{customdata[4]} (%{customdata[6]})<br>"
+                        "<b>is top:</b> %{customdata[8]}<br>"
+                        "<extra></extra>"
+                    ),
+                    customdata=d_top_sorted[hover_cols].values,
+                    showlegend=True,
+                ))
 
-    if not d_top.empty:
-        dt_s = d_top.sort_values("pair_iptm").reset_index(drop=True)
-        n_t = len(dt_s)
-        cdf_top_x = dt_s["pair_iptm"].tolist()
-        cdf_top_y = [(i + 1) / n_t for i in range(n_t)]
-        cdf_top_cd = dt_s[hover_cols].values.tolist()
-    else:
-        cdf_top_x, cdf_top_y, cdf_top_cd = [], [], []
-
-    plot_data = {
-        "strip_all_x": strip_all_x, "strip_all_cd": strip_all_cd,
-        "strip_top_x": strip_top_x, "strip_top_cd": strip_top_cd,
-        "cdf_all_x": cdf_all_x, "cdf_all_y": cdf_all_y, "cdf_all_cd": cdf_all_cd,
-        "cdf_top_x": cdf_top_x, "cdf_top_y": cdf_top_y, "cdf_top_cd": cdf_top_cd,
-    }
-    plot_data_json = json.dumps(plot_data)
-
-    strip_hover = (
-        "<b>name:</b> %{customdata[0]}<br>"
-        "<b>description:</b> %{customdata[7]}<br>"
-        "<b>pair ipTM:</b> %{x:.3f}<br>"
-        "<b>seed:</b> %{customdata[1]}<br>"
-        "<b>sample:</b> %{customdata[2]}<br>"
-        "<b>chain i:</b> %{customdata[3]} (%{customdata[5]})<br>"
-        "<b>chain j:</b> %{customdata[4]} (%{customdata[6]})<br>"
-        "<b>is top:</b> %{customdata[8]}<br>"
-        "<extra></extra>"
-    )
-    cdf_hover = (
-        "<b>name:</b> %{customdata[0]}<br>"
-        "<b>description:</b> %{customdata[7]}<br>"
-        "<b>pair ipTM \u2264</b> %{x:.3f}<br>"
-        "<b>Fraction:</b> %{y:.3f}<br>"
-        "<b>seed:</b> %{customdata[1]}<br>"
-        "<b>sample:</b> %{customdata[2]}<br>"
-        "<b>chain i:</b> %{customdata[3]} (%{customdata[5]})<br>"
-        "<b>chain j:</b> %{customdata[4]} (%{customdata[6]})<br>"
-        "<b>is top:</b> %{customdata[8]}<br>"
-        "<extra></extra>"
-    )
-
-    strip_active = "active" if default_mode == "strip" else ""
-    cdf_active = "active" if default_mode == "cdf" else ""
-
-    html = f"""<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<title>chain-pair ipTM distribution</title>
-<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
-<style>
-  body {{ font-family: Arial, sans-serif; margin: 20px; }}
-  .container {{ max-width: 1400px; margin: 0 auto; }}
-
-  h2.plot-title {{
-      text-align: center; font-size: 18px; margin: 0 0 14px 0;
-      color: #333;
-  }}
-
-  .controls {{
-      margin-bottom: 12px; padding: 10px 14px;
-      background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px;
-      display: flex; align-items: center; gap: 18px;
-  }}
-  .controls-label {{
-      font-size: 13px; font-weight: bold; color: #495057;
-  }}
-
-  .toggle-group {{
-      display: flex; gap: 0;
-  }}
-  .toggle-group button {{
-      padding: 6px 16px; font-size: 13px; cursor: pointer;
-      border: 1px solid #adb5bd; background: #fff; color: #495057;
-  }}
-  .toggle-group button:first-child {{
-      border-radius: 4px 0 0 4px;
-  }}
-  .toggle-group button:last-child {{
-      border-radius: 0 4px 4px 0;
-      border-left: none;
-  }}
-  .toggle-group button.active {{
-      background: #4C72B0; color: #fff; border-color: #4C72B0;
-      font-weight: bold;
-  }}
-
-  .legend-note {{
-      font-size: 11px; color: #6c757d; text-align: center;
-      margin-top: 2px;
-  }}
-
-  #plot {{ margin-top: 4px; }}
-</style>
-</head>
-<body>
-<div class="container">
-  <h2 class="plot-title">{title}</h2>
-
-  <div class="controls">
-    <span class="controls-label">View:</span>
-    <div class="toggle-group">
-      <button id="btn-strip" class="{strip_active}">Strip Chart</button>
-      <button id="btn-cdf" class="{cdf_active}">CDF</button>
-    </div>
-  </div>
-
-  <div id="plot"></div>
-  <div id="legend-note" class="legend-note"></div>
-</div>
-
-<script>
-var DATA        = {plot_data_json};
-var STRIP_HOVER = {json.dumps(strip_hover)};
-var CDF_HOVER   = {json.dumps(cdf_hover)};
-var currentMode = {json.dumps(default_mode)};
-
-var btnStrip   = document.getElementById('btn-strip');
-var btnCdf     = document.getElementById('btn-cdf');
-var legendNote = document.getElementById('legend-note');
-
-btnStrip.addEventListener('click', function() {{
-    currentMode = 'strip';
-    btnStrip.classList.add('active');
-    btnCdf.classList.remove('active');
-    rebuildPlot();
-}});
-btnCdf.addEventListener('click', function() {{
-    currentMode = 'cdf';
-    btnCdf.classList.add('active');
-    btnStrip.classList.remove('active');
-    rebuildPlot();
-}});
-
-function rebuildPlot() {{
-    var traces = [];
-    var isStrip = (currentMode === 'strip');
-
-    if (isStrip) {{
-        if (DATA.strip_all_x.length > 0) {{
-            traces.push({{
-                x: DATA.strip_all_x,
-                y: DATA.strip_all_x.map(function() {{ return 0.5; }}),
-                mode: 'markers',
-                name: 'All predictions',
-                customdata: DATA.strip_all_cd,
-                hovertemplate: STRIP_HOVER,
-                showlegend: true,
-                marker: {{
-                    color: '#4C72B0', size: 6, opacity: 0.7,
-                    line: {{ width: 0.5, color: 'black' }}
-                }}
-            }});
-        }}
-        if (DATA.strip_top_x.length > 0) {{
-            traces.push({{
-                x: DATA.strip_top_x,
-                y: DATA.strip_top_x.map(function() {{ return 0.5; }}),
-                mode: 'markers',
-                name: 'Top predictions',
-                customdata: DATA.strip_top_cd,
-                hovertemplate: STRIP_HOVER,
-                showlegend: true,
-                marker: {{
-                    color: '#D55E00', size: 8, opacity: 0.8,
-                    line: {{ width: 1.5, color: 'black' }}
-                }}
-            }});
-        }}
-    }} else {{
-        if (DATA.cdf_all_x.length > 0) {{
-            traces.push({{
-                x: DATA.cdf_all_x,
-                y: DATA.cdf_all_y,
-                mode: 'lines',
-                name: 'All predictions',
-                customdata: DATA.cdf_all_cd,
-                hovertemplate: CDF_HOVER,
-                showlegend: true,
-                line: {{ color: '#4C72B0', width: 2.5 }}
-            }});
-        }}
-        if (DATA.cdf_top_x.length > 0) {{
-            traces.push({{
-                x: DATA.cdf_top_x,
-                y: DATA.cdf_top_y,
-                mode: 'lines',
-                name: 'Top predictions',
-                customdata: DATA.cdf_top_cd,
-                hovertemplate: CDF_HOVER,
-                showlegend: true,
-                line: {{ color: '#D55E00', width: 2.5, dash: 'solid' }}
-            }});
-        }}
-    }}
-
-    var yaxis, plotHeight;
-    if (isStrip) {{
-        yaxis = {{ showticklabels: false, title: '', range: [0, 1] }};
-        plotHeight = 400;
-        legendNote.textContent = 'Circle = all predictions  |  Large circle = top predictions';
-    }} else {{
-        yaxis = {{
-            title: 'Cumulative fraction', range: [0, 1.02],
-            tickvals: [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
-        }};
-        plotHeight = 650;
-        legendNote.textContent = 'Blue = all predictions  |  Orange = top predictions';
-    }}
-
-    var layout = {{
-        title: {{ text: '', x: 0.5, xanchor: 'center' }},
-        xaxis: {{
-            title: 'pair ipTM', range: [0, 1],
-            tickvals: [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
-        }},
-        yaxis: yaxis,
-        template: 'plotly_white',
-        hovermode: 'closest',
-        height: plotHeight,
-        margin: {{ l: 70, r: 50, t: 40, b: 70 }},
-        legend: {{
-            orientation: 'h', yanchor: 'bottom', y: 1.02,
-            xanchor: 'center', x: 0.5
-        }},
-    }};
-
-    Plotly.newPlot('plot', traces, layout, {{ responsive: true }});
-}}
-
-rebuildPlot();
-</script>
-</body>
-</html>
-"""
+        fig.update_layout(
+            title=dict(text=title, x=0.5, xanchor="center"),
+            xaxis=dict(
+                title="pair ipTM",
+                range=[0, 1],
+                tickvals=[0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
+            ),
+            yaxis=dict(
+                title="Cumulative fraction",
+                range=[0, 1.02],
+                tickvals=[0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
+            ),
+            template="plotly_white",
+            hovermode="closest",
+            height=650,
+            margin=dict(l=70, r=50, t=80, b=70),
+            legend=dict(
+                orientation="h", yanchor="bottom", y=1.02,
+                xanchor="center", x=0.5
+            ),
+        )
 
     out_html.parent.mkdir(parents=True, exist_ok=True)
-    out_html.write_text(html, encoding="utf-8")
+    fig.write_html(str(out_html), include_plotlyjs="cdn", full_html=True)
     return True
 
 
