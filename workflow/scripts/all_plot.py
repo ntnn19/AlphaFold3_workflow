@@ -26,7 +26,7 @@ def coerce_numeric(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
 def write_no_data_html(path: Path, message: str = "No data to plot.") -> None:
     html = f"""<!doctype html>
 <html>
-<head><meta charset="utf-8"><title>chain-pair ipTM cumulative histogram</title></head>
+<head><meta charset="utf-8"><title>Plot</title></head>
 <body><p><em>{message}</em></p></body>
 </html>
 """
@@ -53,26 +53,15 @@ def _prepare_description_col(d: pd.DataFrame) -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------------------
-# A fixed colour palette for ground-truth references (up to 20 distinct)
+# TM-score heatmap
 # ---------------------------------------------------------------------------
-_GT_PALETTE = [
-    "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
-    "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf",
-    "#aec7e8", "#ffbb78", "#98df8a", "#ff9896", "#c5b0d5",
-    "#c49c94", "#f7b6d2", "#c7c7c7", "#dbdb8d", "#9edae5",
-]
-
-
-def _gt_color(idx: int) -> str:
-    return _GT_PALETTE[idx % len(_GT_PALETTE)]
-
 
 def plot_tm_score_distribution(
     df_pred: pd.DataFrame,
     out_html: Path,
-    title: str = "Distribution of TM scores across all predictions",
+    title: str = "TM scores: predictions vs ground truths",
 ) -> bool:
-    required = {"sample_id", "prediction_id", "TM1", "TM2"}
+    required = {"sample_id", "prediction_id", "TM2"}
     if df_pred.empty or not required.issubset(df_pred.columns):
         write_no_data_html(out_html, "No TM score data available.")
         return False
@@ -80,403 +69,154 @@ def plot_tm_score_distribution(
     d = df_pred.copy()
     d["sample_id"] = d["sample_id"].astype(str)
     d["prediction_id"] = d["prediction_id"].astype(str)
+    d["TM2"] = pd.to_numeric(d["TM2"], errors="coerce")
+    if "TM1" in d.columns:
+        d["TM1"] = pd.to_numeric(d["TM1"], errors="coerce")
 
-    for c in ["TM1", "TM2"]:
-        d[c] = pd.to_numeric(d[c], errors="coerce")
+    d = d[d["TM2"].notna()].copy()
+    if d.empty:
+        write_no_data_html(out_html, "No valid TM scores available.")
+        return False
 
     d["name"] = d["sample_id"].str.split("_seed-").str[0].astype(str).replace("nan", "N/A")
-
     if "seed" not in d.columns or d["seed"].astype(str).eq("").all():
         d["seed"] = d["sample_id"].str.extract(r"_seed-(\d+)", expand=False).fillna("N/A")
     else:
         d["seed"] = d["seed"].astype(str).replace("", "N/A").replace("nan", "N/A")
-
     if "sample" not in d.columns or d["sample"].astype(str).eq("").all():
         d["sample"] = d["sample_id"].str.extract(r"_sample-(\d+)", expand=False).fillna("N/A")
     else:
         d["sample"] = d["sample"].astype(str).replace("", "N/A").replace("nan", "N/A")
 
-    d["tm_score"] = pd.to_numeric(d["TM2"], errors="coerce")
-    d = d[d["tm_score"].notna()].copy()
-    if d.empty:
-        write_no_data_html(out_html, "No valid TM scores available.")
-        return False
-
-    for c in ["ranking_score", "ptm", "iptm", "mean_plddt_total", "fraction_disordered"]:
-        if c in d.columns:
-            d[c] = pd.to_numeric(d[c], errors="coerce")
+    d = _prepare_description_col(d)
 
     if "is_top" in d.columns:
         d["is_top"] = d["is_top"].astype(str).str.lower().isin(["true", "1", "yes"])
     else:
         d["is_top"] = False
 
-    d = _prepare_description_col(d)
-
     if "ground_truth_id" not in d.columns:
         d["ground_truth_id"] = "default"
     else:
         d["ground_truth_id"] = d["ground_truth_id"].astype(str).replace("", "default").replace("nan", "default")
 
-    meta_cols = [
-        "name", "sample", "seed", "ranking_score", "ptm", "iptm",
-        "mean_plddt_total", "fraction_disordered", "has_clash", "description",
-        "ground_truth_id",
-    ]
-    for c in meta_cols:
-        if c not in d.columns:
-            d[c] = "N/A"
+    for c in ["ranking_score", "ptm", "iptm", "mean_plddt_total", "fraction_disordered"]:
+        if c in d.columns:
+            d[c] = pd.to_numeric(d[c], errors="coerce")
 
-    d["is_top_str"] = d["is_top"].map({True: "True", False: "False"})
+    def _row_label(row):
+        parts = [row["name"]]
+        if row.get("seed", "N/A") != "N/A":
+            parts.append(f"seed={row['seed']}")
+        if row.get("sample", "N/A") != "N/A":
+            parts.append(f"sample={row['sample']}")
+        top_tag = " ★" if row.get("is_top", False) else ""
+        return " | ".join(parts) + top_tag
+
+    d["row_label"] = d.apply(_row_label, axis=1)
 
     gt_ids = sorted(d["ground_truth_id"].unique().tolist())
-    gt_color_map = {gt: _gt_color(i) for i, gt in enumerate(gt_ids)}
 
-    n_total = len(d)
-    use_cdf = n_total > 100
-
-    # --- Baseline data (all ground truths combined) ---
-    if use_cdf:
-        d_sorted = d.sort_values("tm_score").reset_index(drop=True)
-        baseline_all_x = d_sorted["tm_score"].tolist()
-        baseline_all_y = [(i + 1) / len(d_sorted) for i in range(len(d_sorted))]
-        baseline_all_cd = d_sorted[meta_cols + ["is_top_str"]].values.tolist()
-
-        d_top = d[d["is_top"]].sort_values("tm_score").reset_index(drop=True)
-        if not d_top.empty:
-            baseline_top_x = d_top["tm_score"].tolist()
-            baseline_top_y = [(i + 1) / len(d_top) for i in range(len(d_top))]
-            baseline_top_cd = d_top[meta_cols + ["is_top_str"]].values.tolist()
-        else:
-            baseline_top_x, baseline_top_y, baseline_top_cd = [], [], []
-    else:
-        jitter_val = 0.01
-        d["jitter"] = np.random.uniform(-jitter_val, jitter_val, size=len(d))
-        baseline_all_x = (d["tm_score"] + d["jitter"]).tolist()
-        baseline_all_y = [0.5] * len(d)
-        baseline_all_cd = d[meta_cols + ["is_top_str"]].values.tolist()
-
-        d_top = d[d["is_top"]].copy()
-        if not d_top.empty:
-            d_top["jitter"] = np.random.uniform(-jitter_val, jitter_val, size=len(d_top))
-            baseline_top_x = (d_top["tm_score"] + d_top["jitter"]).tolist()
-            baseline_top_y = [0.5] * len(d_top)
-            baseline_top_cd = d_top[meta_cols + ["is_top_str"]].values.tolist()
-        else:
-            baseline_top_x, baseline_top_y, baseline_top_cd = [], [], []
-
-    baseline_data = {
-        "all_x": baseline_all_x, "all_y": baseline_all_y, "all_cd": baseline_all_cd,
-        "top_x": baseline_top_x, "top_y": baseline_top_y, "top_cd": baseline_top_cd,
-    }
-
-    # --- Per-ground-truth overlay data ---
-    gt_data_list = []
-    for gt_id in gt_ids:
-        dg = d[d["ground_truth_id"] == gt_id].copy()
-        if dg.empty:
-            continue
-        color = gt_color_map[gt_id]
-
-        if use_cdf:
-            dg_sorted = dg.sort_values("tm_score").reset_index(drop=True)
-            all_x = dg_sorted["tm_score"].tolist()
-            all_y = [(i + 1) / len(dg_sorted) for i in range(len(dg_sorted))]
-            all_cd = dg_sorted[meta_cols + ["is_top_str"]].values.tolist()
-
-            dg_top = dg[dg["is_top"]].sort_values("tm_score").reset_index(drop=True)
-            if not dg_top.empty:
-                top_x = dg_top["tm_score"].tolist()
-                top_y = [(i + 1) / len(dg_top) for i in range(len(dg_top))]
-                top_cd = dg_top[meta_cols + ["is_top_str"]].values.tolist()
-            else:
-                top_x, top_y, top_cd = [], [], []
-        else:
-            dg["jitter"] = np.random.uniform(-jitter_val, jitter_val, size=len(dg))
-            all_x = (dg["tm_score"] + dg["jitter"]).tolist()
-            all_y = [0.5] * len(dg)
-            all_cd = dg[meta_cols + ["is_top_str"]].values.tolist()
-
-            dg_top = dg[dg["is_top"]].copy()
-            if not dg_top.empty:
-                dg_top["jitter"] = np.random.uniform(-jitter_val, jitter_val, size=len(dg_top))
-                top_x = (dg_top["tm_score"] + dg_top["jitter"]).tolist()
-                top_y = [0.5] * len(dg_top)
-                top_cd = dg_top[meta_cols + ["is_top_str"]].values.tolist()
-            else:
-                top_x, top_y, top_cd = [], [], []
-
-        gt_data_list.append({
-            "gt_id": gt_id, "color": color,
-            "all_x": all_x, "all_y": all_y, "all_cd": all_cd,
-            "top_x": top_x, "top_y": top_y, "top_cd": top_cd,
-        })
-
-    baseline_json = json.dumps(baseline_data)
-    gt_data_json = json.dumps(gt_data_list)
-
-    if use_cdf:
-        hover_tpl = (
-            "<b>name:</b> %{customdata[0]}<br>"
-            "<b>description:</b> %{customdata[9]}<br>"
-            "<b>ground truth:</b> %{customdata[10]}<br>"
-            "<b>sample:</b> %{customdata[1]}<br>"
-            "<b>seed:</b> %{customdata[2]}<br>"
-            "<b>ranking score:</b> %{customdata[3]}<br>"
-            "<b>ptm:</b> %{customdata[4]}<br>"
-            "<b>iptm:</b> %{customdata[5]}<br>"
-            "<b>mean pLDDT:</b> %{customdata[6]}<br>"
-            "<b>fraction disordered:</b> %{customdata[7]}<br>"
-            "<b>has clash:</b> %{customdata[8]}<br>"
-            "<b>is top:</b> %{customdata[11]}<br>"
-            "<b>TM score ≤</b> %{x:.3f}<br>"
-            "<b>Fraction:</b> %{y:.3f}<br>"
-            "<extra></extra>"
+    label_counts = d.groupby("row_label")["prediction_id"].nunique()
+    dup_labels = set(label_counts[label_counts > 1].index)
+    if dup_labels:
+        d["row_label"] = d.apply(
+            lambda r: (
+                f"{r['row_label']} [{r['prediction_id'][-6:]}]"
+                if r["row_label"] in dup_labels else r["row_label"]
+            ), axis=1,
         )
-        mode_all = "lines"
-        mode_top = "lines"
-        yaxis_cfg = {"title": "Cumulative fraction", "range": [0, 1.02],
-                     "tickvals": [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]}
-        plot_height = 700
-    else:
-        hover_tpl = (
-            "<b>name:</b> %{customdata[0]}<br>"
-            "<b>description:</b> %{customdata[9]}<br>"
-            "<b>ground truth:</b> %{customdata[10]}<br>"
-            "<b>sample:</b> %{customdata[1]}<br>"
-            "<b>seed:</b> %{customdata[2]}<br>"
-            "<b>ranking score:</b> %{customdata[3]}<br>"
-            "<b>ptm:</b> %{customdata[4]}<br>"
-            "<b>iptm:</b> %{customdata[5]}<br>"
-            "<b>mean pLDDT:</b> %{customdata[6]}<br>"
-            "<b>fraction disordered:</b> %{customdata[7]}<br>"
-            "<b>has clash:</b> %{customdata[8]}<br>"
-            "<b>is top:</b> %{customdata[11]}<br>"
-            "<b>TM score:</b> %{x:.3f}<br>"
-            "<extra></extra>"
-        )
-        mode_all = "markers"
-        mode_top = "markers"
-        yaxis_cfg = {"showticklabels": False, "title": "", "range": [0, 1]}
-        plot_height = 450
 
-    # Build <option> tags for the native select
-    n_visible = min(max(len(gt_ids), 2), 8)
-    options_html = "\n".join(
-        f'          <option value="{gt}" selected '
-        f'style="padding:3px 6px;">'
-        f'&#9632; {gt}</option>'
-        for gt in gt_ids
+    pivot = d.pivot_table(index="row_label", columns="ground_truth_id", values="TM2", aggfunc="first")
+    pivot = pivot.reindex(columns=gt_ids)
+    pivot["_mean"] = pivot[gt_ids].mean(axis=1)
+    pivot = pivot.sort_values("_mean", ascending=True).drop(columns=["_mean"])
+
+    pred_labels = pivot.index.tolist()
+    z = pivot.values.tolist()
+
+    lookup = {}
+    for _, row in d.iterrows():
+        lookup[(row["row_label"], row["ground_truth_id"])] = row
+
+    hover_text = []
+    for pred in pred_labels:
+        row_hover = []
+        for gt in gt_ids:
+            info = lookup.get((pred, gt))
+            if info is not None:
+                tm2_val = info["TM2"]
+                tm1_val = info.get("TM1", float("nan"))
+                lines = [
+                    f"<b>Prediction:</b> {pred}",
+                    f"<b>Ground truth:</b> {gt}",
+                    f"<b>TM2:</b> {tm2_val:.3f}" if pd.notna(tm2_val) else "<b>TM2:</b> N/A",
+                    f"<b>TM1:</b> {tm1_val:.3f}" if pd.notna(tm1_val) else "<b>TM1:</b> N/A",
+                    f"<b>description:</b> {info.get('description', 'N/A')}",
+                    f"<b>seed:</b> {info.get('seed', 'N/A')}",
+                    f"<b>sample:</b> {info.get('sample', 'N/A')}",
+                    f"<b>ranking score:</b> {info.get('ranking_score', 'N/A')}",
+                    f"<b>ptm:</b> {info.get('ptm', 'N/A')}",
+                    f"<b>iptm:</b> {info.get('iptm', 'N/A')}",
+                    f"<b>mean pLDDT:</b> {info.get('mean_plddt_total', 'N/A')}",
+                    f"<b>fraction disordered:</b> {info.get('fraction_disordered', 'N/A')}",
+                    f"<b>is top:</b> {info.get('is_top', 'N/A')}",
+                ]
+                row_hover.append("<br>".join(lines))
+            else:
+                row_hover.append(
+                    f"<b>Prediction:</b> {pred}<br><b>Ground truth:</b> {gt}<br><b>TM2:</b> N/A"
+                )
+        hover_text.append(row_hover)
+
+    z_clean = [
+        [None if (v is None or (isinstance(v, float) and np.isnan(v))) else v for v in row]
+        for row in z
+    ]
+
+    n_preds = len(pred_labels)
+    n_gts = len(gt_ids)
+    plot_height = max(400, min(2400, 120 + n_preds * 28))
+    plot_width = max(500, min(1800, 250 + n_gts * 90))
+
+    colorscale = [
+        [0.0, "#d73027"], [0.25, "#fc8d59"], [0.5, "#ffffbf"],
+        [0.75, "#91bfdb"], [1.0, "#4575b4"],
+    ]
+
+    fig = go.Figure(data=go.Heatmap(
+        z=z_clean, x=gt_ids, y=pred_labels, text=hover_text,
+        hoverinfo="text", colorscale=colorscale, zmin=0, zmax=1,
+        colorbar=dict(title=dict(text="TM2 score", side="right"),
+                      tickvals=[0.0, 0.2, 0.4, 0.6, 0.8, 1.0], len=0.8),
+        xgap=2, ygap=2,
+    ))
+
+    for i, pred in enumerate(pred_labels):
+        for j, gt in enumerate(gt_ids):
+            val = z_clean[i][j]
+            if val is not None:
+                text_color = "white" if val < 0.25 or val > 0.85 else "black"
+                fig.add_annotation(x=gt, y=pred, text=f"{val:.2f}", showarrow=False,
+                                   font=dict(size=11, color=text_color))
+
+    fig.update_layout(
+        title=dict(text=title, x=0.5, xanchor="center", font=dict(size=16)),
+        xaxis=dict(title="Ground Truth", side="bottom",
+                   tickangle=-45 if n_gts > 6 else 0, tickfont=dict(size=11)),
+        yaxis=dict(title="Prediction", autorange="reversed", tickfont=dict(size=10)),
+        template="plotly_white", height=plot_height, width=plot_width,
+        margin=dict(l=250, r=80, t=80, b=120),
     )
 
-    html = f"""<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<title>TM Score Distribution</title>
-<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
-<style>
-  body {{ font-family: Arial, sans-serif; margin: 20px; }}
-  .container {{ max-width: 1400px; margin: 0 auto; }}
-
-  h2.plot-title {{
-      text-align: center; font-size: 18px; margin: 0 0 14px 0;
-      color: #333;
-  }}
-
-  .controls {{
-      margin-bottom: 12px; padding: 10px 14px;
-      background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px;
-  }}
-  .controls-label {{
-      font-size: 13px; font-weight: bold; color: #495057;
-      margin-bottom: 6px;
-  }}
-  .controls-row {{
-      display: flex; align-items: flex-start; gap: 10px;
-  }}
-
-  #gt-select {{
-      font-family: monospace; font-size: 13px;
-      border: 1px solid #ced4da; border-radius: 4px;
-      padding: 2px; min-width: 220px;
-  }}
-  #gt-select option {{
-      padding: 2px 6px;
-  }}
-  #gt-select option:checked {{
-      background: #e7f1ff;
-  }}
-
-  .btn-col {{
-      display: flex; flex-direction: column; gap: 4px;
-  }}
-  .btn-col button {{
-      padding: 4px 12px; font-size: 12px; cursor: pointer;
-      border: 1px solid #adb5bd; border-radius: 3px;
-      background: #fff; color: #495057; white-space: nowrap;
-  }}
-  .btn-col button:hover {{ background: #e9ecef; }}
-
-  .hint {{
-      font-size: 11px; color: #6c757d; margin-top: 4px;
-  }}
-  .legend-note {{
-      font-size: 11px; color: #6c757d; text-align: center;
-      margin-top: 2px;
-  }}
-
-  #plot {{ margin-top: 4px; }}
-</style>
-</head>
-<body>
-<div class="container">
-  <h2 class="plot-title">{title}</h2>
-
-  <div class="controls">
-    <div class="controls-label">Highlight ground truth references</div>
-    <div class="controls-row">
-      <select id="gt-select" multiple size="{n_visible}">
-{options_html}
-      </select>
-      <div class="btn-col">
-        <button id="btn-all">Select All</button>
-        <button id="btn-none">Clear All</button>
-      </div>
-    </div>
-    <div class="hint">
-      Click to toggle. Only selected references are shown.
-    </div>
-  </div>
-
-  <div id="plot"></div>
-  <div class="legend-note">
-    Solid = all predictions &nbsp;|&nbsp; {"Dashed" if use_cdf else "★"} = top predictions
-  </div>
-</div>
-
-<script>
-var BASELINE   = {baseline_json};
-var GT_DATA    = {gt_data_json};
-var USE_CDF    = {'true' if use_cdf else 'false'};
-var HOVER_TPL  = {json.dumps(hover_tpl)};
-var MODE_ALL   = {json.dumps(mode_all)};
-var MODE_TOP   = {json.dumps(mode_top)};
-var YAXIS_CFG  = {json.dumps(yaxis_cfg)};
-var PLOT_HEIGHT = {plot_height};
-
-// --- Toggle selection on plain click (no ctrl needed) ---
-var sel = document.getElementById('gt-select');
-sel.addEventListener('mousedown', function(e) {{
-    if (e.target.tagName === 'OPTION') {{
-        e.preventDefault();
-        e.target.selected = !e.target.selected;
-        sel.dispatchEvent(new Event('change'));
-    }}
-}});
-
-sel.addEventListener('change', rebuildPlot);
-
-document.getElementById('btn-all').addEventListener('click', function() {{
-    for (var i = 0; i < sel.options.length; i++) sel.options[i].selected = true;
-    rebuildPlot();
-}});
-document.getElementById('btn-none').addEventListener('click', function() {{
-    for (var i = 0; i < sel.options.length; i++) sel.options[i].selected = false;
-    rebuildPlot();
-}});
-
-// --- Color the options to match their trace color ---
-(function colorOptions() {{
-    var gtColors = {{}};
-    GT_DATA.forEach(function(gt) {{ gtColors[gt.gt_id] = gt.color; }});
-    for (var i = 0; i < sel.options.length; i++) {{
-        var c = gtColors[sel.options[i].value] || '#999';
-        sel.options[i].style.color = c;
-        sel.options[i].style.fontWeight = 'bold';
-    }}
-}})();
-
-function rebuildPlot() {{
-    var selected = new Set();
-    for (var i = 0; i < sel.options.length; i++) {{
-        if (sel.options[i].selected) selected.add(sel.options[i].value);
-    }}
-
-    var traces = [];
-
-    GT_DATA.forEach(function(gt) {{
-        if (!selected.has(gt.gt_id)) return;
-
-        if (gt.all_x.length > 0) {{
-            var trAll = {{
-                x: gt.all_x, y: gt.all_y,
-                mode: MODE_ALL,
-                name: gt.gt_id,
-                customdata: gt.all_cd,
-                hovertemplate: HOVER_TPL,
-                showlegend: true,
-            }};
-            if (MODE_ALL === 'lines') {{
-                trAll.line = {{ color: gt.color, width: 3 }};
-            }} else {{
-                trAll.marker = {{
-                    color: gt.color, size: 8, opacity: 0.85,
-                    line: {{ width: 1, color: 'black' }}
-                }};
-            }}
-            traces.push(trAll);
-        }}
-
-        if (gt.top_x.length > 0) {{
-            var trTop = {{
-                x: gt.top_x, y: gt.top_y,
-                mode: MODE_TOP,
-                name: gt.gt_id + ' (top)',
-                customdata: gt.top_cd,
-                hovertemplate: HOVER_TPL,
-                showlegend: true,
-            }};
-            if (MODE_TOP === 'lines') {{
-                trTop.line = {{ color: gt.color, width: 3, dash: 'dash' }};
-            }} else {{
-                trTop.marker = {{
-                    color: gt.color, size: 10, opacity: 0.95,
-                    symbol: 'star',
-                    line: {{ width: 1.5, color: 'black' }}
-                }};
-            }}
-            traces.push(trTop);
-        }}
-    }});
-
-    var layout = {{
-        xaxis: {{ title: 'TM score', range: [0, 1],
-                  tickvals: [0.0, 0.2, 0.4, 0.6, 0.8, 1.0] }},
-        yaxis: YAXIS_CFG,
-        template: 'plotly_white',
-        hovermode: 'closest',
-        height: PLOT_HEIGHT,
-        margin: {{ l: 70, r: 30, t: 30, b: 60 }},
-        legend: {{
-            orientation: 'h', yanchor: 'bottom', y: 1.01,
-            xanchor: 'center', x: 0.5, font: {{ size: 11 }},
-        }},
-    }};
-
-    Plotly.newPlot('plot', traces, layout, {{ responsive: true }});
-}}
-
-rebuildPlot();
-</script>
-</body>
-</html>
-"""
-
     out_html.parent.mkdir(parents=True, exist_ok=True)
-    out_html.write_text(html, encoding="utf-8")
+    fig.write_html(str(out_html), include_plotlyjs="cdn", full_html=True)
     return True
 
+
+# ---------------------------------------------------------------------------
+# Chain-pair ipTM – ordered dot plot
+# ---------------------------------------------------------------------------
 
 def add_prediction_metadata(df_pair: pd.DataFrame, df_pred: pd.DataFrame) -> pd.DataFrame:
     d = df_pair.copy()
@@ -519,15 +259,8 @@ def add_prediction_metadata(df_pair: pd.DataFrame, df_pred: pd.DataFrame) -> pd.
     p["sample_id"] = p["sample_id"].astype(str)
     p["prediction_id"] = p["prediction_id"].astype(str)
 
-    keep = [
-        "sample_id",
-        "prediction_id",
-        "ranking_score",
-        "iptm",
-        "ptm",
-        "mean_plddt_total",
-        "description",
-    ]
+    keep = ["sample_id", "prediction_id", "ranking_score", "iptm", "ptm",
+            "mean_plddt_total", "description"]
     keep = [c for c in keep if c in p.columns]
     extra = [c for c in keep if c not in d.columns or c in ["sample_id", "prediction_id"]]
     p = p[extra].drop_duplicates()
@@ -545,8 +278,14 @@ def add_prediction_metadata(df_pair: pd.DataFrame, df_pred: pd.DataFrame) -> pd.
 def plot_chain_pair_iptm_cumulative(
     df_pair: pd.DataFrame,
     out_html: Path,
-    title: str = "Distribution of chain-pair ipTM across all predictions",
+    title: str = "Chain-pair ipTM (descending order)",
 ) -> bool:
+    """Ordered dot-plot of chain-pair ipTM values.
+
+    Points are sorted in descending ipTM order.  Pairs belonging to the
+    top-ranked prediction (by ranking_score) are drawn with a distinct
+    marker so they stand out.
+    """
     required = {"sample_id", "prediction_id", "pair_iptm"}
     if df_pair.empty or not required.issubset(df_pair.columns):
         write_no_data_html(out_html, "No chain-pair ipTM data available.")
@@ -562,6 +301,7 @@ def plot_chain_pair_iptm_cumulative(
         write_no_data_html(out_html, "No valid chain-pair ipTM values available.")
         return False
 
+    # ---- derive helper columns ----
     d["name"] = d["sample_id"].str.split("_seed-").str[0].astype(str).replace("nan", "N/A")
 
     if "seed" not in d.columns or d["seed"].astype(str).isin(["", "N/A", "nan"]).all():
@@ -582,174 +322,135 @@ def plot_chain_pair_iptm_cumulative(
 
     d = _prepare_description_col(d)
 
+    if "ranking_score" in d.columns:
+        d["ranking_score"] = pd.to_numeric(d["ranking_score"], errors="coerce")
+    else:
+        d["ranking_score"] = np.nan
+
+    # ---- determine "top" pairs ----
+    # Top prediction = the prediction_id with the highest ranking_score.
+    # If is_top was already set upstream we respect it; otherwise derive it.
     if "is_top" in d.columns:
-        if d["is_top"].dtype == bool:
-            pass
-        else:
+        if d["is_top"].dtype != bool:
             d["is_top"] = d["is_top"].astype(str).str.lower().isin(["true", "1", "yes"])
     else:
         d["is_top"] = False
 
+    # If no rows are marked top yet, pick the prediction with highest ranking_score
+    if not d["is_top"].any() and d["ranking_score"].notna().any():
+        best_pred = (
+            d.groupby("prediction_id")["ranking_score"]
+            .first()
+            .idxmax()
+        )
+        d["is_top"] = d["prediction_id"] == best_pred
+
     d["is_top_str"] = d["is_top"].map({True: "True", False: "False"})
 
-    n_predictions = len(d)
-    fig = go.Figure()
+    for c in ["iptm", "ptm", "mean_plddt_total"]:
+        if c in d.columns:
+            d[c] = pd.to_numeric(d[c], errors="coerce")
 
+    # ---- sort descending by pair_iptm ----
+    d = d.sort_values("pair_iptm", ascending=False).reset_index(drop=True)
+    d["rank"] = d.index + 1  # 1-based rank
+
+    # ---- split into regular vs top ----
+    d_regular = d[~d["is_top"]].copy()
+    d_top = d[d["is_top"]].copy()
+
+    # ---- hover columns ----
     hover_cols = [
         "name", "seed", "sample", "chain_i", "chain_j",
         "chain_i_desc", "chain_j_desc", "description", "is_top_str",
+        "ranking_score", "iptm", "ptm", "mean_plddt_total",
     ]
+    for c in hover_cols:
+        if c not in d.columns:
+            d[c] = "N/A"
+            d_regular[c] = "N/A"
+            d_top[c] = "N/A"
 
-    if n_predictions <= 100:
-        jitter = 0.01
-        d["jitter"] = np.random.uniform(-jitter, jitter, size=len(d))
+    hover_tpl = (
+        "<b>rank:</b> %{x}<br>"
+        "<b>pair ipTM:</b> %{y:.3f}<br>"
+        "<b>name:</b> %{customdata[0]}<br>"
+        "<b>description:</b> %{customdata[7]}<br>"
+        "<b>seed:</b> %{customdata[1]}<br>"
+        "<b>sample:</b> %{customdata[2]}<br>"
+        "<b>chain i:</b> %{customdata[3]} (%{customdata[5]})<br>"
+        "<b>chain j:</b> %{customdata[4]} (%{customdata[6]})<br>"
+        "<b>ranking score:</b> %{customdata[9]}<br>"
+        "<b>iptm:</b> %{customdata[10]}<br>"
+        "<b>ptm:</b> %{customdata[11]}<br>"
+        "<b>mean pLDDT:</b> %{customdata[12]}<br>"
+        "<b>is top:</b> %{customdata[8]}<br>"
+        "<extra></extra>"
+    )
 
+    fig = go.Figure()
+
+    # Regular points
+    if not d_regular.empty:
         fig.add_trace(go.Scatter(
-            x=d["pair_iptm"] + d["jitter"],
-            y=[0.5] * len(d),
-            mode='markers',
-            name="All predictions",
-            marker=dict(
-                color="#4C72B0", size=6, opacity=0.7,
-                line=dict(width=0.5, color="black")
-            ),
-            hovertemplate=(
-                "<b>name:</b> %{customdata[0]}<br>"
-                "<b>description:</b> %{customdata[7]}<br>"
-                "<b>pair ipTM:</b> %{x:.3f}<br>"
-                "<b>seed:</b> %{customdata[1]}<br>"
-                "<b>sample:</b> %{customdata[2]}<br>"
-                "<b>chain i:</b> %{customdata[3]} (%{customdata[5]})<br>"
-                "<b>chain j:</b> %{customdata[4]} (%{customdata[6]})<br>"
-                "<b>is top:</b> %{customdata[8]}<br>"
-                "<extra></extra>"
-            ),
-            customdata=d[hover_cols].values,
+            x=d_regular["rank"],
+            y=d_regular["pair_iptm"],
+            mode="markers",
+            name="Other predictions",
+            marker=dict(color="#4C72B0", size=6, opacity=0.7,
+                        line=dict(width=0.5, color="white")),
+            customdata=d_regular[hover_cols].values,
+            hovertemplate=hover_tpl,
             showlegend=True,
         ))
 
-        d_top = d[d["is_top"]].copy()
-        if not d_top.empty:
-            d_top["jitter"] = np.random.uniform(-jitter, jitter, size=len(d_top))
-            fig.add_trace(go.Scatter(
-                x=d_top["pair_iptm"] + d_top["jitter"],
-                y=[0.5] * len(d_top),
-                mode='markers',
-                name="Top predictions",
-                marker=dict(
-                    color="#D55E00", size=8, opacity=0.8,
-                    line=dict(width=1.5, color="black")
-                ),
-                hovertemplate=(
-                    "<b>name:</b> %{customdata[0]}<br>"
-                    "<b>description:</b> %{customdata[7]}<br>"
-                    "<b>pair ipTM:</b> %{x:.3f}<br>"
-                    "<b>seed:</b> %{customdata[1]}<br>"
-                    "<b>sample:</b> %{customdata[2]}<br>"
-                    "<b>chain i:</b> %{customdata[3]} (%{customdata[5]})<br>"
-                    "<b>chain j:</b> %{customdata[4]} (%{customdata[6]})<br>"
-                    "<b>is top:</b> %{customdata[8]}<br>"
-                    "<extra></extra>"
-                ),
-                customdata=d_top[hover_cols].values,
-                showlegend=True,
-            ))
+    # Top-ranked prediction
+    if not d_top.empty:
+        fig.add_trace(go.Scatter(
+            x=d_top["rank"],
+            y=d_top["pair_iptm"],
+            mode="markers",
+            name="Top prediction (by ranking score)",
+            marker=dict(color="#D55E00", size=9, opacity=0.95,
+                        symbol="star",
+                        line=dict(width=1, color="black")),
+            customdata=d_top[hover_cols].values,
+            hovertemplate=hover_tpl,
+            showlegend=True,
+        ))
 
-        fig.update_layout(
-            title=dict(text=title, x=0.5, xanchor="center"),
-            xaxis=dict(
-                title="pair ipTM",
-                range=[0, 1],
-                tickvals=[0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
-            ),
-            yaxis=dict(showticklabels=False, title="", range=[0, 1]),
-            template="plotly_white",
-            hovermode="closest",
-            height=400,
-            margin=dict(l=70, r=50, t=80, b=70),
-            legend=dict(
-                orientation="h", yanchor="bottom", y=1.02,
-                xanchor="center", x=0.5
-            ),
-        )
+    # Reference lines
+    fig.add_hline(y=0.4, line_dash="dot", line_color="#999", line_width=1,
+                  annotation_text="0.4", annotation_position="bottom right",
+                  annotation_font_size=10, annotation_font_color="#999")
+    fig.add_hline(y=0.7, line_dash="dot", line_color="#999", line_width=1,
+                  annotation_text="0.7", annotation_position="bottom right",
+                  annotation_font_size=10, annotation_font_color="#999")
 
-    else:
-        d_sorted = d.sort_values("pair_iptm").reset_index(drop=True)
-        all_iptm = d_sorted["pair_iptm"]
-        if len(all_iptm) > 0:
-            y_all = [(i + 1) / len(all_iptm) for i in range(len(all_iptm))]
-            fig.add_trace(go.Scatter(
-                x=all_iptm, y=y_all,
-                mode='lines', name="All predictions",
-                line=dict(color="#4C72B0", width=2.5),
-                hovertemplate=(
-                    "<b>name:</b> %{customdata[0]}<br>"
-                    "<b>description:</b> %{customdata[7]}<br>"
-                    "<b>pair ipTM ≤</b> %{x:.2f}<br>"
-                    "<b>Fraction:</b> %{y:.3f}<br>"
-                    "<b>seed:</b> %{customdata[1]}<br>"
-                    "<b>sample:</b> %{customdata[2]}<br>"
-                    "<b>chain i:</b> %{customdata[3]} (%{customdata[5]})<br>"
-                    "<b>chain j:</b> %{customdata[4]} (%{customdata[6]})<br>"
-                    "<b>is top:</b> %{customdata[8]}<br>"
-                    "<extra></extra>"
-                ),
-                customdata=d_sorted[hover_cols].values,
-                showlegend=True,
-            ))
+    n_total = len(d)
+    plot_height = max(420, min(700, 350 + n_total))
 
-        d_top = d[d["is_top"]].copy()
-        if not d_top.empty:
-            d_top_sorted = d_top.sort_values("pair_iptm").reset_index(drop=True)
-            top_iptm = d_top_sorted["pair_iptm"]
-            if len(top_iptm) > 0:
-                y_top = [(i + 1) / len(top_iptm) for i in range(len(top_iptm))]
-                fig.add_trace(go.Scatter(
-                    x=top_iptm, y=y_top,
-                    mode='lines', name="Top predictions",
-                    line=dict(color="#D55E00", width=2.5, dash="solid"),
-                    hovertemplate=(
-                        "<b>name:</b> %{customdata[0]}<br>"
-                        "<b>description:</b> %{customdata[7]}<br>"
-                        "<b>pair ipTM ≤</b> %{x:.2f}<br>"
-                        "<b>Fraction:</b> %{y:.3f}<br>"
-                        "<b>seed:</b> %{customdata[1]}<br>"
-                        "<b>sample:</b> %{customdata[2]}<br>"
-                        "<b>chain i:</b> %{customdata[3]} (%{customdata[5]})<br>"
-                        "<b>chain j:</b> %{customdata[4]} (%{customdata[6]})<br>"
-                        "<b>is top:</b> %{customdata[8]}<br>"
-                        "<extra></extra>"
-                    ),
-                    customdata=d_top_sorted[hover_cols].values,
-                    showlegend=True,
-                ))
-
-        fig.update_layout(
-            title=dict(text=title, x=0.5, xanchor="center"),
-            xaxis=dict(
-                title="pair ipTM",
-                range=[0, 1],
-                tickvals=[0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
-            ),
-            yaxis=dict(
-                title="Cumulative fraction",
-                range=[0, 1.02],
-                tickvals=[0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
-            ),
-            template="plotly_white",
-            hovermode="closest",
-            height=650,
-            margin=dict(l=70, r=50, t=80, b=70),
-            legend=dict(
-                orientation="h", yanchor="bottom", y=1.02,
-                xanchor="center", x=0.5
-            ),
-        )
+    fig.update_layout(
+        title=dict(text=title, x=0.5, xanchor="center", font=dict(size=16)),
+        xaxis=dict(title="Chain pair (sorted by descending ipTM)", tickfont=dict(size=11)),
+        yaxis=dict(title="pair ipTM", range=[-0.02, 1.02],
+                   tickvals=[0.0, 0.2, 0.4, 0.6, 0.8, 1.0]),
+        template="plotly_white",
+        hovermode="closest",
+        height=plot_height,
+        margin=dict(l=70, r=40, t=70, b=60),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02,
+                    xanchor="center", x=0.5, font=dict(size=12)),
+    )
 
     out_html.parent.mkdir(parents=True, exist_ok=True)
     fig.write_html(str(out_html), include_plotlyjs="cdn", full_html=True)
     return True
 
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
 @click.option(
@@ -768,7 +469,7 @@ def plot_chain_pair_iptm_cumulative(
     "--tm-plot",
     type=click.Path(dir_okay=False, path_type=Path),
     default=None,
-    help="Output HTML path for TM score distribution plot."
+    help="Output HTML path for TM score heatmap."
 )
 @click.option(
     "--master-tsv",
@@ -779,13 +480,17 @@ def plot_chain_pair_iptm_cumulative(
 def main(pair_tsv: Path, out_html: Path, tm_plot: Optional[Path], master_tsv: Optional[Path]):
     """
     Create two interactive plots:
-    1. Distribution of chain-pair ipTM across all predictions.
-    2. Distribution of TM scores across all predictions.
+    1. Chain-pair ipTM ordered dot plot.
+    2. Heatmap of TM scores (predictions × ground truths).
     """
     df_pair = load_tsv(pair_tsv)
     df_pair = coerce_numeric(df_pair, ["pair_iptm", "pair_pae_min"])
 
-    df_master = load_tsv(master_tsv) if master_tsv is not None and master_tsv.exists() else pd.DataFrame()
+    df_master = (
+        load_tsv(master_tsv)
+        if master_tsv is not None and master_tsv.exists()
+        else pd.DataFrame()
+    )
     df_master = coerce_numeric(df_master, ["ranking_score", "iptm", "ptm", "mean_plddt_total"])
 
     d = add_prediction_metadata(df_pair, df_master)
