@@ -67,7 +67,7 @@ def _split_description_lines(desc: str, max_width: int = 60) -> str:
 def plot_tm_score_distribution(
     df_pred: pd.DataFrame,
     out_html: Path,
-    title: str = "TM scores: predictions vs ground truths",
+    title: str = "TM scores",
 ) -> bool:
     required = {"sample_id", "prediction_id", "TM2"}
     if df_pred.empty or not required.issubset(df_pred.columns):
@@ -164,7 +164,7 @@ def plot_tm_score_distribution(
                 desc_hover = info.get("description_hover", "N/A")
                 lines = [
                     f"<b>Prediction:</b> {pred}",
-                    f"<b>Ground truth:</b> {gt}",
+                    f"<b>Reference:</b> {gt}",
                     f"<b>TM2:</b> {tm2_val:.3f}" if pd.notna(tm2_val) else "<b>TM2:</b> N/A",
                     f"<b>TM1:</b> {tm1_val:.3f}" if pd.notna(tm1_val) else "<b>TM1:</b> N/A",
                     f"<b>Description:</b><br>{desc_hover}",
@@ -180,7 +180,7 @@ def plot_tm_score_distribution(
                 row_hover.append("<br>".join(lines))
             else:
                 row_hover.append(
-                    f"<b>Prediction:</b> {pred}<br><b>Ground truth:</b> {gt}<br><b>TM2:</b> N/A"
+                    f"<b>Prediction:</b> {pred}<br><b>Reference:</b> {gt}<br><b>TM2:</b> N/A"
                 )
         hover_text.append(row_hover)
 
@@ -217,7 +217,7 @@ def plot_tm_score_distribution(
 
     fig.update_layout(
         title=dict(text=title, x=0.5, xanchor="center", font=dict(size=16)),
-        xaxis=dict(title="Ground Truth", side="top",
+        xaxis=dict(title="Reference", side="bottom",
                    tickangle=-45, tickfont=dict(size=11)),
         yaxis=dict(title="Prediction", autorange="reversed", tickfont=dict(size=10)),
         template="plotly_white", height=plot_height, width=plot_width,
