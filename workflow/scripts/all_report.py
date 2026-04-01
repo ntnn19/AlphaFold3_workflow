@@ -182,65 +182,77 @@ def build_master(
     df_af3_plots = pd.DataFrame(af3_plot_rows)
     master = master.merge(df_af3_plots, on="sample_id", how="left")
 
-    # --- Merge US-align with proper ground_truth_id extraction ---
+    # --- Merge US-align ---
+    # US-align is run per sample (one model CIF vs each reference), so the
+    # usalign prediction_id equals the sample_id, NOT the per-seed/sample
+    # prediction_id.  We need to:
+    #   1. Extract ground_truth_id from the usalign_id / ground_truth_id col
+    #   2. Extract the actual per-prediction prediction_id from the usalign
+    #      prediction_id column (which may encode seed+sample info) OR
+    #      merge on sample_id alone and cross-join with all predictions.
+    #
+    # From the data we see:
+    #   usalign prediction_id = "5qj0_rna_mn_modeller_seed-1" (= sample_id)
+    #   usalign ground_truth_id = "4WTJ_pdb" (already extracted)
+    #   usalign usalign_id = "5qj0_rna_mn_modeller_seed-1_ref-4WTJ_pdb"
+    #
+    # The usalign was run on the *sample-level* model CIF, so the same TM
+    # scores apply to every prediction (seed-X_sample-Y) within that sample.
+    # We merge on sample_id only, producing one row per (prediction, gt_ref).
+
     if not df_usalign.empty:
         d_u = df_usalign.copy()
 
-        if "prediction_id" not in d_u.columns and "usalign_id" in d_u.columns:
-            d_u["prediction_id"] = d_u["usalign_id"].astype(str)
+        # Ensure ground_truth_id exists and is populated
+        if "ground_truth_id" not in d_u.columns or d_u["ground_truth_id"].astype(str).replace("nan", "").str.strip().eq("").all():
+            # Try extracting from usalign_id
+            if "usalign_id" in d_u.columns:
+                d_u["ground_truth_id"] = (
+                    d_u["usalign_id"].astype(str)
+                    .str.extract(r"_ref-(.+)$", expand=False)
+                    .fillna("")
+                )
+            # Fallback: derive from PDBchain2 / ground_truth path column
+            if "ground_truth_id" not in d_u.columns or d_u["ground_truth_id"].eq("").all():
+                for col_candidate in ["PDBchain2", "ground_truth"]:
+                    if col_candidate in d_u.columns:
+                        d_u["ground_truth_id"] = (
+                            d_u[col_candidate].astype(str)
+                            .apply(lambda p: Path(p.split(":")[0]).stem if p and p != "nan" else "")
+                        )
+                        if not d_u["ground_truth_id"].eq("").all():
+                            break
 
-        d_u["prediction_id"] = d_u["prediction_id"].astype(str)
-
-        # Extract ground_truth_id from the _ref-XXX suffix
-        d_u["ground_truth_id"] = (
-            d_u["prediction_id"]
-            .str.extract(r"_ref-(.+)$", expand=False)
-            .fillna("")
-        )
-
-        # If regex extraction didn't work (no _ref- pattern), try deriving
-        # from the ground_truth column which has the actual reference path
-        if "ground_truth" in d_u.columns:
-            gt_from_path = (
-                d_u["ground_truth"]
-                .astype(str)
-                .apply(lambda p: Path(p).stem if p and p != "nan" else "")
+        # Replace remaining blanks
+        if "ground_truth_id" in d_u.columns:
+            d_u["ground_truth_id"] = (
+                d_u["ground_truth_id"].astype(str)
+                .replace("nan", "").replace("", "default").str.strip()
             )
-            # Use path-derived ID where regex extraction came up empty
-            mask = d_u["ground_truth_id"].eq("")
-            d_u.loc[mask, "ground_truth_id"] = gt_from_path[mask]
+            d_u.loc[d_u["ground_truth_id"] == "", "ground_truth_id"] = "default"
+        else:
+            d_u["ground_truth_id"] = "default"
 
-        # Strip the _ref-XXX suffix to recover the original prediction_id
-        d_u["prediction_id"] = (
-            d_u["prediction_id"]
-            .str.replace(r"_ref-.+$", "", regex=True)
-        )
-
-        # Replace any remaining empty ground_truth_id with "default"
-        d_u.loc[d_u["ground_truth_id"].eq(""), "ground_truth_id"] = "default"
-
+        # Keep only the columns we need for the merge
         u_keep = [
-            "sample_id", "prediction_id", "ground_truth_id",
+            "sample_id", "ground_truth_id",
             "TM1", "TM2", "RMSD", "ID1", "ID2", "IDali",
             "L1", "L2", "Lali",
         ]
         u_keep = [c for c in u_keep if c in d_u.columns]
         d_u = d_u[u_keep].drop_duplicates()
 
-        # One-to-many merge: each prediction gets one row per ground truth
-        master = master.merge(
-            d_u, on=["sample_id", "prediction_id"], how="left"
-        )
+        # Merge on sample_id only — each prediction in the sample gets
+        # one row per ground-truth reference (cross-join within sample)
+        master = master.merge(d_u, on="sample_id", how="left")
 
-    # If ground_truth_id is still missing after everything, fill with "default"
+    # Final fallback for ground_truth_id
     if "ground_truth_id" not in master.columns:
         master["ground_truth_id"] = "default"
     else:
         master["ground_truth_id"] = (
-            master["ground_truth_id"]
-            .astype(str)
-            .replace("", "default")
-            .replace("nan", "default")
+            master["ground_truth_id"].astype(str)
+            .replace("", "default").replace("nan", "default")
         )
 
     # Add deterministic US-align plot path
@@ -299,8 +311,6 @@ def main(
       - all_usalign.tsv           (aggregation only)
       - all_sample_status.tsv     (derived sample-level merged/status table)
       - all_master.tsv            (merged prediction-level table)
-
-    Only all_master.tsv and all_sample_status.tsv are merge/derived tables.
     """
     outdir.mkdir(parents=True, exist_ok=True)
 
