@@ -404,6 +404,8 @@ def generate_molstar_viewers_for_predictions(
     for _, row in df_pred.iterrows():
         pred_id = str(row["prediction_id"])
         is_top = bool(row.get("is_top", False))
+        if not(is_top):
+            continue
 
         # Locate the prediction subdirectory from the confidences/summary path
         conf_path = row.get("confidences_path") or row.get("summary_path")
