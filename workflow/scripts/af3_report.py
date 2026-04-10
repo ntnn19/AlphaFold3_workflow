@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 from __future__ import annotations
+import base64
+import hashlib
 import math
 import json
 import re
+import urllib.request
 from pathlib import Path
 
 import click
@@ -12,7 +15,7 @@ import pandas as pd
 import matplotlib
 matplotlib.use("Agg")  # headless for Snakemake/HPC
 import matplotlib.pyplot as plt
-from typing import Dict, Optional, Tuple, Any
+from typing import Dict, List, Optional, Tuple, Any
 import seaborn as sns
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -33,6 +36,491 @@ BLUE_WHITE_CMAP = LinearSegmentedColormap.from_list(
 
 SEED_SAMPLE_RE = re.compile(r"seed-(\d+)_sample-(\d+)")
 
+# ---------------------------------------------------------------------------
+# Molstar constants
+# ---------------------------------------------------------------------------
+MOLSTAR_VERSION = "4.14.0"
+MOLSTAR_JS_URL  = f"https://cdn.jsdelivr.net/npm/molstar@{MOLSTAR_VERSION}/build/viewer/molstar.js"
+MOLSTAR_CSS_URL = f"https://cdn.jsdelivr.net/npm/molstar@{MOLSTAR_VERSION}/build/viewer/molstar.css"
+
+MOLSTAR_CACHE_DIR = Path.home() / ".cache" / "molstar_report"
+
+PLDDT_LEGEND = [
+    {"label": "Very high",  "range": "≥ 90",    "color": "#0053D6"},
+    {"label": "High",       "range": "70 – 90",  "color": "#65CBF3"},
+    {"label": "Medium",     "range": "50 – 70",  "color": "#FFDB13"},
+    {"label": "Low",        "range": "< 50",     "color": "#FF7D45"},
+]
+
+
+# ---------------------------------------------------------------------------
+# Molstar helpers
+# ---------------------------------------------------------------------------
+
+def _molstar_cache_path(url: str, suffix: str) -> Path:
+    key = hashlib.md5(url.encode()).hexdigest()[:12]
+    return MOLSTAR_CACHE_DIR / f"{key}{suffix}"
+
+
+def _fetch_cached(url: str, suffix: str, label: str) -> str:
+    MOLSTAR_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    path = _molstar_cache_path(url, suffix)
+    if path.exists():
+        return path.read_text(encoding="utf-8")
+    try:
+        with urllib.request.urlopen(url, timeout=30) as resp:
+            text = resp.read().decode("utf-8")
+    except Exception as exc:
+        raise RuntimeError(f"Could not download {label}: {exc}")
+    path.write_text(text, encoding="utf-8")
+    return text
+
+
+def _find_model_cif(af3_dir: Path) -> Optional[Path]:
+    """Return the top-level *_model.cif in an AF3 output directory, or None."""
+    candidates = sorted(af3_dir.glob("*_model.cif"))
+    if not candidates:
+        return None
+    return candidates[0]
+
+
+def _read_summary_confidences(af3_dir: Path) -> Optional[dict]:
+    """Read top-level *_summary_confidences.json if present."""
+    candidates = sorted(af3_dir.glob("*_summary_confidences.json"))
+    if not candidates:
+        return None
+    try:
+        return json.loads(candidates[0].read_text())
+    except Exception:
+        return None
+
+
+def _molstar_legend_html(legend: list[dict]) -> str:
+    items = ""
+    for entry in legend:
+        items += f"""
+        <div class="legend-item">
+          <span class="swatch" style="background:{entry['color']};"></span>
+          <span class="lbl">{entry['label']}</span>
+          <span class="rng">{entry['range']}</span>
+        </div>"""
+    return f"""
+  <div id="legend">
+    <div class="legend-title">pLDDT</div>
+    {items}
+  </div>"""
+
+
+def _molstar_metrics_html(summary: Optional[dict]) -> str:
+    if not summary:
+        return ""
+
+    def _extract_scalar(v):
+        if v is None:
+            return None
+        if isinstance(v, bool):
+            return "yes" if v else "no"
+        if isinstance(v, (int, float)):
+            return f"{float(v):.3f}"
+        if isinstance(v, list):
+            flat = [x for x in v if x is not None and not isinstance(x, list)]
+            if len(flat) == 1:
+                return f"{float(flat[0]):.3f}"
+            if len(flat) > 1:
+                return "  ".join(f"{float(x):.3f}" for x in flat)
+        return None
+
+    key_labels = {
+        "ranking_score":       "Ranking score",
+        "ptm":                 "pTM",
+        "iptm":                "ipTM",
+        "chain_ptm":           "Chain pTM",
+        "chain_iptm":          "Chain ipTM",
+        "fraction_disordered": "Disordered",
+        "has_clash":           "Has clash",
+    }
+
+    rows = ""
+    seen = set()
+
+    for k, label in key_labels.items():
+        v = summary.get(k)
+        formatted = _extract_scalar(v)
+        seen.add(k)
+        if formatted is None:
+            continue
+        rows += f'<div class="metric"><span class="mk">{label}</span><span class="mv">{formatted}</span></div>'
+
+    for k, v in summary.items():
+        if k in seen:
+            continue
+        formatted = _extract_scalar(v)
+        if formatted is None:
+            continue
+        rows += f'<div class="metric"><span class="mk">{k}</span><span class="mv">{formatted}</span></div>'
+
+    if not rows:
+        return ""
+    return f'<div id="metrics">{rows}</div>'
+
+
+def _build_molstar_html(
+    structure_path: Path,
+    molstar_js: str,
+    molstar_css: str,
+    title: str,
+    bg_color: str,
+    summary: Optional[dict],
+) -> str:
+    data_b64     = base64.b64encode(structure_path.read_bytes()).decode()
+    legend_block = _molstar_legend_html(PLDDT_LEGEND)
+    metrics_block = _molstar_metrics_html(summary)
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>{title}</title>
+  <style>
+{molstar_css}
+  </style>
+  <style>
+    *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
+    html, body {{ width: 100%; height: 100%; background: {bg_color}; }}
+
+    /* ── header ── */
+    #header {{
+      position: fixed; top: 0; left: 0; right: 0; height: 40px; z-index: 1000;
+      background: rgba(15,15,22,0.95); backdrop-filter: blur(8px);
+      display: flex; align-items: center; padding: 0 16px; gap: 10px;
+      border-bottom: 1px solid rgba(255,255,255,0.07);
+    }}
+    #header h1 {{
+      color: #dde; font-size: 13px; font-weight: 500;
+      letter-spacing: 0.04em; white-space: nowrap;
+      overflow: hidden; text-overflow: ellipsis; flex: 1;
+    }}
+    #header .badge {{
+      font-size: 10px; color: #555; letter-spacing: 0.06em;
+      text-transform: uppercase; white-space: nowrap;
+    }}
+
+    /* ── viewer ── */
+    #app {{ position: fixed; top: 40px; left: 0; right: 0; bottom: 0; }}
+
+    /* ── pLDDT legend ── */
+    #legend {{
+      position: fixed; bottom: 24px; left: 16px; z-index: 900;
+      background: rgba(15,15,22,0.88); backdrop-filter: blur(6px);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 8px; padding: 10px 14px; min-width: 170px;
+    }}
+    .legend-title {{
+      color: #aaa; font-size: 10px; font-weight: 600;
+      letter-spacing: 0.1em; text-transform: uppercase;
+      margin-bottom: 8px; font-family: monospace;
+    }}
+    .legend-item {{
+      display: flex; align-items: center; gap: 8px;
+      margin-bottom: 5px; font-size: 12px;
+    }}
+    .legend-item:last-child {{ margin-bottom: 0; }}
+    .swatch {{
+      width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0;
+      border: 1px solid rgba(255,255,255,0.15);
+    }}
+    .lbl {{ color: #ccc; flex: 1; }}
+    .rng {{ color: #666; font-family: monospace; font-size: 11px; }}
+
+    /* ── summary metrics ── */
+    #metrics {{
+      position: fixed; bottom: 24px; right: 16px; z-index: 900;
+      background: rgba(15,15,22,0.88); backdrop-filter: blur(6px);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 8px; padding: 10px 14px; min-width: 150px;
+    }}
+    .metric {{
+      display: flex; justify-content: space-between; gap: 16px;
+      margin-bottom: 5px; font-size: 12px;
+    }}
+    .metric:last-child {{ margin-bottom: 0; }}
+    .mk {{ color: #888; }}
+    .mv {{ color: #e0e0e0; font-family: monospace; }}
+
+    /* ── loading overlay ── */
+    #loading {{
+      position: fixed; inset: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      background: {bg_color}; z-index: 500;
+      color: #888; font-size: 13px; gap: 14px; transition: opacity 0.4s;
+    }}
+    #loading .spinner {{
+      width: 32px; height: 32px;
+      border: 2px solid #333; border-top-color: #65CBF3;
+      border-radius: 50%; animation: spin 0.8s linear infinite;
+    }}
+    @keyframes spin {{ to {{ transform: rotate(360deg); }} }}
+  </style>
+</head>
+<body>
+  <div id="header">
+    <h1>{title}</h1>
+    <span class="badge">AlphaFold 3 · pLDDT</span>
+  </div>
+
+  <div id="loading">
+    <div class="spinner"></div>
+    <span>Loading structure…</span>
+  </div>
+
+  <div id="app"></div>
+  {legend_block}
+  {metrics_block}
+
+  <script>
+{molstar_js}
+  </script>
+  <script>
+    (async () => {{
+      const b64  = "{data_b64}";
+      const data = atob(b64);
+
+      try {{
+        const viewer = await molstar.Viewer.create("app", {{
+          layoutIsExpanded: false,
+          layoutShowControls: true,
+          layoutShowRemoteState: false,
+          layoutShowSequence: true,
+          layoutShowLog: false,
+          viewportShowExpand: true,
+          collapseLeftPanel: false,
+        }});
+
+        await viewer.loadStructureFromData(data, "mmcif", false);
+
+        const plugin = viewer.plugin;
+        const structures = plugin.managers.structure.hierarchy.current.structures;
+        for (const s of structures) {{
+          await plugin.managers.structure.component.updateRepresentationsTheme(
+            s.components,
+            {{ color: "plddt-confidence" }}
+          );
+        }}
+
+        const overlay = document.getElementById("loading");
+        overlay.style.opacity = "0";
+        setTimeout(() => overlay.remove(), 450);
+
+      }} catch (err) {{
+        const overlay = document.getElementById("loading");
+        overlay.innerHTML = `
+          <div style="color:#e07070;font-size:14px;font-weight:600;">
+            Failed to load structure
+          </div>
+          <div style="color:#888;font-size:12px;max-width:480px;text-align:center;line-height:1.6;">
+            ${{err}}
+          </div>`;
+        console.error(err);
+      }}
+    }})();
+  </script>
+</body>
+</html>"""
+
+
+def generate_molstar_html(
+    af3_dir: Path,
+    output_html: Path,
+    title: Optional[str] = None,
+    bg_color: str = "#14141e",
+    no_cache: bool = False,
+) -> bool:
+    """Generate a self-contained Molstar HTML viewer for one AF3 prediction directory.
+
+    Returns True on success, False if no *_model.cif was found.
+    """
+    model_cif = _find_model_cif(af3_dir)
+    if model_cif is None:
+        return False
+
+    summary = _read_summary_confidences(af3_dir)
+    resolved_title = title or af3_dir.name
+
+    if no_cache:
+        for url, suffix in [(MOLSTAR_JS_URL, ".js"), (MOLSTAR_CSS_URL, ".css")]:
+            p = _molstar_cache_path(url, suffix)
+            if p.exists():
+                p.unlink()
+
+    molstar_js  = _fetch_cached(MOLSTAR_JS_URL,  ".js",  "molstar.js")
+    molstar_css = _fetch_cached(MOLSTAR_CSS_URL, ".css", "molstar.css")
+
+    html = _build_molstar_html(
+        structure_path=model_cif,
+        molstar_js=molstar_js,
+        molstar_css=molstar_css,
+        title=resolved_title,
+        bg_color=bg_color,
+        summary=summary,
+    )
+    output_html.parent.mkdir(parents=True, exist_ok=True)
+    output_html.write_text(html, encoding="utf-8")
+    return True
+
+
+def generate_molstar_viewers_for_predictions(
+    af3_output_dir: Path,
+    outdir: Path,
+    df_pred: pd.DataFrame,
+    layout: str,
+    bg_color: str = "#14141e",
+    no_cache: bool = False,
+    descriptions: Optional[dict[str, dict[str, str]]] = None,
+) -> dict[str, str]:
+    """Generate Molstar HTML viewers for each prediction and a top-level switcher.
+
+    Returns a dict of artifact name → relative path for inclusion in the report.
+    """
+    viewers_dir = outdir / "molstar"
+    viewers_dir.mkdir(parents=True, exist_ok=True)
+
+    # Pre-fetch Molstar JS/CSS once (they are cached)
+    if no_cache:
+        for url, suffix in [(MOLSTAR_JS_URL, ".js"), (MOLSTAR_CSS_URL, ".css")]:
+            p = _molstar_cache_path(url, suffix)
+            if p.exists():
+                p.unlink()
+
+    try:
+        molstar_js  = _fetch_cached(MOLSTAR_JS_URL,  ".js",  "molstar.js")
+        molstar_css = _fetch_cached(MOLSTAR_CSS_URL, ".css", "molstar.css")
+    except RuntimeError:
+        return {}
+
+    generated: list[tuple[str, str, bool]] = []  # (pred_id, relative_path, is_top)
+
+    # For each prediction, find the directory containing the model CIF
+    for _, row in df_pred.iterrows():
+        pred_id = str(row["prediction_id"])
+        is_top = bool(row.get("is_top", False))
+
+        # Locate the prediction subdirectory from the confidences/summary path
+        conf_path = row.get("confidences_path") or row.get("summary_path")
+        if not conf_path:
+            continue
+        pred_dir = Path(conf_path).parent
+
+        model_cif = _find_model_cif(pred_dir)
+        if model_cif is None:
+            # Try one level up (some layouts have model.cif in the parent)
+            model_cif = _find_model_cif(pred_dir.parent)
+        if model_cif is None:
+            continue
+
+        summary = None
+        summary_path = row.get("summary_path")
+        if summary_path and Path(summary_path).exists():
+            try:
+                summary = json.loads(Path(summary_path).read_text())
+            except Exception:
+                summary = None
+
+        # Build title
+        sample_id = str(row.get("sample_id", ""))
+        desc_str = build_all_descriptions_string(sample_id, descriptions or {})
+        title_parts = [f"{'TOP: ' if is_top else ''}{pred_id}"]
+        if desc_str:
+            title_parts.append(desc_str)
+        viewer_title = " — ".join(title_parts)
+
+        out_html = viewers_dir / f"molstar_{pred_id}.html"
+
+        html = _build_molstar_html(
+            structure_path=model_cif,
+            molstar_js=molstar_js,
+            molstar_css=molstar_css,
+            title=viewer_title,
+            bg_color=bg_color,
+            summary=summary,
+        )
+        out_html.write_text(html, encoding="utf-8")
+        generated.append((pred_id, str(out_html.relative_to(outdir)), is_top))
+
+    if not generated:
+        return {}
+
+    artifacts: dict[str, str] = {}
+
+    # Record individual viewer paths
+    for pred_id, rel_path, is_top in generated:
+        artifacts[f"molstar_{pred_id}"] = rel_path
+
+    # Build a switcher/index page that iframes the individual viewers
+    switcher_path = viewers_dir / "molstar_viewer.html"
+
+    # Sort: top first, then by pred_id
+    generated_sorted = sorted(generated, key=lambda t: (not t[2], t[0]))
+
+    options_html = ""
+    for pred_id, rel_path, is_top in generated_sorted:
+        # rel_path is relative to outdir; for the iframe src we need relative to viewers_dir
+        iframe_src = f"molstar_{pred_id}.html"
+        label = f"TOP: {pred_id}" if is_top else pred_id
+        options_html += f'<option value="{iframe_src}">{label}</option>\n'
+
+    first_src = f"molstar_{generated_sorted[0][0]}.html"
+
+    sample_id = ""
+    if not df_pred.empty and "sample_id" in df_pred.columns:
+        sample_id = str(df_pred["sample_id"].iloc[0])
+    desc_str = build_description_string(sample_id, descriptions or {})
+    desc_block = f'<p style="color:#888;margin:4px 0 12px 0;font-size:13px;">{desc_str}</p>' if desc_str else ''
+
+    switcher_html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <title>Molstar Structure Viewer</title>
+  <style>
+    body {{ font-family: Arial, sans-serif; margin: 0; padding: 0; background: #f5f5f5; }}
+    .controls {{
+      padding: 12px 20px; background: #fff;
+      border-bottom: 1px solid #ddd; display: flex; align-items: center; gap: 12px;
+    }}
+    .controls h2 {{ margin: 0; font-size: 16px; color: #333; }}
+    .controls select {{ padding: 6px 12px; font-size: 14px; }}
+    .viewer-frame {{
+      width: 100%; height: calc(100vh - 60px); border: none;
+    }}
+  </style>
+</head>
+<body>
+  <div class="controls">
+    <h2>3D Structure Viewer</h2>
+    {desc_block}
+    <select id="pred-select">
+      {options_html}
+    </select>
+  </div>
+  <iframe id="viewer-frame" class="viewer-frame" src="{first_src}"></iframe>
+  <script>
+    document.getElementById('pred-select').addEventListener('change', function() {{
+      document.getElementById('viewer-frame').src = this.value;
+    }});
+  </script>
+</body>
+</html>"""
+
+    switcher_path.write_text(switcher_html, encoding="utf-8")
+    artifacts["molstar_viewer"] = str(switcher_path.relative_to(outdir))
+
+    return artifacts
+
+
+# ---------------------------------------------------------------------------
+# Original af3_report.py functions
+# ---------------------------------------------------------------------------
 
 def load_input_descriptions(input_tsv: Optional[Path]) -> dict[str, dict[str, str]]:
     if input_tsv is None or not input_tsv.exists():
@@ -867,7 +1355,6 @@ def plot_pae_multipanel_best_labeled(
 
         bounds = _chain_boundaries_from_token_chain_ids(tchains)
 
-        # No description in panel titles
         entries.append((pid, is_top, pae, bounds))
         all_vals.append(pae[np.isfinite(pae)])
 
@@ -917,7 +1404,6 @@ def plot_pae_multipanel_best_labeled(
         ax.axvline(-0.5, color="black", lw=1.2)
         ax.axvline(nres - 0.5, color="black", lw=1.2)
 
-        # Title: prediction ID only, no description
         title = f"TOP: {pid}" if is_top else pid
         ax.set_title(title, fontsize=8)
         ax.set_xticks([])
@@ -933,7 +1419,6 @@ def plot_pae_multipanel_best_labeled(
         cbar = fig.colorbar(last_im, cax=cbar_ax)
         cbar.set_label("PAE (Å)")
 
-    # Suptitle: include description
     sample_id = (str(df_pred["sample_id"].iloc[0])
                  if "sample_id" in df_pred.columns and not df_pred.empty else "")
     desc_str = build_description_string(sample_id, descriptions or {})
@@ -1225,7 +1710,6 @@ def plot_complex_overview(
     if "is_top" not in d.columns:
         d["is_top"] = False
 
-    # Tick labels: prediction ID only, no description
     d["prediction_label"] = np.where(
         d["is_top"].fillna(False),
         "TOP: " + d["prediction_id"].astype(str),
@@ -1349,7 +1833,6 @@ def plot_chain_bars_per_prediction(
         ax.set_xlabel("mean pLDDT")
         ax.set_xlim(0, xmax)
 
-        # Tick labels: chain ID only, no description
         chain_labels = sub["chain_id"].tolist()
 
         ax.set_yticks(y_pos)
@@ -1364,7 +1847,6 @@ def plot_chain_bars_per_prediction(
         r, c = divmod(k, ncols)
         axes[r][c].axis("off")
 
-    # Suptitle: include description
     sample_id = (str(d["sample_id"].iloc[0])
                  if "sample_id" in d.columns and not d.empty else "")
     desc_str = build_description_string(sample_id, descriptions or {})
@@ -1460,10 +1942,30 @@ def df_to_html_table(df: pd.DataFrame, max_rows: int, table_id: str = None) -> s
 @click.option("--html-name", default="report.html", show_default=True, help="HTML report filename.")
 @click.option("--max-rows", default=200, show_default=True, type=int, help="Max rows shown per table in HTML.")
 @click.option("--write-csv/--no-write-csv", default=True, show_default=True, help="Write CSV tables.")
-@click.option("--layout",type=click.Choice(["nagarnat", "dm"], case_sensitive=False), default="nagarnat", show_default=True, help="Output directory layout / AlphaFold version naming convention.")
-def main(af3_output_dir: Path, outdir: Path, input_tsv: Optional[Path], html_name: str, max_rows: int, write_csv: bool, layout: str):
+@click.option("--layout", type=click.Choice(["nagarnat", "dm"], case_sensitive=False), default="nagarnat", show_default=True,
+              help="Output directory layout / AlphaFold version naming convention.")
+@click.option("--bg-color", default="#14141e", show_default=True,
+              help="Molstar viewer background color (CSS value).")
+@click.option("--no-molstar", is_flag=True, default=False,
+              help="Skip generating Molstar 3D structure viewers.")
+@click.option("--no-cache", is_flag=True, default=False,
+              help="Re-download the Molstar JS/CSS bundle (ignore local cache).")
+def main(
+    af3_output_dir: Path,
+    outdir: Path,
+    input_tsv: Optional[Path],
+    html_name: str,
+    max_rows: int,
+    write_csv: bool,
+    layout: str,
+    bg_color: str,
+    no_molstar: bool,
+    no_cache: bool,
+):
     """
     Generate an HTML report + tables from an AlphaFold 3 output directory.
+
+    Includes interactive Molstar 3D structure viewers colored by pLDDT.
     """
     outdir.mkdir(parents=True, exist_ok=True)
 
@@ -1499,6 +2001,19 @@ def main(af3_output_dir: Path, outdir: Path, input_tsv: Optional[Path], html_nam
     iptm_interactive_path = plot_iptm_interactive(df_pair, df_pred, outdir, descriptions=descriptions)
     plots["iptm_interactive"] = iptm_interactive_path
 
+    # ---- Molstar 3D structure viewers ----
+    molstar_artifacts = {}
+    if not no_molstar:
+        molstar_artifacts = generate_molstar_viewers_for_predictions(
+            af3_output_dir=af3_output_dir,
+            outdir=outdir,
+            df_pred=df_pred,
+            layout=layout.lower(),
+            bg_color=bg_color,
+            no_cache=no_cache,
+            descriptions=descriptions,
+        )
+        plots.update(molstar_artifacts)
 
 
 if __name__ == "__main__":
