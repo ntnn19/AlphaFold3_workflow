@@ -436,7 +436,7 @@ def generate_molstar_viewers_for_predictions(
             title_parts.append(desc_str)
         viewer_title = " — ".join(title_parts)
 
-        out_html = viewers_dir / f"molstar_{pred_id}.html"
+        out_html = viewers_dir / f"{pred_id}_molstar_viewer.html"
 
         html = _build_molstar_html(
             structure_path=model_cif,
@@ -457,9 +457,6 @@ def generate_molstar_viewers_for_predictions(
     # Record individual viewer paths
     for pred_id, rel_path, is_top in generated:
         artifacts[f"molstar_{pred_id}"] = rel_path
-
-    # Build a switcher/index page that iframes the individual viewers
-    switcher_path = viewers_dir / "molstar_viewer.html"
 
     # Sort: top first, then by pred_id
     generated_sorted = sorted(generated, key=lambda t: (not t[2], t[0]))
@@ -514,8 +511,6 @@ def generate_molstar_viewers_for_predictions(
 </body>
 </html>"""
 
-    switcher_path.write_text(switcher_html, encoding="utf-8")
-    artifacts["molstar_viewer"] = str(switcher_path.relative_to(outdir))
 
     return artifacts
 
