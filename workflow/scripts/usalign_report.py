@@ -123,6 +123,7 @@ def build_interactive_plot(df: pd.DataFrame, html_path: Path) -> Optional[str]:
 
     d = df.copy()
     d["prediction_id"] = d["prediction_id"].astype(str)
+    d["ground_truth_id"] = d["ground_truth_id"].astype(str) if "ground_truth_id" in d.columns else ""
     d["ranking_score"] = pd.to_numeric(d.get("ranking_score"), errors="coerce")
 
     for col in ["TM1", "TM2", "RMSD", "ID1", "ID2", "IDali", "L1", "L2", "Lali"]:
@@ -134,16 +135,30 @@ def build_interactive_plot(df: pd.DataFrame, html_path: Path) -> Optional[str]:
         ascending=[False, False, True]
     ).reset_index(drop=True)
 
-    labels = [
-        f"TOP: {pid}" if bool(is_top) else pid
-        for pid, is_top in zip(d["prediction_id"], d["is_top"])
-    ]
+    # Build display labels that include ground_truth_id (template annotation)
+    labels = []
+    for pid, is_top, gt_id in zip(d["prediction_id"], d["is_top"], d["ground_truth_id"]):
+        base = f"TOP: {pid}" if bool(is_top) else pid
+        if gt_id and gt_id != "":
+            base = f"{base}<br>ref: {gt_id}"
+        labels.append(base)
+
+    # Plain-text labels for hover (no HTML line breaks)
+    hover_labels = []
+    for pid, is_top, gt_id in zip(d["prediction_id"], d["is_top"], d["ground_truth_id"]):
+        base = f"TOP: {pid}" if bool(is_top) else pid
+        if gt_id and gt_id != "":
+            base = f"{base} | ref: {gt_id}"
+        hover_labels.append(base)
 
     x = np.arange(len(d))
     x_tm1 = x - 0.16
     x_tm2 = x + 0.16
 
-    customdata = np.stack([
+    # ground_truth_id as a string array for customdata
+    gt_ids = d["ground_truth_id"].to_numpy(dtype=str)
+
+    customdata = list(zip(
         d["ID1"].to_numpy(dtype=float) if "ID1" in d.columns else np.full(len(d), np.nan),
         d["ID2"].to_numpy(dtype=float) if "ID2" in d.columns else np.full(len(d), np.nan),
         d["IDali"].to_numpy(dtype=float) if "IDali" in d.columns else np.full(len(d), np.nan),
@@ -152,7 +167,53 @@ def build_interactive_plot(df: pd.DataFrame, html_path: Path) -> Optional[str]:
         d["Lali"].to_numpy(dtype=float) if "Lali" in d.columns else np.full(len(d), np.nan),
         d["ranking_score"].to_numpy(dtype=float),
         d["is_top"].astype(int).to_numpy(dtype=int),
-    ], axis=-1)
+        gt_ids,
+    ))
+
+    hover_tm1 = (
+        "<b>%{text}</b><br>"
+        "Template: %{customdata[8]}<br>"
+        "Source: TM1<br>"
+        "TM-score: %{y:.4f}<br>"
+        "ID1: %{customdata[0]:.3f}<br>"
+        "ID2: %{customdata[1]:.3f}<br>"
+        "IDali: %{customdata[2]:.3f}<br>"
+        "L1: %{customdata[3]:.0f}<br>"
+        "L2: %{customdata[4]:.0f}<br>"
+        "Lali: %{customdata[5]:.0f}<br>"
+        "Ranking score: %{customdata[6]:.3f}<br>"
+        "<extra></extra>"
+    )
+
+    hover_tm2 = (
+        "<b>%{text}</b><br>"
+        "Template: %{customdata[8]}<br>"
+        "Source: TM2<br>"
+        "TM-score: %{y:.4f}<br>"
+        "ID1: %{customdata[0]:.3f}<br>"
+        "ID2: %{customdata[1]:.3f}<br>"
+        "IDali: %{customdata[2]:.3f}<br>"
+        "L1: %{customdata[3]:.0f}<br>"
+        "L2: %{customdata[4]:.0f}<br>"
+        "Lali: %{customdata[5]:.0f}<br>"
+        "Ranking score: %{customdata[6]:.3f}<br>"
+        "<extra></extra>"
+    )
+
+    hover_rmsd = (
+        "<b>%{text}</b><br>"
+        "Template: %{customdata[8]}<br>"
+        "Metric: RMSD<br>"
+        "RMSD: %{y:.4f}<br>"
+        "ID1: %{customdata[0]:.3f}<br>"
+        "ID2: %{customdata[1]:.3f}<br>"
+        "IDali: %{customdata[2]:.3f}<br>"
+        "L1: %{customdata[3]:.0f}<br>"
+        "L2: %{customdata[4]:.0f}<br>"
+        "Lali: %{customdata[5]:.0f}<br>"
+        "Ranking score: %{customdata[6]:.3f}<br>"
+        "<extra></extra>"
+    )
 
     fig = go.Figure()
 
@@ -165,20 +226,8 @@ def build_interactive_plot(df: pd.DataFrame, html_path: Path) -> Optional[str]:
             name="TM1",
             marker=dict(color="#1f77b4", size=10),
             customdata=customdata,
-            hovertemplate=(
-                "<b>%{text}</b><br>"
-                "Source: TM1<br>"
-                "TM-score: %{y:.4f}<br>"
-                "ID1: %{customdata[0]:.3f}<br>"
-                "ID2: %{customdata[1]:.3f}<br>"
-                "IDali: %{customdata[2]:.3f}<br>"
-                "L1: %{customdata[3]:.0f}<br>"
-                "L2: %{customdata[4]:.0f}<br>"
-                "Lali: %{customdata[5]:.0f}<br>"
-                "Ranking score: %{customdata[6]:.3f}<br>"
-                "<extra></extra>"
-            ),
-            text=labels,
+            hovertemplate=hover_tm1,
+            text=hover_labels,
             yaxis="y1"
         ))
 
@@ -191,20 +240,8 @@ def build_interactive_plot(df: pd.DataFrame, html_path: Path) -> Optional[str]:
             name="TM2",
             marker=dict(color="#ff7f0e", size=10),
             customdata=customdata,
-            hovertemplate=(
-                "<b>%{text}</b><br>"
-                "Source: TM2<br>"
-                "TM-score: %{y:.4f}<br>"
-                "ID1: %{customdata[0]:.3f}<br>"
-                "ID2: %{customdata[1]:.3f}<br>"
-                "IDali: %{customdata[2]:.3f}<br>"
-                "L1: %{customdata[3]:.0f}<br>"
-                "L2: %{customdata[4]:.0f}<br>"
-                "Lali: %{customdata[5]:.0f}<br>"
-                "Ranking score: %{customdata[6]:.3f}<br>"
-                "<extra></extra>"
-            ),
-            text=labels,
+            hovertemplate=hover_tm2,
+            text=hover_labels,
             yaxis="y1"
         ))
 
@@ -218,26 +255,15 @@ def build_interactive_plot(df: pd.DataFrame, html_path: Path) -> Optional[str]:
             marker=dict(color="#2ca02c", size=9, symbol="diamond"),
             line=dict(color="#2ca02c", width=1),
             customdata=customdata,
-            hovertemplate=(
-                "<b>%{text}</b><br>"
-                "Metric: RMSD<br>"
-                "RMSD: %{y:.4f}<br>"
-                "ID1: %{customdata[0]:.3f}<br>"
-                "ID2: %{customdata[1]:.3f}<br>"
-                "IDali: %{customdata[2]:.3f}<br>"
-                "L1: %{customdata[3]:.0f}<br>"
-                "L2: %{customdata[4]:.0f}<br>"
-                "Lali: %{customdata[5]:.0f}<br>"
-                "Ranking score: %{customdata[6]:.3f}<br>"
-                "<extra></extra>"
-            ),
-            text=labels,
+            hovertemplate=hover_rmsd,
+            text=hover_labels,
             yaxis="y2"
         ))
 
-    # Top annotations + metadata annotations
+    # Top annotations + template annotations
     annotations = []
     for i, row in d.iterrows():
+        gt_id = str(row.get("ground_truth_id", ""))
 
         if bool(row.get("is_top", False)):
             y_top = 1.08
@@ -251,6 +277,21 @@ def build_interactive_plot(df: pd.DataFrame, html_path: Path) -> Optional[str]:
                 xanchor="center",
                 yanchor="bottom",
                 font=dict(size=12, color="#D55E00")
+            ))
+
+        # Add template annotation below datapoints if ground_truth_id is present
+        if gt_id and gt_id != "":
+            annotations.append(dict(
+                x=x[i],
+                y=-0.02,
+                xref="x",
+                yref="paper",
+                text=f"<i>ref: {gt_id}</i>",
+                showarrow=False,
+                xanchor="center",
+                yanchor="top",
+                font=dict(size=9, color="#555555"),
+                textangle=-45,
             ))
 
     fig.update_layout(
@@ -284,7 +325,7 @@ def build_interactive_plot(df: pd.DataFrame, html_path: Path) -> Optional[str]:
         hovermode="closest",
         template="plotly_white",
         height=750,
-        margin=dict(l=70, r=70, t=80, b=180),
+        margin=dict(l=70, r=70, t=80, b=220),
         annotations=annotations
     )
 

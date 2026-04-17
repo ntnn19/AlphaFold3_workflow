@@ -1097,6 +1097,9 @@ def main(sample_sheet, output_dir, mode, predict_individual_components, n_seeds,
             - 'user_ccd': str
     :type sample_sheet: path
     :return: None
+
+    Args:
+        predict_individual_components:
     """
     logger.info(f"SAMPLES = {sample_sheet}")
     logger.info(f"OUTPUT_DIR = {output_dir}")
