@@ -275,19 +275,6 @@ def build_interactive_plot(df: pd.DataFrame, html_path: Path) -> Optional[str]:
                 font=dict(size=12, color="#D55E00")
             ))
 
-        # Add template annotation below datapoints if ground_truth_id is present
-        if gt_id and gt_id != "":
-            annotations.append(dict(
-                x=x[i],
-                y=-0.02,
-                xref="x",
-                yref="paper",
-                showarrow=False,
-                xanchor="center",
-                yanchor="top",
-                font=dict(size=9, color="#555555"),
-                textangle=-45,
-            ))
 
     fig.update_layout(
         title=dict(
