@@ -139,8 +139,6 @@ def build_interactive_plot(df: pd.DataFrame, html_path: Path) -> Optional[str]:
     labels = []
     for pid, is_top, gt_id in zip(d["prediction_id"], d["is_top"], d["ground_truth_id"]):
         base = f"TOP: {pid}" if bool(is_top) else pid
-        if gt_id and gt_id != "":
-            base = f"{base}<br>ref: {gt_id}"
         labels.append(base)
 
     # Plain-text labels for hover (no HTML line breaks)
