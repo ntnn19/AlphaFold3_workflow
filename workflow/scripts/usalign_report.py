@@ -147,8 +147,6 @@ def build_interactive_plot(df: pd.DataFrame, html_path: Path) -> Optional[str]:
     hover_labels = []
     for pid, is_top, gt_id in zip(d["prediction_id"], d["is_top"], d["ground_truth_id"]):
         base = f"TOP: {pid}" if bool(is_top) else pid
-        if gt_id and gt_id != "":
-            base = f"{base} | ref: {gt_id}"
         hover_labels.append(base)
 
     x = np.arange(len(d))
@@ -172,7 +170,7 @@ def build_interactive_plot(df: pd.DataFrame, html_path: Path) -> Optional[str]:
 
     hover_tm1 = (
         "<b>%{text}</b><br>"
-        "Template: %{customdata[8]}<br>"
+        "Reference: %{customdata[8]}<br>"
         "Source: TM1<br>"
         "TM-score: %{y:.4f}<br>"
         "ID1: %{customdata[0]:.3f}<br>"
@@ -187,7 +185,7 @@ def build_interactive_plot(df: pd.DataFrame, html_path: Path) -> Optional[str]:
 
     hover_tm2 = (
         "<b>%{text}</b><br>"
-        "Template: %{customdata[8]}<br>"
+        "Reference: %{customdata[8]}<br>"
         "Source: TM2<br>"
         "TM-score: %{y:.4f}<br>"
         "ID1: %{customdata[0]:.3f}<br>"
@@ -202,7 +200,7 @@ def build_interactive_plot(df: pd.DataFrame, html_path: Path) -> Optional[str]:
 
     hover_rmsd = (
         "<b>%{text}</b><br>"
-        "Template: %{customdata[8]}<br>"
+        "Reference: %{customdata[8]}<br>"
         "Metric: RMSD<br>"
         "RMSD: %{y:.4f}<br>"
         "ID1: %{customdata[0]:.3f}<br>"
@@ -286,7 +284,6 @@ def build_interactive_plot(df: pd.DataFrame, html_path: Path) -> Optional[str]:
                 y=-0.02,
                 xref="x",
                 yref="paper",
-                text=f"<i>ref: {gt_id}</i>",
                 showarrow=False,
                 xanchor="center",
                 yanchor="top",
