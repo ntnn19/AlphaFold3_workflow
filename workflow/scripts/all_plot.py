@@ -86,6 +86,13 @@ def plot_tm_score_distribution(
         write_no_data_html(out_html, "No valid TM scores available.")
         return False
 
+    # ── NEW: compute max(TM1, TM2) ──────────────────────────────────────────
+    if "TM1" in d.columns:
+        d["TM_max"] = d[["TM1", "TM2"]].max(axis=1)
+    else:
+        d["TM_max"] = d["TM2"]
+    # ────────────────────────────────────────────────────────────────────────
+
     d["name"] = d["sample_id"].str.split("_seed-").str[0].astype(str).replace("nan", "N/A")
     if "seed" not in d.columns or d["seed"].astype(str).eq("").all():
         d["seed"] = d["sample_id"].str.extract(r"_seed-(\d+)", expand=False).fillna("N/A")
@@ -141,7 +148,9 @@ def plot_tm_score_distribution(
             ), axis=1,
         )
 
-    pivot = d.pivot_table(index="row_label", columns="ground_truth_id", values="TM2", aggfunc="first")
+    # ── pivot on TM_max instead of TM2 ──────────────────────────────────────
+    pivot = d.pivot_table(index="row_label", columns="ground_truth_id", values="TM_max", aggfunc="first")
+    # ────────────────────────────────────────────────────────────────────────
     pivot = pivot.reindex(columns=gt_ids)
     pivot["_mean"] = pivot[gt_ids].mean(axis=1)
     pivot = pivot.sort_values("_mean", ascending=True).drop(columns=["_mean"])
@@ -159,14 +168,18 @@ def plot_tm_score_distribution(
         for gt in gt_ids:
             info = lookup.get((pred, gt))
             if info is not None:
+                # ── show TM_max in hover ─────────────────────────────────────
+                tm_max_val = info["TM_max"]
                 tm2_val = info["TM2"]
                 tm1_val = info.get("TM1", float("nan"))
                 desc_hover = info.get("description_hover", "N/A")
                 lines = [
                     f"<b>Prediction:</b> {pred}",
                     f"<b>Reference:</b> {gt}",
+                    f"<b>TM score:</b> {tm_max_val:.3f}" if pd.notna(tm_max_val) else "<b>TM score:</b> N/A",
                     f"<b>TM2:</b> {tm2_val:.3f}" if pd.notna(tm2_val) else "<b>TM2:</b> N/A",
                     f"<b>TM1:</b> {tm1_val:.3f}" if pd.notna(tm1_val) else "<b>TM1:</b> N/A",
+                    # ────────────────────────────────────────────────────────
                     f"<b>Description:</b><br>{desc_hover}",
                     f"<b>seed:</b> {info.get('seed', 'N/A')}",
                     f"<b>sample:</b> {info.get('sample', 'N/A')}",
@@ -180,7 +193,7 @@ def plot_tm_score_distribution(
                 row_hover.append("<br>".join(lines))
             else:
                 row_hover.append(
-                    f"<b>Prediction:</b> {pred}<br><b>Reference:</b> {gt}<br><b>TM2:</b> N/A"
+                    f"<b>Prediction:</b> {pred}<br><b>Reference:</b> {gt}<br><b>TM score:</b> N/A"
                 )
         hover_text.append(row_hover)
 
@@ -202,8 +215,10 @@ def plot_tm_score_distribution(
     fig = go.Figure(data=go.Heatmap(
         z=z_clean, x=gt_ids, y=pred_labels, text=hover_text,
         hoverinfo="text", colorscale=colorscale, zmin=0, zmax=1,
-        colorbar=dict(title=dict(text="TM2 score", side="right"),
+        # ── updated colorbar label ───────────────────────────────────────────
+        colorbar=dict(title=dict(text="TM score", side="right"),
                       tickvals=[0.0, 0.2, 0.4, 0.6, 0.8, 1.0], len=0.8),
+        # ────────────────────────────────────────────────────────────────────
         xgap=2, ygap=2,
     ))
 
