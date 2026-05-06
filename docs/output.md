@@ -11,7 +11,6 @@ PREPROCESSING
     └── AF3_DATA_SPEEDY_PIPELINE  (data pipeline / MSA generation)
             └── MERGE_MONO_AND_MULTI_JSON  (inject MSAs into multimer JSONs)
                     └── AF3_INFERENCE  (structure prediction)
-                            └── (optional) OST scoring
 ```
 
 ---

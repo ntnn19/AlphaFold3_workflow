@@ -40,14 +40,10 @@ Only one entry point needs to be provided. The workflow detects which sheets are
 | `n_seeds` | integer | `null` | Number of random seeds. Overrides `model_seeds` column in sample sheet when set |
 | `n_samples` | integer | `null` | Number of models per seed (used for massive sampling) |
 | `n_splits` | integer | `1` | Number of parallel inference job splits (set to number of multi-GPU nodes) |
-| `n_splits_ost` | integer | `1` | Number of parallel OST scoring job splits |
 | `exclusive_lock` | bool | `false` | When `true`, jobs are batched and dispatched via a job-list file rather than one-per-rule |
 | `predict_individual_components` | bool | `false` | Also predict each monomer chain individually from multimeric jobs |
 | `run_data_pipeline_locally` | bool | `false` | Run `AF3_DATA_SPEEDY_PIPELINE` as a local rule (no cluster submission) |
 | `run_inference_locally` | bool | `false` | Run `AF3_INFERENCE` as a local rule |
-| `task` | string | `""` | Set to `"ost"` to enable OST ligand scoring (only applies to `virtual-drug-screen` mode) |
-| `ground_truth` | string | — | Path to ground-truth structure(s) for OST scoring |
-| `ost_container` | string | — | Path to the OST Singularity container |
 
 ### 1.3 AlphaFold 3 Container & Flags
 
