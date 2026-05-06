@@ -132,8 +132,7 @@ The `profiles/` directory can contain any number of [workflow-specific profiles]
 
 ## TODO
 
-- Add configuration-specific `config/README.md` file.
 - Add scoring report. 
-- Update snakemake version to latest in environment.yml. 
+- Add schemas for configs and sample sheets
 
 If you find this useful, please consider giving it a star! ⭐
