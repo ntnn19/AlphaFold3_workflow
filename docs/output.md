@@ -1,6 +1,5 @@
 # AlphaFold3 Workflow — Outputs
 
-
 ---
 
 ## Overview

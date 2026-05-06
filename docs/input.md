@@ -1,7 +1,5 @@
 # AlphaFold3 Workflow — Inputs & Configuration
 
-> Documentation derived strictly from `workflow/Snakefile` and `workflow/scripts/preprocessing.py` (branch: `dev`).
-
 ---
 
 ## Overview
