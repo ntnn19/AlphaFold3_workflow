@@ -56,8 +56,6 @@ Only one entry point needs to be provided. The workflow detects which sheets are
 ```yaml
 af3_flags:
   --af3_container: /path/to/alphafold3.sif   # Required: Singularity image for AF3
-
-alphafold3_flags:
   --extra_af3_flags: ""   # Optional: extra flags passed verbatim to run_alphafold.py
 ```
 
