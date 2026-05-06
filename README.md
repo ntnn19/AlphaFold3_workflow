@@ -121,7 +121,6 @@ Other example JSON, TSV and configuration files (YAML format) files for testing 
 ## Workflow profiles
 
 The `profiles/` directory can contain any number of [workflow-specific profiles](https://snakemake.readthedocs.io/en/stable/executing/cli.html#profiles) that users can choose from.
-The [profiles `README.md`](profiles/README.md) provides more details.
 
 ## Authors
 
