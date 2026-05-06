@@ -31,7 +31,9 @@ This workflow has the following advantages over standard AlphaFold 3 runs:
 
 ## Usage
 
-Detailed information about input data and workflow configuration can also be found in the [`config/README.md`](config/README.md).
+Detailed information about input data and workflow configuration can also be found in the [`docs/input.md`](docs/input.md).
+
+Detailed information about the output of this workflow can also be found in the [`docs/output.md`](docs/output.md).
 
 If you use this workflow in a paper, don't forget to give credits to the authors by citing the URL of this repository or its DOI.
 
