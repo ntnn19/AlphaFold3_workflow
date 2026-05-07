@@ -15,7 +15,20 @@ Depending on how far along the pipeline you are, you can enter at one of four st
 
 ## 1. Configuration File (`config.yaml`)
 
-All parameters are read via `config.get(...)` in the Snakefile.
+All parameters are read via `config.get(...)` in the Snakefile. A minimal working config:
+
+```yaml
+sample_sheets:
+  raw_data: example/custom.tsv   # path to your sample sheet
+
+output_dir: results              # where all outputs are written
+mode: custom                     # run mode (see §2)
+msa_option: auto                 # auto | none | upload
+n_seeds: 3                       # number of random seeds per job
+
+af3_flags:
+  --af3_container: /path/to/alphafold3.sif   # required
+```
 
 ### 1.1 Sample Sheet Keys
 
@@ -45,6 +58,9 @@ Only one entry point needs to be provided. The workflow detects which sheets are
 | `run_data_pipeline_locally` | bool | `false` | Run `AF3_DATA_SPEEDY_PIPELINE` as a local rule (no cluster submission) |
 | `run_inference_locally` | bool | `false` | Run `AF3_INFERENCE` as a local rule |
 
+
+
+
 ### 1.3 AlphaFold 3 Container & Flags
 
 ```yaml
@@ -67,7 +83,7 @@ The Snakefile resolves seeds in this priority order:
 
 ## 2. Run Modes
 
-Set via `mode:` in `config.yaml`. Determines how `preprocessing.py` combines entities into jobs.
+Set via `mode:` in `config.yaml`. Determines how `preprocessing.py` combines entities into jobs. For per-mode config examples and run commands, see the [README](../README.md#usage).
 
 | Mode | Description |
 |------|-------------|
@@ -81,7 +97,7 @@ Set via `mode:` in `config.yaml`. Determines how `preprocessing.py` combines ent
 
 ## 3. Sample Sheet Formats
 
-All sample sheets are **tab-separated** (TSV). The schema for each entry point is defined in `SAMPLE_SHEET_SCHEMAS` in the Snakefile (TBD).
+All sample sheets are **tab-separated** (TSV). The schema for each entry point is defined in `SAMPLE_SHEET_SCHEMAS` in the Snakefile.
 
 ### 3.1 `raw_data` — Full Entity Sheet
 
