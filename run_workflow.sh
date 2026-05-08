@@ -53,13 +53,13 @@ fi
 
 # Shift arguments to get extra flags (if any)
 shift 5
-extra_flgs="$@"
+extra_flgs="$3"
 
 # Step 2: Execute workflow with Snakemake
 echo "Running workflow..."
 
 # Build and execute the snakemake command
-cmd="snakemake -s workflow/Snakefile \
+cmd="snakemake -s $SCRIPT_DIR/workflow/Snakefile \
   --configfile "$configfile" \
   --directory "$PWD" \
   --use-singularity \
@@ -69,11 +69,6 @@ cmd="snakemake -s workflow/Snakefile \
     -B "$databases_path":/root/public_databases \
     -B "$tmp_path"/:/tmp \
     -B "$(realpath "$output_dir")":/root/af_output' \
-  -p \
-  --workflow-profile "$SCRIPT_DIR/profiles/profile" \
-  -j 500 \
-  -c32 \
-  -k \
   $extra_flgs"
 
 echo "Executing command:"
