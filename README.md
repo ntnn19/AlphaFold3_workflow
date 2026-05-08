@@ -179,8 +179,8 @@ All required paths are passed as explicit arguments:
 - `output_dir`: Where all outputs will be written
 - `config_file`: Path to your workflow configuration file
 - `models_path`: Path to AlphaFold 3 model weights directory
-- `databases_path`: Path to genetic databases directory
-- `tmp_path`: Path to temporary directory
+- `databases_path`: Path to genetic databases directory. 
+- `tmp_path`: Path to temporary directory. Can be any writable directory that is different from `output_dir`.
 - `extra_flags` (optional): Additional flags to pass to snakemake (e.g., `'--dry-run'`) 
 
 Example:
