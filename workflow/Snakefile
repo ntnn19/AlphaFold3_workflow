@@ -263,7 +263,7 @@ rule all:
     input:
         os.path.join(OUTPUT_DIR,"rule_AGG_OST_REPORTS","ost_report.csv") if MODE == "virtual-drug-screen" and TASK=="ost" else [],
         expand(os.path.join(OUTPUT_DIR,"rule_OST_COMAPRE_LIGAND_STRUCTURES","done_flags",f"job_{{s}}-of-{SPLIT_OST}.done.txt"),s=list(range(1,SPLIT_OST+1))) if MODE == "virtual-drug-screen" and TASK=="ost" else [],
-        expand(os.path.join(OUTPUT_DIR,"rule_AF3_INFERENCE","done_flags",f"af3_inference_jobs_{{s}}-of-{SPLIT_TOTAL}.done.txt"),s=list(range(1,SPLIT_TOTAL+1))) if EXCLUSIVE_LOCK else get_multimeric_json_with_msas,
+        get_multimeric_json_with_msas,
         DATA_PIPELINE_OUTPUTS if not DATA_PIPELINE_READY_DF.empty else [] #  and MERGE_READY_DF.empty else []
 
 
