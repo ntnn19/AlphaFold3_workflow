@@ -66,8 +66,10 @@ cmd="snakemake -s $SCRIPT_DIR/workflow/Snakefile \
     -B "$models_path":/root/models \
     -B "$databases_path":/root/public_databases \
     -B "$tmp_path"/:/tmp \
-    -B "$(realpath "$output_dir")":/root/af_output' \
+    -B "$(realpath "$output_dir")":/root/af_output \
+    -B "$SCRIPT_DIR"/workflow/scripts:/app/scripts' \
   $extra_flgs"
+
 
 echo "Executing command:"
 echo "$cmd"
