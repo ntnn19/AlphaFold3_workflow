@@ -90,3 +90,4 @@ if [ $? -eq 0 ]; then
 else
     echo "Error: Workflow execution failed."
     exit 1
+fi

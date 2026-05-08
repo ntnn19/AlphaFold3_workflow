@@ -102,7 +102,7 @@ WORKFLOW_DIR = os.path.dirname(os.path.abspath(workflow.snakefile))
 
 AF3_CONTAINER = config["af3_flags"]["--af3_container"]
 EXTRA_AF3_FLAGS = config.get('af3_flags', {}).get("--extra_af3_flags", '')
-
+final_output_extension = ".cif" if "--compress_large_output_files" in EXTRA_AF3_FLAGS else ""
 
 
 has_seeds = (
