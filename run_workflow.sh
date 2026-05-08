@@ -5,10 +5,11 @@
 
 # Parse arguments
 output_dir=$1
-configfile="$2"
-models_path="$3"
-databases_path="$4"
-tmp_path="$5"
+configfile=$2
+models_path=$3
+databases_path=$4
+tmp_path=$5
+extra_flgs="$6"
 
 # Check if mandatory arguments are provided
 if [ -z "$output_dir" ] || [ -z "$configfile" ] || [ -z "$models_path" ] || [ -z "$databases_path" ] || [ -z "$tmp_path" ]; then
@@ -51,9 +52,6 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# Shift arguments to get extra flags (if any)
-shift 5
-extra_flgs="$6"
 
 # Step 2: Execute workflow with Snakemake
 echo "Running workflow..."
@@ -90,4 +88,3 @@ if [ $? -eq 0 ]; then
 else
     echo "Error: Workflow execution failed."
     exit 1
-fi
