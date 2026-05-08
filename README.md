@@ -171,6 +171,17 @@ Example:
 bash run_workflow.sh results config/my_config.yaml /path/to/models /path/to/databases /tmp/path '--dry-run'
 ```
 
+### For schedulers that allocate nodes exclusively rather than by consumable GPU resources (`exclusive_lock` set to `true` in config.yaml)
+
+You must use the `--group-components` option to specify the batch size for each group of predictions.
+
+Example:
+```bash
+bash run_workflow.sh results config/my_config.yaml /path/to/models /path/to/databases /tmp/path '--dry-run --groups AF3_INFERENCE=group0 --group-components group0=<batch_size> -c all --workflow-profile /path/to/profile_dir'
+```
+
+Where `<batch_size>` is the number of predictions to process in each batch.
+
 It also supports the workflow profile for HPC execution.
 
 ---
