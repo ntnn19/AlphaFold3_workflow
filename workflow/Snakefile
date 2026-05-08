@@ -101,7 +101,7 @@ WORKFLOW_DIR = os.path.dirname(os.path.abspath(workflow.snakefile))
 
 
 AF3_CONTAINER = config["af3_flags"]["--af3_container"]
-EXTRA_AF3_FLAGS = config.get('af33_flags', {}).get("--extra_af3_flags", '')
+EXTRA_AF3_FLAGS = config.get('af3_flags', {}).get("--extra_af3_flags", '')
 
 
 
