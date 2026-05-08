@@ -340,7 +340,7 @@ rule AF3_INFERENCE:
         fi
         if [  "{params.exclusive_lock}" == "true" ]; then
             bash /app/scripts/gpu_lock.sh ${{PWD}}/.snakemake/.gpu_locks python \
-                app/alphafold/run_alphafold.py $FLASH_ARG --json_path={input.data} \
+                /app/alphafold/run_alphafold.py $FLASH_ARG --json_path={input.data} \
                 --model_dir=/root/models \
                 --output_dir=/root/af_output/rule_AF3_INFERENCE \
                 --db_dir=/root/public_databases \
