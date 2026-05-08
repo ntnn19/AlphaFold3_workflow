@@ -557,3 +557,5 @@ for option in local_rule_options:
 
 
 workflow._localrules = set(_localrules) # set the updated local rules
+
+

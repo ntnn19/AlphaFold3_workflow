@@ -168,7 +168,63 @@ snakemake \
 A convenience wrapper `run_workflow.sh` is also provided for common invocations:
 
 ```bash
-bash run_workflow.sh <af3_container> <weights_dir> <input_csv> <output_dir> <db_dir> <tmp_dir> <snakefile>
+bash run_workflow.sh <output_dir> <config_file> <models_path> <databases_path> <tmp_path> [<extra_flags>]
+```
+
+This script handles the two-step workflow consisting of:
+1. Data and pipeline preparation using `prepare_workflow.py`  
+2. Snakemake execution with Singularity container
+
+All required paths are passed as explicit arguments:
+- `output_dir`: Where all outputs will be written
+- `config_file`: Path to your workflow configuration file
+- `models_path`: Path to AlphaFold 3 model weights directory
+- `databases_path`: Path to genetic databases directory
+- `tmp_path`: Path to temporary directory
+- `extra_flags` (optional): Additional flags to pass to snakemake (e.g., `'--dry-run'`) 
+
+Example:
+```bash
+bash run_workflow.sh results/custom config/my_config.yaml /path/to/models /path/to/databases /tmp/path
+```
+
+Example with extra flags:
+```bash
+bash run_workflow.sh results/custom config/my_config.yaml /path/to/models /path/to/databases /tmp/path '--dry-run'
+```
+
+It also supports the workflow profile for HPC execution.
+
+### Full workflow launch
+
+Typically, the workflow is launched as follows:
+
+```bash
+#!/bin/bash
+output_dir=$1
+configfile="$2"
+extra_flgs="$3"
+
+# Step 1: Prepare workflow
+python workflow/scripts/prepare_workflow.py "$configfile" -o "$PWD"
+
+# Step 2: Execute workflow with Snakemake
+snakemake -s workflow/Snakefile \
+  --configfile "$configfile" \
+  --directory "$PWD" \
+  --use-singularity \
+  --singularity-args '\
+    --nv \
+    -B ${MODELS_PATH}:/root/models \
+    -B ${DATABASES_PATH}:/root/public_databases \
+    -B ${TMP_PATH}:/tmp \
+    -B ${output_dir}:/root/af_output' \
+  -p \
+  --workflow-profile profiles/profile \
+  -j 500 \
+  -c32 \
+  -k \
+  "$extra_flgs"
 ```
 
 ---
