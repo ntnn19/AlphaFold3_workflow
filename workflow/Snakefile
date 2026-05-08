@@ -163,29 +163,17 @@ def get_multimeric_json_with_msas(wildcards):
     internal = []
     external = []
     if not DATA_PIPELINE_READY_DF.empty:
-        if EXCLUSIVE_LOCK:
-            external.append(DATA_PIPELINE_READY_DF["file"].apply(lambda x: f"{OUTPUT_DIR}/rule_CREATE_AF3_INFERENCE_JOBS/" + f"{Path(x).stem}_af3_inference_job.txt").unique().tolist())
-
-        else:
-            external.append(DATA_PIPELINE_READY_DF[
-                "file"].apply(lambda x: f"{OUTPUT_DIR}/rule_AF3_INFERENCE/" + f"{Path(x).stem}/{Path(x).stem}_model.cif").unique().tolist())
+        external.append(DATA_PIPELINE_READY_DF[
+            "file"].apply(lambda x: f"{OUTPUT_DIR}/rule_AF3_INFERENCE/" + f"{Path(x).stem}/{Path(x).stem}_model.cif").unique().tolist())
 
 
     if not MERGE_READY_DF.empty:
-        if EXCLUSIVE_LOCK:
-            external.append(MERGE_READY_DF["multimer_file"].apply(lambda x: f"{OUTPUT_DIR}/rule_CREATE_AF3_INFERENCE_JOBS/" + f"{Path(x).stem}_af3_inference_job.txt").unique().tolist())
-
-        else:
-            external.append(MERGE_READY_DF[
-                "multimer_file"].apply(lambda x: f"{OUTPUT_DIR}/rule_AF3_INFERENCE/" + f"{Path(x).stem}/{Path(x).stem}_model.cif").unique().tolist())
+        external.append(MERGE_READY_DF[
+            "multimer_file"].apply(lambda x: f"{OUTPUT_DIR}/rule_AF3_INFERENCE/" + f"{Path(x).stem}/{Path(x).stem}_model.cif").unique().tolist())
 
     if not INFERENCE_READY_DF.empty:
-        if EXCLUSIVE_LOCK:
-            external.append(INFERENCE_READY_DF["file"].apply(lambda x: f"{OUTPUT_DIR}/rule_CREATE_AF3_INFERENCE_JOBS/" + f"{Path(x).stem}_af3_inference_job.txt").unique().tolist())
-
-        else:
-            external.append(INFERENCE_READY_DF[
-                "file"].apply(lambda x: f"{OUTPUT_DIR}/rule_AF3_INFERENCE/" + f"{Path(x).stem}/{Path(x).stem}_model.cif").unique().tolist())
+        external.append(INFERENCE_READY_DF[
+            "file"].apply(lambda x: f"{OUTPUT_DIR}/rule_AF3_INFERENCE/" + f"{Path(x).stem}/{Path(x).stem}_model.cif").unique().tolist())
 
     if not RAW_DATA_DF.empty:
         PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
