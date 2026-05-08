@@ -53,7 +53,7 @@ fi
 
 # Shift arguments to get extra flags (if any)
 shift 5
-extra_flgs="$3"
+extra_flgs="$6"
 
 # Step 2: Execute workflow with Snakemake
 echo "Running workflow..."
