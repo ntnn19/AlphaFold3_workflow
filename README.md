@@ -144,24 +144,6 @@ For the full parameter reference, all sample sheet formats, MSA/template options
 
 ## Usage
 
-### Dry run (always do this first)
-
-```bash
-snakemake --dry-run --configfile config/config.yaml
-```
-
-### Common Snakemake flags
-
-```bash
-snakemake \
-  --cores <N> \
-  --use-singularity \
-  --singularity-args "--nv \
-    -B /path/to/databases:/root/public_databases \
-    -B /path/to/weights:/root/models \
-    -B /path/to/output:/root/af_output" \
-  --configfile config/config.yaml
-```
 
 > **Note**: remove `--nv` if you have no GPU access (e.g. dry-run or data-pipeline-only runs).
 
@@ -183,49 +165,13 @@ All required paths are passed as explicit arguments:
 - `tmp_path`: Path to temporary directory. Can be any writable directory that is different from `output_dir`.
 - `extra_flags` (optional): Additional flags to pass to snakemake (e.g., `'--dry-run'`) 
 
+### Dry run (always do this first)
 Example:
 ```bash
-bash run_workflow.sh results/custom config/my_config.yaml /path/to/models /path/to/databases /tmp/path
-```
-
-Example with extra flags:
-```bash
-bash run_workflow.sh results/custom config/my_config.yaml /path/to/models /path/to/databases /tmp/path '--dry-run'
+bash run_workflow.sh results config/my_config.yaml /path/to/models /path/to/databases /tmp/path '--dry-run'
 ```
 
 It also supports the workflow profile for HPC execution.
-
-### Full workflow launch
-
-Typically, the workflow is launched as follows:
-
-```bash
-#!/bin/bash
-output_dir=$1
-configfile="$2"
-extra_flgs="$3"
-
-# Step 1: Prepare workflow
-python workflow/scripts/prepare_workflow.py "$configfile" -o "$PWD"
-
-# Step 2: Execute workflow with Snakemake
-snakemake -s workflow/Snakefile \
-  --configfile "$configfile" \
-  --directory "$PWD" \
-  --use-singularity \
-  --singularity-args '\
-    --nv \
-    -B ${MODELS_PATH}:/root/models \
-    -B ${DATABASES_PATH}:/root/public_databases \
-    -B ${TMP_PATH}:/tmp \
-    -B ${output_dir}:/root/af_output' \
-  -p \
-  --workflow-profile profiles/profile \
-  -j 500 \
-  -c32 \
-  -k \
-  "$extra_flgs"
-```
 
 ---
 
