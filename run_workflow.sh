@@ -45,7 +45,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Step 1: Prepare workflow
 echo "Preparing workflow..."
 python "$SCRIPT_DIR/workflow/scripts/prepare_workflow.py" "$configfile" -o $(pwd)
-
+mkdir -p .snakemake/.gpu_locks/
 # Check if preparation was successful
 if [ $? -ne 0 ]; then
     echo "Error: Workflow preparation failed."
