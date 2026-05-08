@@ -336,70 +336,6 @@ rule MERGE_MONO_AND_MULTI_JSON:
         """
 
 
-
-rule CREATE_AF3_INFERENCE_JOBS_SPEEDY_AF3_PIPELINE:
-    input:
-        data = branch(
-            lookup(query="sample_id == '{multi}'",within=INFERENCE_READY_DF,cols="file"),
-            then=lookup(query="sample_id == '{multi}'",within=INFERENCE_READY_DF,cols="file"),
-            otherwise=os.path.join(OUTPUT_DIR,"rule_MERGE_MONOMERS_TO_MULTIMERS","{multi}_data.json")
-        ) if EXCLUSIVE_LOCK else [],
-    params:
-        mode = MODE,
-        extra_af3_flags = EXTRA_AF3_FLAGS
-    output:
-        multimers = os.path.join(OUTPUT_DIR,"rule_CREATE_AF3_INFERENCE_JOBS","{multi}_af3_inference_job.txt") if MODE in ["custom","all-vs-all","pulldown","virtual-drug-screen","stoichio-screen"]  else []
-    shell:
-        """
-        echo 'python /app/alphafold/run_alphafold.py --json_path={input.data} \
-        --model_dir=/root/models \
-        --output_dir=/root/af_output/rule_AF3_INFERENCE \
-        --db_dir=/root/public_databases \
-        --run_data_pipeline=false \
-        --run_inference=true \
-        {params.extra_af3_flags}' > {output}
-        """
-
-
-rule AGG_AF3_INFERENCE_JOBS:
-    input:
-        merged_multimer = get_multimeric_json_with_msas if EXCLUSIVE_LOCK else []
-    params:
-        mode = MODE
-    output:
-        job_list = os.path.join(OUTPUT_DIR,"rule_AGG_AF3_INFERENCE_JOBS","af3_inference_jobs.txt")
-    shell:
-        """
-        find {OUTPUT_DIR}/rule_CREATE_AF3_INFERENCE_JOBS -type f -name '*.txt' -print0 | tar --null -T - -cf - | tar -xOf - > {output.job_list}
-        """
-
-rule SPLIT_INFERENCE_JOB_LIST:
-    input:
-        inference_job_list = ancient(os.path.join(OUTPUT_DIR,"rule_AGG_AF3_INFERENCE_JOBS","af3_inference_jobs.txt")) if
-        EXCLUSIVE_LOCK else []
-    params:
-        split_total = SPLIT_TOTAL
-    output:
-        sub_job_list = scatter.split(os.path.join(OUTPUT_DIR,"rule_SPLIT_INFERENCE_JOB_LIST","af3_inference_jobs_{scatteritem}.txt"))
-    run:
-        import os
-        lines = open(input.inference_job_list).readlines()
-        n_lines = len(lines)
-        n_splits = params.split_total
-
-        chunk_size = n_lines // n_splits
-        remainder = n_lines % n_splits
-
-        start = 0
-        for i in range(n_splits):
-            end = start + chunk_size + (1 if i < remainder else 0)
-
-            with open(output.sub_job_list[i], "w") as f:
-                f.writelines(lines[start:end])
-
-            start = end
-
-
 rule AF3_INFERENCE:
     input:
         data = ancient(os.path.join(OUTPUT_DIR,"rule_SPLIT_INFERENCE_JOB_LIST","af3_inference_jobs_{scatteritem}.txt")) if
@@ -426,23 +362,22 @@ rule AF3_INFERENCE:
             FLASH_ARG="--flash_attention_implementation=xla"
         fi
         if [  "{params.exclusive_lock}" == "true" ]; then
-            echo "CC = ${{CC}}"
-            echo "CC = ${{CC}}"
-            echo "XLA_FLAGS = ${{XLA_FLAGS}}"
-            echo "FLASH ARG = ${{FLASH_ARG}}"
-            JOB_LIST={input.data}
-            sed -Ei "s|/app/alphafold/run_alphafold.py\\b|/app/alphafold/run_alphafold.py ${{FLASH_ARG}}|" $JOB_LIST
-            NUM_GPUS=$(nvidia-smi -L | wc -l)
-            echo "Number of GPUs = ${{NUM_GPUS}}"
-            < $JOB_LIST parallel -j $NUM_GPUS 'eval CUDA_VISIBLE_DEVICES=$(({{%}} - 1)) {{}}'
+            bash /app/scripts/gpu_lock.sh ${{PWD}}/.snakemake/.gpu_locks python \
+                app/alphafold/run_alphafold.py $FLASH_ARG --json_path={input.data} \
+                --model_dir=/root/models \
+                --output_dir=/root/af_output/rule_AF3_INFERENCE \
+                --db_dir=/root/public_databases \
+                --run_data_pipeline=false \
+                --run_inference=true \
+                {params.extra_af3_flags} 
         else
             python /app/alphafold/run_alphafold.py $FLASH_ARG --json_path={input.data} \
-            --model_dir=/root/models \
-            --output_dir=/root/af_output/rule_AF3_INFERENCE \
-            --db_dir=/root/public_databases \
-            --run_data_pipeline=false \
-            --run_inference=true \
-            {params.extra_af3_flags} 
+                --model_dir=/root/models \
+                --output_dir=/root/af_output/rule_AF3_INFERENCE \
+                --db_dir=/root/public_databases \
+                --run_data_pipeline=false \
+                --run_inference=true \
+                {params.extra_af3_flags} 
         fi
         """
 
