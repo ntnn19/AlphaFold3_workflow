@@ -5,6 +5,8 @@ import os
 import yaml
 from numpy.random import sample
 
+
+
 localrules: PREPROCESSING , MERGE_MONO_AND_MULTI_JSON, CREATE_AF3_INFERENCE_JOBS_SPEEDY_AF3_PIPELINE, AGG_AF3_INFERENCE_JOBS, SPLIT_INFERENCE_JOB_LIST
 
 scattergather:
@@ -74,6 +76,7 @@ DATA_PIPELINE_READY_PATH, DATA_PIPELINE_READY_DF = load_sample_sheet("data_pipel
 INFERENCE_READY_PATH, INFERENCE_READY_DF = load_sample_sheet("inference_ready")
 MERGE_READY_PATH, MERGE_READY_DF = load_sample_sheet("merge_ready")
 OUTPUT_DIR = config.get("output_dir","results")
+#INFERENCE_READY_DF = INFERENCE_READY_DF[INFERENCE_READY_DF.sample_id.str.contains("rna-plus")].head(1) # DELETE
 
 
 if not DATA_PIPELINE_READY_DF.empty and MERGE_READY_DF.empty: # Create dummy merging table
@@ -323,7 +326,7 @@ rule AF3_INFERENCE:
             otherwise=os.path.join(OUTPUT_DIR,"rule_MERGE_MONOMERS_TO_MULTIMERS","{multi}_data.json")
         ),
     output:
-        os.path.join(OUTPUT_DIR,"rule_AF3_INFERENCE","{multi}","{multi}_model.cif"),
+        os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{multi}", "{multi}_model.cif")
     params:
         extra_af3_flags = EXTRA_AF3_FLAGS,
         exclusive_lock = "true" if EXCLUSIVE_LOCK else "false"
