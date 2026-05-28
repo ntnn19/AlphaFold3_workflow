@@ -2,8 +2,9 @@ channels:
   - conda-forge
   - bioconda
 dependencies:
-  - python>=3.11
+  - python=3.12
   - pandas>=2.0
+  - numpy
   - pip
   - pip:
     - loguru
