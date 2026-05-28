@@ -1,0 +1,16 @@
+usage:
+  mandatory-flags:
+    desc: >
+      The workflow requires three paths (AF3 Singularity/Apptainer image,
+      model weights directory, genetic databases directory) and at least one
+      sample sheet. Set these in config/config.yaml or pass --config on the
+      command line. See config/README.md for the full parameter reference.
+    flags:
+      - "--configfile config/config.yaml"
+      - "--use-apptainer"
+      - "--use-conda"
+  software-stack-deployment:
+    conda: false
+    apptainer: true
+    apptainer+conda: true
+    report: false

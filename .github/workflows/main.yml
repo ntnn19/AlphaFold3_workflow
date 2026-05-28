@@ -1,0 +1,129 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - "**"
+
+jobs:
+  # ── Job 1: Formatting ───────────────────────────────────────────────────────
+  formatting:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Super-Linter (Snakemake + Python)
+        uses: super-linter/super-linter@v7
+        env:
+          VALIDATE_ALL_CODEBASE: false
+          VALIDATE_SNAKEMAKE_SNAKEFMT: true
+          VALIDATE_PYTHON_BLACK: false
+          DEFAULT_BRANCH: main
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ── Job 2: Linting ──────────────────────────────────────────────────────────
+  linting:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lint workflow with Snakemake
+        uses: snakemake/snakemake-github-action@v2
+        with:
+          snakefile: workflow/Snakefile
+          args: >-
+            --configfile .test/config/custom/config.yaml
+            --lint
+        env:
+          AF3_CONTAINER: /dev/null
+          AF3_MODELS_DIR: /dev/null
+          AF3_DB_DIR: /dev/null
+
+  # ── Job 3: Dry-run tests ────────────────────────────────────────────────────
+  testing:
+    runs-on: ubuntu-latest
+    needs:
+      - linting
+      - formatting
+    strategy:
+      fail-fast: false
+      matrix:
+        case:
+          # ── Mode tests ──────────────────────────────────────────────────────
+          - name: custom
+            config: .test/config/custom/config.yaml
+
+          - name: pulldown
+            config: .test/config/pulldown/config.yaml
+
+          - name: stoichio-screen
+            config: .test/config/stoichio-screen/config.yaml
+
+          - name: vds
+            config: .test/config/vds/config.yaml
+
+          # ── Entry-point tests: singles ──────────────────────────────────────
+          - name: entry_points/data_pipeline_ready
+            config: .test/config/entry_points/data_pipeline_ready/config.yaml
+
+          - name: entry_points/inference_ready
+            config: .test/config/entry_points/inference_ready/config.yaml
+
+          - name: entry_points/merge_ready
+            config: .test/config/entry_points/merge_ready/config.yaml
+
+          # ── Entry-point tests: 2-way combinations ───────────────────────────
+          - name: entry_points/data_pipeline_ready_plus_inference_ready
+            config: .test/config/entry_points/data_pipeline_ready_plus_inference_ready/config.yaml
+
+          - name: entry_points/data_pipeline_ready_plus_merge_ready
+            config: .test/config/entry_points/data_pipeline_ready_plus_merge_ready/config.yaml
+
+          - name: entry_points/data_pipeline_ready_plus_raw_data
+            config: .test/config/entry_points/data_pipeline_ready_plus_raw_data/config.yaml
+
+          - name: entry_points/inference_ready_plus_raw_data
+            config: .test/config/entry_points/inference_ready_plus_raw_data/config.yaml
+
+          - name: entry_points/merge_ready_plus_inference_ready
+            config: .test/config/entry_points/merge_ready_plus_inference_ready/config.yaml
+
+          - name: entry_points/merge_ready_plus_raw_data
+            config: .test/config/entry_points/merge_ready_plus_raw_data/config.yaml
+
+          # ── Entry-point tests: 3-way combinations ───────────────────────────
+          - name: entry_points/inference_ready_plus_merge_ready_plus_data_pipeline_ready
+            config: .test/config/entry_points/inference_ready_plus_merge_ready_plus_data_pipeline_ready/config.yaml
+
+          - name: entry_points/inference_ready_plus_raw_data_plus_data_pipeline_ready
+            config: .test/config/entry_points/inference_ready_plus_raw_data_plus_data_pipeline_ready/config.yaml
+
+          - name: entry_points/inference_ready_plus_raw_data_plus_merge_ready
+            config: .test/config/entry_points/inference_ready_plus_raw_data_plus_merge_ready/config.yaml
+
+          - name: entry_points/merge_ready_plus_data_pipeline_ready_plus_raw_data
+            config: .test/config/entry_points/merge_ready_plus_data_pipeline_ready_plus_raw_data/config.yaml
+
+          # ── Entry-point tests: 4-way combination (all) ──────────────────────
+          - name: entry_points/all
+            config: .test/config/entry_points/all/config.yaml
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dry-run — ${{ matrix.case.name }}
+        uses: snakemake/snakemake-github-action@v2
+        with:
+          snakefile: workflow/Snakefile
+          args: >-
+            --configfile ${{ matrix.case.config }}
+            --dry-run
+            --cores 1
+        env:
+          AF3_CONTAINER: /dev/null
+          AF3_MODELS_DIR: /dev/null
+          AF3_DB_DIR: /dev/null
