@@ -7,7 +7,7 @@ This workflow extends standard AlphaFold 3 with:
 1. **Separated data and inference pipelines** — MSA generation and structure prediction run as independent jobs, enabling better resource utilization and result reuse across experiments.
 2. **Assemble-from-monomers** — implements the [official AF3 technique](https://github.com/google-deepmind/alphafold3/blob/main/docs/performance.md#pre-computing-and-reusing-msa-and-templates) for multimer prediction: per-chain MSAs are computed once and injected into all multimeric combinations, avoiding redundant computation.
 3. **Per-seed parallelism** — each random seed is treated as an independent job, substantially increasing throughput for large-scale sampling campaigns.
-4. **HPC whole-node support** (`exclusive_lock`) — batches all inference commands into a job list and dispatches them with GNU `parallel` across all GPUs on a node, designed for schedulers that allocate nodes exclusively rather than by consumable GPU resources.
+4. **HPC whole-node support** (`exclusive_lock`) — batches inference commands, designed for schedulers that allocate nodes exclusively rather than by consumable GPU resources.
 
 ![Workflow DAG](graphviz.png)
 
@@ -128,7 +128,7 @@ All workflow behaviour is controlled by `config/config.yaml`. A minimal working 
 
 ```yaml
 sample_sheets:
-  raw_data: example/custom.tsv   # path to your sample sheet
+  raw_data: example/custom.tsv   # required. path to your sample sheet
 
 output_dir: results              # where all outputs are written
 mode: custom                     # run mode (see Run modes)
@@ -147,7 +147,7 @@ For the full parameter reference, all sample sheet formats, MSA/template options
 
 ## Usage
 
-All paths (models, databases, output directory, tmp) are set once in `config/config.yaml`. You do not need to pass them on the command line — the workflow reads them from config and sets up Singularity bind mounts automatically.
+All paths (models, databases, output directory, tmp) are set once in `config/config.yaml`. You do not need to pass them on the command line — the workflow reads them from config and sets up Singularity bind mounts automatically.  See [`config/README.md`]
 
 ### Recommended: use the convenience wrapper
 
@@ -195,7 +195,7 @@ Predict one or more complexes exactly as specified. Each group of rows sharing a
 
 ```yaml
 sample_sheets:
-  raw_data: example/custom.tsv
+  raw_data: example/custom.tsv  # required
 mode: custom
 msa_option: auto
 n_seeds: 3
@@ -228,7 +228,7 @@ Generates all pairwise combinations of jobs (including self-pairs) and predicts 
 
 ```yaml
 sample_sheets:
-  raw_data: example/custom.tsv
+  raw_data: example/custom.tsv  # required
 mode: all-vs-all
 msa_option: auto
 n_seeds: 1
@@ -249,7 +249,7 @@ Pairs every job labelled `bait` with every job labelled `target`. Same-group pai
 
 ```yaml
 sample_sheets:
-  raw_data: example/pulldown.tsv
+  raw_data: example/pulldown.tsv  # required
 mode: pulldown
 msa_option: none
 af3_flags:
@@ -275,7 +275,7 @@ A compact format for ligand screening. Each row specifies an entity type and how
 
 ```yaml
 sample_sheets:
-  raw_data: example/virtual_drug_screen.tsv
+  raw_data: example/virtual_drug_screen.tsv  # required
 mode: virtual-drug-screen
 msa_option: none
 n_seeds: 1
@@ -302,7 +302,7 @@ Explores all Cartesian combinations of entity copy numbers. The `count` column i
 
 ```yaml
 sample_sheets:
-  raw_data: example/stoichio_screen.tsv
+  raw_data: example/stoichio_screen.tsv  # required
 mode: stoichio-screen
 msa_option: none
 n_seeds: 1
@@ -446,12 +446,6 @@ actual `WorkflowError` or `SyntaxError` output.
 
 Each fixture directory contains a `config.yaml`, the relevant TSV sample sheets,
 and any JSON input files required by that entry point.
-
-### CI
-
-The same 18 cases run automatically on every push and pull request via
-`.github/workflows/main.yml`. The matrix uses `fail-fast: false` so all cases
-are reported even if one fails.
 
 
 ---
