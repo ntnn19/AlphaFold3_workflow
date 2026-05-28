@@ -40,10 +40,6 @@ af3_flags:
 | `msa_option` | string | `auto` | MSA strategy: `auto` (run MSA), `none` (skip MSA), `upload` (use pre-computed MSAs). |
 | `exclusive_lock` | boolean | `false` | Request exclusive node allocation for inference jobs (SLURM). Use on clusters that allocate whole nodes. |
 | `run_data_pipeline_locally` | boolean | `false` | Run the CPU-bound data pipeline on the submission node instead of via SLURM. |
-| `n_node_splits` | integer ≥ 1 | `1` | Number of node splits for parallel inference dispatch (exclusive-lock mode). |
-| `run_ost_scoring` | boolean | `false` | Run OpenStructure scoring after inference. |
-| `ground_truth_dir` | string | `""` | Directory containing ground-truth structures for OST scoring. |
-| `n_scoring_splits` | integer ≥ 1 | `4` | Number of parallel splits for OST scoring. |
 | `predict_individual_components` | boolean | `false` | Also predict individual monomer components of each multimer job. |
 
 ### `sample_sheets`
@@ -86,11 +82,10 @@ inference_ready ─────────────────────�
 ## HPC profiles
 
 The workflow ships with SLURM and local profiles under `workflow/profiles/`.
-Select a profile with `--workflow-profile workflow/profiles/slurm` (or `local`).
+Select a profile with `--workflow-profile workflow/profiles/slurm/standard`  (or `local`).
 
 For clusters that allocate whole nodes, set `exclusive_lock: true` and
-`n_node_splits` to the number of GPUs per node. The workflow will batch
-inference jobs and dispatch them with GNU parallel.
+use `--workflow-profile workflow/profiles/slurm/exclusive`. The inference batch size is set by `group_components`
 
 ---
 
