@@ -1,0 +1,32 @@
+# SLURM execution profile for the AlphaFold 3 workflow.
+#
+# Usage:
+#   snakemake --workflow-profile profiles/slurm/standard --configfile config/config.yaml
+#
+# Adjust slurm_partition, slurm_account, and resource limits for your cluster.
+
+executor: slurm
+use-apptainer: true
+jobs: 200
+rerun-incomplete: true
+keep-going: true
+printshellcmds: true
+
+
+default-resources:
+    slurm_partition: "vds"       # CHANGE ME: your cluster partition name
+    slurm_account: "topf"        # CHANGE ME: your SLURM account/project
+
+set-resources:
+    AF3_INFERENCE:
+        slurm_partition: "vds"   # CHANGE ME: GPU partition name
+        nodes: 1
+        runtime: 10000
+        gres: "gpu:1"
+        tasks_per_gpu: 0
+        mem_mb: 16000
+    AF3_DATA_SPEEDY_PIPELINE:
+        slurm_partition: "vds"   # CHANGE ME: CPU partition name
+        nodes: 1
+        runtime: 10000
+        mem_mb: 120000

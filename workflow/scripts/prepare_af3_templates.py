@@ -23,7 +23,7 @@ from Bio.PDB import MMCIFParser, PDBParser, Superimposer
 ascii_upperlower = ascii_uppercase + ascii_lowercase
 
 
-def parse_args():
+def parse_args(args=None):
     parser = ArgumentParser(
         description="Align and format templates of interest to your target protein structures. The outputs can be used to run AlphaFold on the selected templates"
     )
@@ -119,7 +119,7 @@ def parse_args():
         help="Number of seeds for AF3 inference step"
     )
 
-    return parser.parse_args()
+    return parser.parse_args(args)
 
 
 def is_fasta(path):
@@ -544,8 +544,8 @@ def merge_json_data(new_json, old_json):
     return merged_json
 
 
-def main():
-    args = parse_args()
+def main(args=None):
+    args = parse_args(args)
     fasta_target = is_fasta(args.target[0])
 
     if fasta_target:

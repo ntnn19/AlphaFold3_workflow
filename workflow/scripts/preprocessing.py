@@ -1,7 +1,8 @@
 # Adapted from https://github.com/Hanziwww/AlphaFold3-GUI/blob/main/afusion/api.py
 
-import pdb
 import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent))
 from collections import defaultdict
 from copy import deepcopy
 import numpy as np
@@ -12,7 +13,6 @@ import string
 from loguru import logger
 import click
 import itertools
-from pathlib import Path
 from typing import (
     Any,
     Iterable,
@@ -28,6 +28,8 @@ import prepare_af3_templates
 from typing import Optional
 
 import math
+import re
+import tempfile
 
 
 def slice_sequence_by_range(seq: str, roi: Optional[str], seq_type: str) -> str:
@@ -148,7 +150,7 @@ def transform_vds_to_af3(df,n_seeds=None) -> pd.DataFrame:
                 elif row['type'] == 'ligand':
                     # Heuristic: if it looks like a SMILES (contains = or #), put in smiles
                     # Otherwise, assume it's a CCD code
-                    if any(char in data_val for char in "=#()123"):
+                    if bool(re.search(r'[=#]|\(.*\)', data_val)):
                         smiles = data_val
                     else:
                         ccd_codes = data_val
@@ -257,7 +259,7 @@ def transform_stoichio_screen_to_af3(df: pd.DataFrame, n_seeds: Optional[int] = 
                     if row['type'] in ['protein', 'dna', 'rna']:
                         sequence = data_val
                     elif row['type'] == 'ligand':
-                        if any(char in data_val for char in "=#()123"):
+                        if bool(re.search(r'[=#]|\(.*\)', data_val)):
                             smiles = data_val
                         else:
                             ccd_codes = data_val
@@ -468,8 +470,7 @@ def write_fold_inputs(
                     smiles=smiles
                 )
             else:
-                logger.error(f"Unknown entity type: {entity_type}")
-                continue
+                raise ValueError(f"Unknown entity type: {entity_type!r}. Must be 'protein', 'rna', 'dna', or 'ligand'.")
 
             entities.append({
                 'type': entity_type,
@@ -625,7 +626,7 @@ def create_batch_task(
         bonded_atom_pairs: Optional[Sequence[Sequence[int]]] = None,
         user_ccd: Optional[str] = None,
 ) -> dict[str, Any]:
-    """,put_dir)True
+    """
     Creates a batch task dictionary for a single prediction.
 
     :param job_name: Name of the job.
@@ -663,8 +664,7 @@ def create_batch_task(
         elif entity_type == 'ligand':
             sequences.append({'ligand': sequence_entry})
         else:
-            logger.error(f"Unknown entity type: {entity_type}")
-            continue
+            raise ValueError(f"Unknown entity type: {entity_type!r}. Must be 'protein', 'rna', 'dna', or 'ligand'.")
 
     alphafold_input = {
         "name": job_name,
@@ -717,7 +717,7 @@ def create_rna_sequence_data(
     elif msa_option == 'upload':
         rna_entry["unpairedMsa"] = unpaired_msa or ""
     else:
-        logger.error(f"Invalid msa_option: {msa_option}")
+        raise ValueError(f"Invalid msa_option for RNA: {msa_option!r}. Must be 'auto', 'none', or 'upload'.")
     return rna_entry
 
 
@@ -754,10 +754,6 @@ def create_protein_sequence_data(
         "id": sequence_id,
     }
 
-    # python /gpfs/cssb/group/cssb-topf/natan/tools/af3_mmseqs_scripts/af3_mmseqs2/add_custom_template.py
-    #    --input_json json_files_fixed/no_templates/2fybA-P15291_126_398.json # remove
-    #    --output_json json_files_fixed/with_templates/2fybA-P15291_126_398.json # remove
-    #    --target_id A         --custom_template data/structures/rcsb_cif/2fyb.cif         --custom_template_chain A
 
     if modifications:
         protein_entry["modifications"] = modifications
@@ -794,7 +790,7 @@ def create_protein_sequence_data(
         protein_entry = set_templates(protein_entry, templates)
 
     else:
-        logger.error(f"Invalid msa_option: {msa_option}")
+        raise ValueError(f"Invalid msa_option for protein: {msa_option!r}. Must be 'auto', 'none', or 'upload'.")
     protein_entry.pop("id")
     return protein_entry
 
@@ -816,35 +812,41 @@ def is_template_path(value):
         and not is_json_like(value)
     )
 
-def set_templates(protein_entry: dict[str, str], templates: str | None, extra_align_flags: str  = "") -> dict[str, Any]:
+def set_templates(protein_entry: dict[str, str], templates: str | None, extra_align_flags: str = "") -> dict[str, Any]:
     if templates is None:
         protein_entry["templates"] = None
     elif templates == []:
         protein_entry["templates"] = []
     else:
         if is_template_path(templates):
-            template_path=templates.split(",")[0]
-            template_chain=templates.split(",")[1]
+            template_path = templates.split(",")[0]
+            template_chain = templates.split(",")[1]
             protein_entry_ = deepcopy(protein_entry)
-            with open("temp.fasta","w") as temp:
-                temp.write(">"+protein_entry_["id"]+"\n"+protein_entry_["sequence"]+"\n")
-            #
-            sys.argv = [
-                "prepare_templates_af3.py",
-                "--target", "temp.fasta",
-                "--template", template_path,
-                "--target_chains", protein_entry_["id"],
-                "--template_chains", template_chain,
-                "--align",
-                "--output_dir", "tmp", "--noinpaint_clashes",
-                *extra_align_flags.split()
-            ]
-            # python /app/alphafold/prepare_templates_af3.py --target ns5_tom.fasta --template input/modeller_models/5qj0_A_natan.pdb --target_chains A --template_chains A --output_dir test_del --align --noinpaint_clashes
-            protein_entry_ = prepare_af3_templates.main()
-            #run_custom_template(protein_entry_,protein_entry_["id"], template_path,template_chain,output_json=None,to_file=False)
+            # Write the target FASTA to a per-call temp file so parallel Snakemake
+            # jobs don't collide, then pass the argument list directly to main()
+            # instead of mutating sys.argv (which is not thread-safe).
+            with tempfile.NamedTemporaryFile(
+                suffix=".fasta", mode="w", delete=False
+            ) as tmp_fasta:
+                tmp_fasta.write(">" + protein_entry_["id"] + "\n" + protein_entry_["sequence"] + "\n")
+                tmp_fasta_name = tmp_fasta.name
+            tmp_dir = tempfile.mkdtemp()
+            try:
+                explicit_args = [
+                    "--target", tmp_fasta_name,
+                    "--template", template_path,
+                    "--target_chains", protein_entry_["id"],
+                    "--template_chains", template_chain,
+                    "--align",
+                    "--output_dir", tmp_dir,
+                    "--noinpaint_clashes",
+                    *extra_align_flags.split(),
+                ]
+                protein_entry_ = prepare_af3_templates.main(args=explicit_args)
+            finally:
+                os.unlink(tmp_fasta_name)
+                import shutil; shutil.rmtree(tmp_dir, ignore_errors=True)
             protein_entry["templates"] = protein_entry_["sequences"][0]["protein"]["templates"]
-#            protein_entry["templates"] = af3_json =
-            #print(af3_json["name"])
         else:
             protein_entry["templates"] = templates
     return protein_entry
@@ -893,8 +895,7 @@ def create_ligand_sequence_data(ccd_codes=None, smiles=None):
         }
         return ligand_entry
     else:
-        logger.error("Ligand requires either CCD Codes or SMILES String.")
-        return {}
+        raise ValueError("Ligand requires either CCD Codes or SMILES String. Provide ccd_codes or smiles.")
 
 
 def parse_json_field(value):
@@ -1125,6 +1126,17 @@ def main(sample_sheet, output_dir, mode, predict_individual_components, n_seeds,
 
     df["job_name"] = df["job_name"].apply(lambda x: sanitised_name(x))
 
+    # Validate msa_option values if column is present
+    if "msa_option" in df.columns:
+        _valid_msa = {"auto", "none", "upload"}
+        _bad_rows = df[~df["msa_option"].isin(_valid_msa) & df["msa_option"].notna()]
+        if not _bad_rows.empty:
+            bad_vals = _bad_rows[["job_name", "msa_option"]].to_dict(orient="records")
+            raise ValueError(
+                f"Invalid msa_option values found in sample sheet. "
+                f"Allowed: {_valid_msa}. Offending rows: {bad_vals}"
+            )
+
     cols_to_compare = df.columns.difference(['job_name'])
     df_dedup = remove_duplicate_jobs_scalable(df, cols_to_compare,log_file=os.path.join(metadata_dir,"duplicate_job_summary.json"))
     has_multimers_ = has_multimers(df_dedup)
@@ -1290,7 +1302,7 @@ def main(sample_sheet, output_dir, mode, predict_individual_components, n_seeds,
     data_pipeline_df["sample_id"] = data_pipeline_df["file"].apply(
         lambda x: Path(x).stem)
     data_pipeline_df["expected_output"] = data_pipeline_df["file"].apply(
-        lambda x: x.replace("rule_PREPROCESSING/monomers", f"rule_AF3_DATA_PIPELINE/{os.path.basename(x).split(".json")[0]}"))
+        lambda x: x.replace("rule_PREPROCESSING/monomers", f"rule_AF3_DATA_PIPELINE/{os.path.splitext(os.path.basename(x))[0]}"))
     data_pipeline_df["expected_output"] = data_pipeline_df["expected_output"].apply(
         lambda x: x.replace(".json", "_data.json"))
 
@@ -1350,12 +1362,14 @@ def main(sample_sheet, output_dir, mode, predict_individual_components, n_seeds,
     inference_df["expected_output"] = inference_df["inference_samples"].apply(
         lambda x: x.replace("rule_MERGE_MONOMERS_TO_MULTIMERS",
                             "rule_AF3_INFERENCE"))
-    inference_df["expected_output"] = inference_df.apply(
-        lambda row: str(row["expected_output"]).replace(
-            "_data.json", f"/seed-{Path(row["inference_samples"]).stem.split("_data")[0].split("_seed-")[-1]}_sample-{row['sample']}/model.cif"
-        ),
-        axis=1
-    )
+    def _build_inference_output(row):
+        stem = Path(row["inference_samples"]).stem
+        seed = stem.split("_data")[0].split("_seed-")[-1]
+        sample = row["sample"]
+        return str(row["expected_output"]).replace(
+            "_data.json", f"/seed-{seed}_sample-{sample}/model.cif"
+        )
+    inference_df["expected_output"] = inference_df.apply(_build_inference_output, axis=1)
 
     pattern = r".*_seed-[0-9]+_chain-[a-z]{1,2}\.json$"  # TODO: when predict-individual-components is specified the number of seeds should also be included
     inference_df.loc[inference_df["inference_samples"].str.match(pattern), "inference_samples"] = inference_df[

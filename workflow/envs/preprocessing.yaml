@@ -1,0 +1,11 @@
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python>=3.11
+  - pandas>=2.0
+  - pip
+  - pip:
+    - loguru
+    - click
+    - biopython

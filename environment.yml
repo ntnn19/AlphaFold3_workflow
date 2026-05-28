@@ -1,17 +1,12 @@
-name: alphafold3_snakemake
+name: af3-workflow
 channels:
   - conda-forge
   - bioconda
 dependencies:
-  - conda=24.7.1
-  - python>=3.12.3
-  - click>=8.1.7
-  - biopython>=1.83
-  - pandas>=2.2.2
-  - snakemake>=9.16.3
+  - python>=3.11
+  - snakemake>=8.0
   - snakemake-executor-plugin-slurm
-  - numpy>=1.26.4
-  - gemmi=0.6.7
-  - pymol-open-source=3.0.0
-  - matplotlib=3.9
-  - loguru>=0.7.2
+  - pandas>=2.0
+  - loguru
+  - click
+  - biopython

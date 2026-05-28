@@ -1,0 +1,141 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+description: "AlphaFold3 Snakemake workflow configuration schema"
+
+type: object
+required:
+  - mode
+  - af3_flags
+
+additionalProperties: true
+
+properties:
+
+  mode:
+    type: string
+    enum:
+      - custom
+      - all-vs-all
+      - pulldown
+      - virtual-drug-screen
+      - stoichio-screen
+    description: "Workflow run mode. See docs/input.md for details."
+
+  output_dir:
+    type: string
+    default: "results"
+    description: "Root directory for all workflow outputs."
+
+  tmp_dir:
+    type: string
+    default: "/tmp/af3"
+    description: "Scratch directory for AlphaFold3 temporary files."
+
+  n_seeds:
+    type: integer
+    minimum: 1
+    description: "Number of random seeds per job (overrides model_seeds column in sample sheet)."
+
+  n_samples:
+    type: integer
+    minimum: 1
+    default: 5
+    description: "Number of diffusion samples per seed."
+
+  msa_option:
+    type: string
+    enum:
+      - auto
+      - none
+      - upload
+    default: "auto"
+    description: "MSA generation strategy."
+
+  exclusive_lock:
+    type: boolean
+    default: false
+    description: "Request exclusive node allocation for inference jobs (SLURM)."
+
+  run_data_pipeline_locally:
+    type: boolean
+    default: false
+    description: "Run the data pipeline locally instead of via SLURM."
+
+  run_inference_locally:
+    type: boolean
+    default: false
+    description: "Reserved for future release."
+
+  n_node_splits:
+    type: integer
+    minimum: 1
+    default: 1
+    description: "Number of node splits for parallel inference dispatch."
+
+  run_ost_scoring:
+    type: boolean
+    default: false
+    description: "Run OpenStructure scoring after inference."
+
+  ground_truth_dir:
+    type: string
+    default: ""
+    description: "Directory containing ground-truth structures for OST scoring."
+
+  n_scoring_splits:
+    type: integer
+    minimum: 1
+    default: 4
+    description: "Number of splits for parallel OST scoring."
+
+  predict_individual_components:
+    type: boolean
+    default: false
+    description: "Also predict individual monomer components of each multimer job."
+
+  sample_sheets:
+    type: object
+    description: >
+      Paths to input sample sheets, keyed by entry point type.
+      Any combination of raw_data, data_pipeline_ready, inference_ready, and
+      merge_ready may be provided simultaneously; each stream is processed
+      independently and all results are collected into a single final target.
+      At least one entry point must be non-empty.
+    additionalProperties: false
+    properties:
+      raw_data:
+        type: string
+        description: "TSV with columns defined in docs/input.md. Triggers full pipeline."
+      data_pipeline_ready:
+        type: string
+        description: "TSV pointing to pre-computed monomer JSONs. Skips MSA generation."
+      merge_ready:
+        type: string
+        description: "TSV pointing to pre-merged multimer JSONs. Skips MSA + merge."
+      inference_ready:
+        type: string
+        description: "TSV pointing to final input JSONs. Runs inference only."
+
+  af3_flags:
+    type: object
+    description: "AlphaFold3 container and path configuration."
+    required:
+      - "af3_container"
+      - "models_dir"
+      - "databases_dir"
+    additionalProperties: true
+    properties:
+      "af3_container":
+        type: string
+        description: "Path to the AlphaFold3 Singularity/Apptainer image (.sif)."
+      "models_dir":
+        type: string
+        description: "Path to AlphaFold3 model weights directory."
+      "databases_dir":
+        type: string
+        description: "Path to genetic databases directory (~2 TB)."
+      "tmp_dir":
+        type: string
+        description: "Scratch space for AF3 temp files inside the container."
+      "extra_af3_flags":
+        type: string
+        description: "Additional flags passed verbatim to run_alphafold.py."

@@ -27,7 +27,7 @@ msa_option: auto                 # auto | none | upload
 n_seeds: 3                       # number of random seeds per job
 
 af3_flags:
-  --af3_container: /path/to/alphafold3.sif   # required
+  af3_container: /path/to/alphafold3.sif   # required
 ```
 
 ### 1.1 Sample Sheet Keys
@@ -52,7 +52,6 @@ Only one entry point needs to be provided. The workflow detects which sheets are
 | `msa_option` | string | `"auto"` | Global MSA strategy: `auto`, `none`, or `upload` |
 | `n_seeds` | integer | `null` | Number of random seeds. Overrides `model_seeds` column in sample sheet when set |
 | `n_samples` | integer | `null` | Number of models per seed (used for massive sampling) |
-| `n_splits` | integer | `1` | Number of parallel inference job splits (set to number of multi-GPU nodes) |
 | `exclusive_lock` | bool | `false` | When `true`, jobs are batched and dispatched via a job-list file rather than one-per-rule |
 | `predict_individual_components` | bool | `false` | Also predict each monomer chain individually from multimeric jobs |
 | `run_data_pipeline_locally` | bool | `false` | Run `AF3_DATA_SPEEDY_PIPELINE` as a local rule (no cluster submission) |
@@ -63,11 +62,13 @@ Only one entry point needs to be provided. The workflow detects which sheets are
 
 ```yaml
 af3_flags:
-  --af3_container: /path/to/alphafold3.sif   # Required: Singularity image for AF3
-  --extra_af3_flags: ""   # Optional: extra flags passed verbatim to run_alphafold.py
+  af3_container: /path/to/alphafold3.sif   # Required: Singularity image for AF3
+  models_dir: /path/to/model_params   # Required: Directory where AF3 model parameters are stored
+  databases_dir: /path/to/public_databases   # Required: Directory where AF3 sequence and template databases are stored
+  extra_af3_flags: ""   # Optional: extra flags passed verbatim to run_alphafold.py
 ```
 
-`--af3_container` is **required**. It is used as the `container:` directive for the `AF3_DATA_SPEEDY_PIPELINE` and `AF3_INFERENCE` rules.
+`af3_container` is **required**. It is used as the `container:` directive for the `AF3_DATA_SPEEDY_PIPELINE` and `AF3_INFERENCE` rules.
 
 ### 1.4 Seed Resolution Logic
 
@@ -119,7 +120,7 @@ Used with `mode: custom`, `all-vs-all`, `pulldown`, `stoichio-screen`.
 | `smiles` | string | SMILES string for ligands (e.g. `CC(=O)OC1C[NH+]2CCC1CC2`). Used when `type=ligand` and value contains `=`, `#`, `(`, `)`, or digits |
 | `msa_option` | string | Per-entity MSA strategy: `auto` (default), `none`, or `upload` |
 | `unpaired_msa` | string | Path to unpaired MSA file (A3M format). Required when `msa_option=upload` |
-| `paired_msa` | string | Path to paired MSA file. Used when `msa_option=upload` |
+| `paired_msa` | string | Path to paired MSA file. Required when `msa_option=upload` |
 | `templates` | string or JSON | Template specification. `null`/omitted = auto search; `[]` = template-free; JSON list of template dicts = custom templates; `"path/to/file.cif,CHAIN"` = path+chain for `prepare_af3_templates` |
 | `model_seeds` | string | Comma-separated integer seeds (e.g. `"10,42"`). Ignored when `n_seeds` is set in config |
 | `bonded_atom_pairs` | JSON string | List of bonded atom pair definitions, e.g. `[[[\"A\",1,\"CA\"],[\"G\",1,\"CHA\"]]]` |
@@ -277,4 +278,4 @@ The following paths must be accessible inside the AlphaFold 3 Singularity contai
 | AF3 inference output | `/root/af_output/rule_AF3_INFERENCE` |
 | AF3 data pipeline output | `/root/af_output/rule_AF3_DATA_PIPELINE` |
 
-The Singularity image path is set via `af3_flags: --af3_container:` in `config.yaml`.
+The Singularity image path is set via `af3_flags: af3_container:` in `config.yaml`.

@@ -38,20 +38,9 @@ PREPROCESSING
 ├── rule_MERGE_MONOMERS_TO_MULTIMERS/
 │   └── <multimer_job_name>_data.json
 │
-├── rule_CREATE_AF3_INFERENCE_JOBS/          # exclusive_lock mode only
-│   └── <job_name>_af3_inference_job.txt
-│
-├── rule_AGG_AF3_INFERENCE_JOBS/             # exclusive_lock mode only
-│   └── af3_inference_jobs.txt
-│
-├── rule_SPLIT_INFERENCE_JOB_LIST/           # exclusive_lock mode only
-│   └── af3_inference_jobs_<N>-of-<SPLIT_TOTAL>.txt
-│
 ├── rule_AF3_INFERENCE/
-│   ├── done_flags/
-│   │   └── af3_inference_jobs_<N>-of-<SPLIT_TOTAL>.done.txt   # exclusive_lock mode
-│   └── <job_name>/
-        └── <job_name>_model.cif                                # non-exclusive mode
+    └── <job_name>/
+        └── <job_name>_model.cif
 ```
 
 ---
@@ -112,40 +101,11 @@ One output file per multimer job (across all seeds, since seeds are encoded in t
 
 ---
 
-### `CREATE_AF3_INFERENCE_JOBS` *(exclusive_lock mode only)*
-
-**Output:** `<output_dir>/rule_CREATE_AF3_INFERENCE_JOBS/<job_name>_af3_inference_job.txt`
-
-A plain-text file containing the `run_alphafold.py` command for this job. Used to batch all inference commands before parallel dispatch.
-
----
-
-### `AGG_AF3_INFERENCE_JOBS` *(exclusive_lock mode only)*
-
-**Output:** `<output_dir>/rule_AGG_AF3_INFERENCE_JOBS/af3_inference_jobs.txt`
-
-Concatenation of all `*_af3_inference_job.txt` files into a single job list.
-
----
-
-### `SPLIT_INFERENCE_JOB_LIST` *(exclusive_lock mode only)*
-
-**Output:** `<output_dir>/rule_SPLIT_INFERENCE_JOB_LIST/af3_inference_jobs_<N>-of-<SPLIT_TOTAL>.txt`
-
-The aggregated job list split into `n_splits` chunks for parallel dispatch across multi-GPU nodes.
-
----
-
 ### `AF3_INFERENCE`
 
-**Two output modes depending on `exclusive_lock`:**
+`<output_dir>/rule_AF3_INFERENCE/<job_name>/<job_name>_model.cif` — one CIF structure per job
 
-| Mode | Output |
-|------|--------|
-| `exclusive_lock: false` | `<output_dir>/rule_AF3_INFERENCE/<job_name>/<job_name>_model.cif` — one CIF structure per job |
-| `exclusive_lock: true` | `<output_dir>/rule_AF3_INFERENCE/done_flags/af3_inference_jobs_<N>-of-<SPLIT_TOTAL>.done.txt` — touch file per split; actual CIF files are written by AF3 to `/root/af_output/rule_AF3_INFERENCE/` inside the container |
-
-Runs `run_alphafold.py` with `--run_data_pipeline=false --run_inference=true`. Automatically detects GPU compute capability and disables flash attention for pre-Ampere GPUs (`CC < 8`). In `exclusive_lock` mode, jobs within a split are dispatched in parallel using GNU `parallel`, one job per GPU.
+Runs `run_alphafold.py` with `--run_data_pipeline=false --run_inference=true`. Automatically detects GPU compute capability and disables flash attention for pre-Ampere GPUs (`CC < 8`). 
 
 ---
 
@@ -160,7 +120,5 @@ Runs `run_alphafold.py` with `--run_data_pipeline=false --run_inference=true`. A
 | `_chain-<id>` | Chain letter (lowercase) for per-chain monomer files |
 | `_data.json` | Fold-input JSON enriched with MSA/template data (post data-pipeline) |
 | `_model.cif` | Predicted structure in mmCIF format |
-| `_af3_inference_job.txt` | Shell command file for one inference job |
-| `.done.txt` | Touch file indicating rule completion |
 
 ---

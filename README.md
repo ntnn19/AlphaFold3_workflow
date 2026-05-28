@@ -27,6 +27,7 @@ This workflow extends standard AlphaFold 3 with:
   - [Stoichiometry screen](#stoichiometry-screen)
   - [Massive sampling](#massive-sampling)
 - [Pipeline entry points](#pipeline-entry-points)
+- [Testing](#testing)
 - [HPC execution](#hpc-execution)
 - [Output structure](#output-structure)
 - [Authors](#authors)
@@ -113,10 +114,10 @@ singularity pull alphafold3_parallel.sif docker://ntnn19/alphafold3:latest_paral
 singularity pull alphafold3_parallel.sif docker://ntnn19/alphafold3:latest_parallel_a100_80gb
 ```
 
-**Option B — let Snakemake pull automatically**: set `--af3_container` to an OCI registry URI, e.g.:
+**Option B — let Snakemake pull automatically**: set `af3_container` to an OCI registry URI, e.g.:
 ```yaml
 af3_flags:
-  --af3_container: "oras://ghcr.io/<owner>/<image>:<tag>"
+  af3_container: "oras://ghcr.io/<owner>/<image>:<tag>"
 ```
 
 ---
@@ -135,7 +136,9 @@ msa_option: auto                 # auto | none | upload
 n_seeds: 3                       # number of random seeds per job
 
 af3_flags:
-  --af3_container: /path/to/alphafold3.sif   # required
+  af3_container: /path/to/alphafold3.sif   # required
+  models_dir: /path/to/model_params   # required
+  databases_dir: /path/to/public_databases   # required
 ```
 
 For the full parameter reference, all sample sheet formats, MSA/template options, and pipeline entry point schemas, see [`docs/input.md`](docs/input.md).
@@ -144,45 +147,43 @@ For the full parameter reference, all sample sheet formats, MSA/template options
 
 ## Usage
 
+All paths (models, databases, output directory, tmp) are set once in `config/config.yaml`. You do not need to pass them on the command line — the workflow reads them from config and sets up Singularity bind mounts automatically.
 
-> **Note**: remove `--nv` if you have no GPU access (e.g. dry-run or data-pipeline-only runs).
-
-A convenience wrapper `run_workflow.sh` is also provided for common invocations:
+### Recommended: use the convenience wrapper
 
 ```bash
-bash run_workflow.sh <output_dir> <config_file> <models_path> <databases_path> <tmp_path> [<extra_flags>]
+bash run_workflow.sh [config_file] [profile] [extra_snakemake_flags...]
 ```
 
-This script handles the two-step workflow consisting of:
-1. Data and pipeline preparation using `prepare_workflow.py`  
-2. Snakemake execution with Singularity container
-
-All required paths are passed as explicit arguments:
-- `output_dir`: Where all outputs will be written
-- `config_file`: Path to your workflow configuration file
-- `models_path`: Path to AlphaFold 3 model weights directory
-- `databases_path`: Path to genetic databases directory. 
-- `tmp_path`: Path to temporary directory. Can be any writable directory that is different from `output_dir`.
-- `extra_flags` (optional): Additional flags to pass to snakemake (e.g., `'--dry-run'`) 
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `config_file` | `config/config.yaml` | Path to your config file |
+| `profile` | `profiles/local` | Execution profile (`profiles/local` or `profiles/slurm`) |
+| extra flags | — | Any additional Snakemake flags (e.g. `--dry-run`) |
 
 ### Dry run (always do this first)
-Example:
+
 ```bash
-bash run_workflow.sh results config/my_config.yaml /path/to/models /path/to/databases /tmp/path '--dry-run'
+bash run_workflow.sh config/config.yaml profiles/local --dry-run
 ```
 
-### For schedulers that allocate nodes exclusively rather than by consumable GPU resources (`exclusive_lock` set to `true` in config.yaml)
+### Local execution
 
-You must use the `--group-components` option to specify the batch size for each group of predictions.
-
-Example:
 ```bash
-bash run_workflow.sh results config/my_config.yaml /path/to/models /path/to/databases /tmp/path '--dry-run --groups AF3_INFERENCE=group0 --group-components group0=<batch_size> -c all --workflow-profile /path/to/profile_dir'
+bash run_workflow.sh config/config.yaml profiles/local
 ```
 
-Where `<batch_size>` is the number of predictions to process in each batch.
+### SLURM cluster
 
-It also supports the workflow profile for HPC execution.
+```bash
+bash run_workflow.sh config/config.yaml profiles/slurm
+```
+
+### Direct Snakemake invocation (equivalent)
+
+```bash
+snakemake --workflow-profile profiles/local --configfile config/config.yaml
+```
 
 ---
 
@@ -199,25 +200,22 @@ mode: custom
 msa_option: auto
 n_seeds: 3
 af3_flags:
-  --af3_container: /path/to/alphafold3.sif
+  af3_container: /path/to/alphafold3.sif   # required
+  models_dir: /path/to/model_params   # required
+  databases_dir: /path/to/public_databases   # required
 output_dir: results/custom
 ```
 
 **Run**:
 
 ```bash
-snakemake --cores 8 --use-singularity \
-  --singularity-args "--nv -B /path/to/databases:/root/public_databases -B /path/to/weights:/root/models -B /path/to/output:/root/af_output" \
-  --configfile config/config.yaml
+bash run_workflow.sh config/config.yaml profiles/local
 ```
 
 **Test** (uses bundled test data):
 
 ```bash
-snakemake --cores 2 --use-singularity \
-  --singularity-args "--nv -B /path/to/databases:/root/public_databases -B /path/to/weights:/root/models -B /path/to/output:/root/af_output" \
-  --configfile .test/config/custom/config.yaml \
-  --directory .test/config/custom
+bash run_workflow.sh .test/config/custom/config.yaml profiles/local
 ```
 
 ---
@@ -235,7 +233,9 @@ mode: all-vs-all
 msa_option: auto
 n_seeds: 1
 af3_flags:
-  --af3_container: /path/to/alphafold3.sif
+  af3_container: /path/to/alphafold3.sif   # required
+  models_dir: /path/to/model_params   # required
+  databases_dir: /path/to/public_databases   # required
 output_dir: results/all_vs_all
 ```
 
@@ -253,17 +253,16 @@ sample_sheets:
 mode: pulldown
 msa_option: none
 af3_flags:
-  --af3_container: /path/to/alphafold3.sif
+  af3_container: /path/to/alphafold3.sif   # required
+  models_dir: /path/to/model_params   # required
+  databases_dir: /path/to/public_databases   # required
 output_dir: results/pulldown
 ```
 
 **Test**:
 
 ```bash
-snakemake --cores 2 --use-singularity \
-  --singularity-args "--nv -B /path/to/databases:/root/public_databases -B /path/to/weights:/root/models -B /path/to/output:/root/af_output" \
-  --configfile .test/config/pulldown/config.yaml \
-  --directory .test/config/pulldown
+bash run_workflow.sh .test/config/pulldown/config.yaml profiles/local
 ```
 
 ---
@@ -281,17 +280,16 @@ mode: virtual-drug-screen
 msa_option: none
 n_seeds: 1
 af3_flags:
-  --af3_container: /path/to/alphafold3.sif
+  af3_container: /path/to/alphafold3.sif   # required
+  models_dir: /path/to/model_params   # required
+  databases_dir: /path/to/public_databases   # required
 output_dir: results/vds
 ```
 
 **Test**:
 
 ```bash
-snakemake --cores 2 --use-singularity \
-  --singularity-args "--nv -B /path/to/databases:/root/public_databases -B /path/to/weights:/root/models -B /path/to/output:/root/af_output" \
-  --configfile .test/config/vds/config.yaml \
-  --directory .test/config/vds
+bash run_workflow.sh .test/config/vds/config.yaml profiles/local
 ```
 
 ---
@@ -309,17 +307,16 @@ mode: stoichio-screen
 msa_option: none
 n_seeds: 1
 af3_flags:
-  --af3_container: /path/to/alphafold3.sif
+  af3_container: /path/to/alphafold3.sif   # required
+  models_dir: /path/to/model_params   # required
+  databases_dir: /path/to/public_databases   # required
 output_dir: results/stoichio_screen
 ```
 
 **Test**:
 
 ```bash
-snakemake --cores 2 --use-singularity \
-  --singularity-args "--nv -B /path/to/databases:/root/public_databases -B /path/to/weights:/root/models -B /path/to/output:/root/af_output" \
-  --configfile .test/config/stoichio-screen/config.yaml \
-  --directory .test/config/stoichio-screen
+bash run_workflow.sh .test/config/stoichio-screen/config.yaml profiles/local
 ```
 
 ---
@@ -359,6 +356,103 @@ The `merge_ready` and `data_pipeline_ready` sample sheets are auto-generated by 
 - `<output_dir>/rule_PREPROCESSING/metadata/data_pipeline_samples.tsv`
 
 Test fixtures for all entry point combinations are available under `.test/config/entry_points/`.
+---
+
+## Testing
+
+The test suite validates the workflow DAG with `--dry-run` across all supported
+run modes and every valid entry-point combination (2⁴ − 1 = 15 combinations).
+No real data, GPU, or AF3 container is required — all tests use bundled fixtures
+under `.test/`.
+
+### Prerequisites
+
+Install the Snakemake environment (see [Installation](#installation)), then
+activate it:
+
+```bash
+mamba activate $(pwd)/venv
+```
+
+### 1. Lint
+
+Checks rule syntax and config schema validation:
+
+```bash
+snakemake \
+  --snakefile workflow/Snakefile \
+  --configfile .test/config/custom/config.yaml \
+  --lint
+```
+
+### 2. Dry-run — single case
+
+Verify the DAG resolves for one config without executing any jobs:
+
+```bash
+snakemake \
+  --snakefile workflow/Snakefile \
+  --configfile .test/config/custom/config.yaml \
+  --directory .test/config/custom \
+  --dry-run \
+  --cores 1
+```
+
+Replace the `--configfile` and `--directory` paths with any fixture under
+`.test/config/` to test a different mode or entry-point combination.
+
+### 3. Full dry-run matrix (all 18 cases)
+
+Run every mode test and entry-point combination in one shot:
+
+The repository ships a ready-to-use script at `run_tests.sh`. Run it from the
+repository root:
+
+```bash
+bash run_tests.sh           # quiet output
+bash run_tests.sh --verbose # full Snakemake output for each case
+```
+
+The script runs the lint step first, then all 18 dry-run cases in order.
+`--lint` emits advisory style warnings (not errors); the script only fails on
+actual `WorkflowError` or `SyntaxError` output.
+
+### Test fixture layout
+
+```
+.test/
+├── config.yaml                          # minimal config for --rulegraph
+└── config/
+    ├── custom/                          # raw_data single entry point
+    ├── pulldown/
+    ├── stoichio-screen/
+    ├── vds/
+    └── entry_points/
+        ├── data_pipeline_ready/         # single
+        ├── inference_ready/             # single
+        ├── merge_ready/                 # single
+        ├── data_pipeline_ready_plus_inference_ready/   # 2-way
+        ├── data_pipeline_ready_plus_merge_ready/       # 2-way
+        ├── data_pipeline_ready_plus_raw_data/          # 2-way
+        ├── inference_ready_plus_raw_data/              # 2-way
+        ├── merge_ready_plus_inference_ready/           # 2-way
+        ├── merge_ready_plus_raw_data/                  # 2-way
+        ├── inference_ready_plus_merge_ready_plus_data_pipeline_ready/  # 3-way
+        ├── inference_ready_plus_raw_data_plus_data_pipeline_ready/     # 3-way
+        ├── inference_ready_plus_raw_data_plus_merge_ready/             # 3-way
+        ├── merge_ready_plus_data_pipeline_ready_plus_raw_data/         # 3-way
+        └── all/                         # all 4 entry points simultaneously
+```
+
+Each fixture directory contains a `config.yaml`, the relevant TSV sample sheets,
+and any JSON input files required by that entry point.
+
+### CI
+
+The same 18 cases run automatically on every push and pull request via
+`.github/workflows/main.yml`. The matrix uses `fail-fast: false` so all cases
+are reported even if one fails.
+
 
 ---
 
@@ -366,32 +460,40 @@ Test fixtures for all entry point combinations are available under `.test/config
 
 ### SLURM (recommended)
 
-The environment includes `snakemake-executor-plugin-slurm`. A ready-to-use profile is provided at `profiles/profile/config.yaml` with pre-configured resource requests for the data pipeline and inference rules:
+The environment includes `snakemake-executor-plugin-slurm`. A ready-to-use profile is provided at `profiles/slurm/config.yaml` with pre-configured resource requests for the data pipeline and inference rules:
 
 ```bash
-snakemake --workflow-profile profiles/profile --configfile config/config.yaml
+bash run_workflow.sh config/config.yaml profiles/slurm/standard
 ```
 
 The profile sets:
-- `AF3_DATA_SPEEDY_PIPELINE`: 16 CPUs, 496 GB RAM (CPU-bound MSA generation)
+- `AF3_DATA_SPEEDY_PIPELINE`: 16 CPUs, 100 GB RAM (CPU-bound MSA generation)
 - `AF3_INFERENCE`: 1 GPU, 16 GB RAM per job
 
-Edit `profiles/profile/config.yaml` to adjust partition names, accounts, and resource limits for your cluster.
+Edit `profiles/slurm/standard/config.yaml` to adjust partition names, accounts, and resource limits for your cluster.
 
 ### Whole-node GPU allocation (`exclusive_lock`)
 
-For HPC systems that allocate entire nodes to a single user (no consumable GPU resources), set `exclusive_lock: true`. The workflow will:
-
-1. Write one shell command per inference job to `rule_CREATE_AF3_INFERENCE_JOBS/`.
-2. Aggregate and split commands into `n_splits` chunks (one per node).
-3. Dispatch each chunk with `parallel -j $NUM_GPUS`, running one job per GPU simultaneously.
+For HPC systems that allocate entire nodes to a single user (no consumable GPU resources) the workflow will submit batches of inference jobs for increased computational efficiency.
+1. set `exclusive_lock: true`.
+2. Edit `profiles/slurm/exclusive/config.yaml` to adjust partition names, accounts, resource limits, and batch sizes for your cluster.
+3. To change the batch size, change the value of `group-components` (default is 20).
 
 ```yaml
-exclusive_lock: true
-n_splits: 4   # set to the number of multi-GPU nodes you are allocating
+sample_sheets:
+  raw_data: example/custom.tsv
+mode: custom
+msa_option: auto
+n_seeds: 3
 af3_flags:
-  --af3_container: /path/to/alphafold3.sif
+  af3_container: /path/to/alphafold3.sif   # required
+  models_dir: /path/to/model_params   # required
+  databases_dir: /path/to/public_databases   # required
+output_dir: results/custom
+exclusive_lock: true
 ```
+
+
 
 ### Running the data pipeline locally
 
@@ -430,7 +532,7 @@ All outputs are written under `output_dir`. Each rule writes to its own `rule_<R
         └── <job_name>_model.cif   # predicted structure (mmCIF format)
 ```
 
-For the full output reference including file naming conventions and `exclusive_lock` mode outputs, see [`docs/output.md`](docs/output.md).
+For the full output reference including file naming conventions, see [`docs/output.md`](docs/output.md).
 
 ---
 

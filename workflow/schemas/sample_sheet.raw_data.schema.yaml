@@ -1,0 +1,124 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+description: >
+  Row-level schema for the raw_data sample sheet (one row per entity per job).
+  Required columns: job_name, type, id.
+  Either 'sequence' or 'data' must be present depending on the run mode:
+    - custom / all-vs-all / pulldown: use 'sequence'
+    - stoichio-screen / virtual-drug-screen: use 'data' (and optionally 'count')
+  All other columns are optional and validated when present.
+
+type: object
+additionalProperties: true
+
+required:
+  - job_name
+  - type
+  - id
+
+properties:
+
+  job_name:
+    type: string
+    minLength: 1
+    description: "Unique job identifier. Will be sanitised (lowercased, spaces→underscores)."
+
+  type:
+    type: string
+    enum:
+      - protein
+      - rna
+      - dna
+      - ligand
+    description: "Molecular entity type."
+
+  id:
+    type: string
+    pattern: "^[A-Za-z]{1,2}$"
+    description: "Chain identifier (one or two letters, matching AF3 chain ID convention)."
+
+  sequence:
+    type: string
+    description: >
+      Amino acid / nucleotide sequence. Empty string is allowed for ligands.
+      Used in custom, all-vs-all, and pulldown modes.
+
+  data:
+    type: string
+    description: >
+      Raw data field used in virtual-drug-screen and stoichio-screen modes.
+      Contains the sequence or ligand identifier (CCD code / SMILES).
+
+  model_seeds:
+    oneOf:
+      - type: string
+        pattern: "^(\\d+)(,\\d+)*$"
+      - type: integer
+        minimum: 1
+    description: >
+      Random seeds for this job. Either a comma-separated string (e.g. '1,2,3')
+      or a single integer. Pandas reads bare integers from TSV as int64, so both
+      types are accepted.
+
+  msa_option:
+    type: string
+    enum:
+      - auto
+      - none
+      - upload
+    description: "MSA generation strategy for this entity."
+
+  unpaired_msa:
+    type: string
+    description: "Path to a custom unpaired MSA file (A3M format). Used when msa_option=upload."
+
+  paired_msa:
+    type: string
+    description: "Path to a custom paired MSA file (A3M format). Used when msa_option=upload."
+
+  templates:
+    type: string
+    description: >
+      Template specification. Use '[]' for template-free, null/omit for auto search,
+      or a JSON array of template dicts, or 'path/to/template.cif,chain_id' for a
+      custom structural template.
+
+  modifications:
+    type: string
+    description: "JSON array of modification dicts (e.g. [{\"ptmType\": \"HY3\", \"ptmPosition\": 1}])."
+
+  ccd_codes:
+    type: string
+    description: "Comma-separated CCD codes for ligand entities (e.g. 'ATP' or 'ATP,MG')."
+
+  smiles:
+    type: string
+    description: "SMILES string for ligand entities."
+
+  bonded_atom_pairs:
+    type: string
+    description: "JSON array of bonded atom pair specifications."
+
+  user_ccd:
+    type: string
+    description: "Custom CCD definition string."
+
+  bait_or_target:
+    type: string
+    enum:
+      - bait
+      - target
+    description: "Role of this entity in pulldown mode."
+
+  roi:
+    type: string
+    pattern: "^\\d+,\\d+$"
+    description: "Region of interest as 'start,end' (1-based, inclusive) for sequence slicing."
+
+  count:
+    oneOf:
+      - type: string
+      - type: integer
+        minimum: 1
+    description: >
+      Stoichiometry count or range (e.g. '2' or '1,4') for stoichio-screen mode.
+      Pandas reads bare integers from TSV as int64, so both types are accepted.

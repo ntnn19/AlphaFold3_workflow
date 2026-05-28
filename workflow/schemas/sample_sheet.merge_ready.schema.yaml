@@ -1,0 +1,37 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+description: >
+  Row-level schema for the merge_ready sample sheet.
+  Each row maps one monomer chain (with its data-pipeline output) to its parent
+  multimer JSON, enabling the merge step to inject per-chain MSA data.
+  Required columns: sample_id, multimer_file, monomer_chain_id, monomer_file.
+
+type: object
+additionalProperties: true
+
+required:
+  - sample_id
+  - multimer_file
+  - monomer_chain_id
+  - monomer_file
+
+properties:
+
+  sample_id:
+    type: string
+    minLength: 1
+    description: "Unique identifier for the multimer job (matches the multimer JSON stem)."
+
+  multimer_file:
+    type: string
+    minLength: 1
+    description: "Path to the multimer JSON template (pre-merge, without MSA data)."
+
+  monomer_chain_id:
+    type: string
+    pattern: "^[A-Za-z]{1,2}$"
+    description: "Chain identifier of this monomer within the multimer (one or two letters)."
+
+  monomer_file:
+    type: string
+    minLength: 1
+    description: "Path to the data-pipeline output JSON for this monomer chain."
