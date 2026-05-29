@@ -1,7 +1,9 @@
-AlphaFold3 workflow report
-==========================
+AlphaFold 3 Confidence Metrics
+===============================
 
-This Snakemake report collects per-sample AlphaFold3 QC HTML reports and plots.
+Interactive report of per-sample, per-chain, and per-chain-pair
+confidence metrics from AlphaFold 3 inference.
+Columns: ranking_score, ipTM, pTM, mean pLDDT, fraction_disordered, has_clash.
 
 Config used:
 {{ snakemake.config }}

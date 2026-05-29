@@ -18,6 +18,8 @@ include: "rules/preprocessing.smk"
 include: "rules/data_pipeline.smk"
 include: "rules/merge_msas.smk"
 include: "rules/inference.smk"
+include: "rules/aggregate.smk"
+include: "rules/report.smk"
 
 # ── Local rules ──────────────────────────────────────────────────────────────
 localrules: PREPROCESSING
@@ -32,7 +34,9 @@ wildcard_constraints:
     split = r"\d+",
 
 # ── Target rule ──────────────────────────────────────────────────────────────
-
+#inference_outputs,
+        #aggregate_outputs
+#datavzrd_output
 _raise_nofile_limit()
 
 prepare_container_binds(
@@ -43,5 +47,5 @@ prepare_container_binds(
 rule all:
     """Collect all final outputs."""
     input:
-        inference_outputs,
+        datavzrd_output
     default_target: True

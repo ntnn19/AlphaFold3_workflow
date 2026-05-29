@@ -13,4 +13,4 @@ usage:
     conda: false
     apptainer: true
     apptainer+conda: true
-    report: false
+    report: true

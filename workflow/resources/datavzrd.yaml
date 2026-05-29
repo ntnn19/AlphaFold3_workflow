@@ -1,0 +1,223 @@
+__use_yte__: true
+
+name: AlphaFold 3 Results
+
+default-view: global
+
+datasets:
+  global:
+    path: ?input.global_tsv
+    separator: "\t"
+    links:
+      per-chain results:
+        column: name
+        table-row: per-chain/name
+      per-chain-pair results:
+        column: name
+        table-row: per-chain-pair/name
+
+  per-chain:
+    path: ?input.per_chain_tsv
+    separator: "\t"
+    links:
+      global results:
+        column: name
+        table-row: global/name
+
+  per-chain-pair:
+    path: ?input.per_pair_tsv
+    separator: "\t"
+    links:
+      global results:
+        column: name
+        table-row: global/name
+
+views:
+  global:
+    dataset: global
+    page-size: 100
+    desc: |
+      Per-sample global confidence metrics across all AF3 inference jobs.
+      Each row is one predicted sample (name + seed + sample index).
+      Click **name** to navigate to per-chain or per-chain-pair metrics.
+    render-table:
+      columns:
+        name:
+          display-mode: normal
+        seed:
+          display-mode: normal
+        sample:
+          display-mode: normal
+        file:
+          display-mode: detail
+        ranking_score:
+          plot:
+            heatmap:
+              scale: linear
+              range:
+                - "#d73027"
+                - "#fee090"
+                - "#1a9850"
+              domain:
+                - -1.0
+                - 0.0
+                - 1.5
+        iptm:
+          plot:
+            heatmap:
+              scale: linear
+              range:
+                - "#d73027"
+                - "#fee090"
+                - "#1a9850"
+              domain:
+                - 0.0
+                - 0.6
+                - 1.0
+        ptm:
+          plot:
+            heatmap:
+              scale: linear
+              range:
+                - "#d73027"
+                - "#fee090"
+                - "#1a9850"
+              domain:
+                - 0.0
+                - 0.5
+                - 1.0
+        mean_plddt:
+          plot:
+            heatmap:
+              scale: linear
+              range:
+                - "#d73027"
+                - "#fee090"
+                - "#1a9850"
+              domain:
+                - 0.0
+                - 70.0
+                - 100.0
+        fraction_disordered:
+          plot:
+            heatmap:
+              scale: linear
+              range:
+                - "#1a9850"
+                - "#fee090"
+                - "#d73027"
+              domain:
+                - 0.0
+                - 0.5
+                - 1.0
+        has_clash:
+          plot:
+            heatmap:
+              scale: ordinal
+              domain:
+                - "1.0"
+                - "0.0"
+              range:
+                - "#d73027"
+                - "#1a9850"
+
+  per-chain:
+    dataset: per-chain
+    page-size: 100
+    desc: |
+      Per-chain confidence metrics for each predicted sample.
+      Each row is one chain within one predicted sample.
+    render-table:
+      columns:
+        name:
+          display-mode: normal
+        seed:
+          display-mode: normal
+        sample:
+          display-mode: normal
+        chain_id:
+          display-mode: normal
+        file:
+          display-mode: detail
+        mean_plddt:
+          plot:
+            heatmap:
+              scale: linear
+              range:
+                - "#d73027"
+                - "#fee090"
+                - "#1a9850"
+              domain:
+                - 0.0
+                - 70.0
+                - 100.0
+        chain_ptm:
+          plot:
+            heatmap:
+              scale: linear
+              range:
+                - "#d73027"
+                - "#fee090"
+                - "#1a9850"
+              domain:
+                - 0.0
+                - 0.5
+                - 1.0
+        chain_iptm:
+          plot:
+            heatmap:
+              scale: linear
+              range:
+                - "#d73027"
+                - "#fee090"
+                - "#1a9850"
+              domain:
+                - 0.0
+                - 0.6
+                - 1.0
+
+  per-chain-pair:
+    dataset: per-chain-pair
+    page-size: 100
+    desc: |
+      Per-chain-pair confidence metrics for each predicted sample.
+      Each row is one (chain_i, chain_j) pair within one predicted sample.
+      Diagonal entries (chain_i == chain_j) reflect intra-chain confidence.
+    render-table:
+      columns:
+        name:
+          display-mode: normal
+        seed:
+          display-mode: normal
+        sample:
+          display-mode: normal
+        chain_i:
+          display-mode: normal
+        chain_j:
+          display-mode: normal
+        file:
+          display-mode: detail
+        chain_pair_pae_min:
+          plot:
+            heatmap:
+              scale: linear
+              range:
+                - "#1a9850"
+                - "#fee090"
+                - "#d73027"
+              domain:
+                - 0.0
+                - 15.0
+                - 31.75
+        chain_pair_iptm:
+          plot:
+            heatmap:
+              scale: linear
+              range:
+                - "#d73027"
+                - "#fee090"
+                - "#1a9850"
+              domain:
+                - 0.0
+                - 0.6
+                - 1.0

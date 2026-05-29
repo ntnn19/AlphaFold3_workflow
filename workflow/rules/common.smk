@@ -286,6 +286,39 @@ def get_multimeric_json_with_msas(wildcards):
     """Return inference targets used by the report rule."""
     return _collect_inference_targets(wildcards, use_lock=EXCLUSIVE_LOCK)
 
+def aggregate_outputs(wildcards):
+    """Return global TSV paths for all inference jobs (one per job)."""
+    cif_paths = _collect_inference_targets(wildcards, use_lock=False)
+    global_ = [
+        os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", f"{Path(p).parent.name}_global.tsv")
+        for p in cif_paths
+        if p.endswith("_model.cif")
+    ] 
+    per_chain_ = [
+        os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", f"{Path(p).parent.name}_per_chain.tsv")
+        for p in cif_paths
+        if p.endswith("_model.cif")
+    ] 
+    per_chain_pair_ = [
+        os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", f"{Path(p).parent.name}_per_chain_pair.tsv")
+        for p in cif_paths
+        if p.endswith("_model.cif")
+    ]
+
+    return [*global_,*per_chain_,*per_chain_pair_]
+
+
+def meta_aggregate_outputs(wildcards):
+    """Return the three project-level summary TSV paths."""
+    return [
+        os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "all_global.tsv"),
+        os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "all_per_chain.tsv"),
+        os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "all_per_chain_pair.tsv"),
+    ]
+
+def datavzrd_output(wildcards):
+    """Return the datavzrd HTML report directory path."""
+    return [os.path.join(OUTPUT_DIR, "rule_REPORT")]
 
 # ── Singularity / Apptainer utils ────────────────────────────────────────────
 

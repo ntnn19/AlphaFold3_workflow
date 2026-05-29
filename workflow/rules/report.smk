@@ -1,187 +1,29 @@
-# ╔══════════════════════════════════════════════════════════════════════════╗
-# ║  report.smk — STANDALONE SNAKEFILE                                      ║
-# ║                                                                          ║
-# ║  This file is a self-contained Snakemake workflow for generating         ║
-# ║  AlphaFold3 reports.  It is NOT meant to be include:-d from the main    ║
-# ║  Snakefile.  Run it directly:                                            ║
-# ║                                                                          ║
-# ║    snakemake -j 20 --snakefile workflow/rules/report.smk \               ║
-# ║              --config samplesheet=samples.tsv                            ║
-# ╚══════════════════════════════════════════════════════════════════════════╝
-#
-# Samplesheet TSV (header required):
-# sample_id    af3_dir
-# S1           /path/to/af3/output/S1_jobdir
-# S2           /path/to/af3/output/S2_jobdir
-#
-# Note: This assumes af3_report.py produces:
-#   report.html, predictions.tsv, chains.tsv, chain_pairs.tsv
-# and writes plots under the output directory.
+rule DATAVZRD_REPORT:
+    """Render an interactive HTML report from the three project-level TSVs.
 
-import os
-import pandas as pd
-from pathlib import Path
+    Produces a self-contained HTML report with three linked views:
+      - global        per-sample ranking/confidence metrics
+      - per-chain     per-chain pTM, ipTM, mean pLDDT
+      - per-chain-pair  PAE min and ipTM between every chain pair
 
-def get_targets(wc):
-    d = Path(AF3_DIR[wc.sample_id])
-    return sorted(str(p) for p in d.rglob("*.cif"))
-
-
-SAMPLESHEET = config.get("samplesheet","samples.tsv")
-LAYOUT = config.get("layout","nagarnat")  # "nagarnat" (default) or "dm"
-OUTPUT_DIR = config.get("output_dir","results")
-
-df = pd.read_csv(SAMPLESHEET,sep="\t",dtype=str).fillna("")
-if not {"sample_id", "af3_dir"}.issubset(df.columns):
-    raise ValueError("Samplesheet must be a TSV with columns: sample_id, af3_dir")
-
-SAMPLES = df["sample_id"].tolist()
-AF3_DIR = dict(zip(df["sample_id"],df["af3_dir"]))
-GROUND_TRUTH = dict(zip(df["sample_id"],df["ground_truth"])) if "ground_truth" in df.columns else {}
-WORKFLOW_DIR = os.path.dirname(os.path.abspath(workflow.snakefile))
-report: f"{WORKFLOW_DIR}/report/workflow.rst"
-
-OUTPUT_TABLES = ["chain_pairs", "chains", "master", "predictions", "sample_status"]
-OUTPUT_PLOTS = ["chain_iptm_distribution"]
-if GROUND_TRUTH != {}:
-    OUTPUT_TABLES = OUTPUT_TABLES + ["usalign"]
-    OUTPUT_PLOTS = OUTPUT_PLOTS + ["tm_score_distribution"]
-
-rule all:
+    The datavzrd config is a yte template so table paths are injected at
+    render time from snakemake.input rather than being hardcoded.
+    """
     input:
-        expand(f"{OUTPUT_DIR}/reports/alphafold3/{{sample_id}}/af3_report.done.txt",sample_id=SAMPLES),
-        expand(f"{OUTPUT_DIR}/reports/usalign/{{sample_id}}/usalign_report.done.txt",sample_id=SAMPLES) if GROUND_TRUTH != {} else [], 
-        expand(f"{OUTPUT_DIR}/reports/all/all_{{i}}.tsv", i=OUTPUT_TABLES),
-        expand(f"{OUTPUT_DIR}/reports/all/plots/{{i}}.html", i=OUTPUT_PLOTS)
-
-
-rule AF3_REPORT:
-    input:
-        af3_dir=lambda wc: AF3_DIR[wc.sample_id]
+        config       = workflow.source_path("../resources/datavzrd.yaml"),
+        global_tsv   = os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "all_global.tsv"),
+        per_chain_tsv= os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "all_per_chain.tsv"),
+        per_pair_tsv = os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "all_per_chain_pair.tsv"),
     output:
-        html=report(
-            directory(f"{OUTPUT_DIR}/reports/alphafold3/{{sample_id}}/plots"),
-            patterns=["{name}.html", "{name}.png", ],
-            category="AlphaFold3",
-            subcategory="{sample_id}",
-        ),
-        pred=report(f"{OUTPUT_DIR}/reports/alphafold3/{{sample_id}}/predictions.tsv",category="AlphaFold3",subcategory="{sample_id}"),
-        chains=report(f"{OUTPUT_DIR}/reports/alphafold3/{{sample_id}}/chains.tsv",category="AlphaFold3",subcategory="{sample_id}"),
-        pairs=report(f"{OUTPUT_DIR}/reports/alphafold3/{{sample_id}}/chain_pairs.tsv",category="AlphaFold3",subcategory="{sample_id}"),
-        molstar=report(
-               directory(f"{OUTPUT_DIR}/reports/alphafold3/{{sample_id}}/molstar"),patterns=["{name}.html"],category="AlphaFold3",subcategory="{sample_id}"),
-        done_flag=touch(f"{OUTPUT_DIR}/reports/alphafold3/{{sample_id}}/af3_report.done.txt")
-
+        report(
+            directory(os.path.join(OUTPUT_DIR, "rule_REPORT")),
+            htmlindex="index.html",
+            caption="../report/workflow.rst",   # optional but recommended
+            category="Results",
+        )
     params:
-        outdir=lambda wc: f"{OUTPUT_DIR}/reports/alphafold3/{wc.sample_id}",
-        layout=LAYOUT,
-        raw_data = config["raw_data"]
-    shell:
-        """
-          python "{WORKFLOW_DIR}/scripts/af3_report.py" "{input.af3_dir}" \
-            -o "{params.outdir}" \
-            --layout {params.layout} --input-tsv "{params.raw_data}"
-          """
-
-rule USALIGN:
-    input:
-        targets=get_targets,
-        ref_list=lambda wc: GROUND_TRUTH[wc.sample_id]
-    output:
-        done_flag=touch(f"{OUTPUT_DIR}/rule_USALIGN/{{sample_id}}/usalign.done.txt")
-    params:
-        outdir=lambda wc: f"{OUTPUT_DIR}/rule_USALIGN/{wc.sample_id}"
-    shell:
-        """
-        # Read ground truth paths from the text file, skip blank lines
-        while IFS= read -r ref || [ -n "$ref" ]; do
-            # Skip empty/whitespace-only lines
-            ref=$(echo "$ref" | xargs)
-            [ -z "$ref" ] && continue
-
-            # Derive ground truth label from filename (without extension)
-            ref_name=$(basename "$ref")
-            ref_name="${{ref_name%%.*}}"
-
-            for target in {input.targets}; do
-                # Derive prediction sample name from parent directory
-                sample=$(basename $(dirname "$target"))
-
-                USalign "$target" "$ref" -ter 0 -mm 1 -outfmt 2 \
-                    > "{params.outdir}/${{sample}}_ref-${{ref_name}}.usalign.tsv"
-            done
-        done < {input.ref_list}
-        """
-
-rule USALIGN_REPORT:
-    input:
-        done_flg1=f"{OUTPUT_DIR}/rule_USALIGN/{{sample_id}}/usalign.done.txt",
-        done_flg2=f"{OUTPUT_DIR}/reports/alphafold3/{{sample_id}}/af3_report.done.txt",
-        af3_dir=lambda wc: AF3_DIR[wc.sample_id]
-    output:
-        html=report(
-            directory(f"{OUTPUT_DIR}/reports/usalign/{{sample_id}}/plots"),
-            patterns=["{name}.html"],
-            category="USalign",
-            subcategory="{sample_id}",
-        ),
-        summary=report(f"{OUTPUT_DIR}/reports/usalign/{{sample_id}}/usalign_summary.tsv",category="USalign",subcategory="{sample_id}"),
-        done_flag=touch(f"{OUTPUT_DIR}/reports/usalign/{{sample_id}}/usalign_report.done.txt")
-    params:
-        outdir=lambda wc: f"{OUTPUT_DIR}/reports/usalign/{wc.sample_id}",
-        layout=LAYOUT
-    shell:
-        """
-          python "{WORKFLOW_DIR}/scripts/usalign_report.py" \
-            "{OUTPUT_DIR}/rule_USALIGN/{wildcards.sample_id}" \
-            -o "{params.outdir}" \
-            --predictions-tsv "{OUTPUT_DIR}/reports/alphafold3/{wildcards.sample_id}/predictions.tsv"
-          """
-
-
-rule SUMMARY_REPORT:
-    input:
-        done_flgs=expand(f"{OUTPUT_DIR}/reports/usalign/{{sample_id}}/usalign_report.done.txt",sample_id=SAMPLES) if GROUND_TRUTH != {} else [],
-        af3_dir = expand(f"{OUTPUT_DIR}/reports/alphafold3/{{sample_id}}/af3_report.done.txt",sample_id=SAMPLES)
-    output:
-        html=report(
-            directory(f"{OUTPUT_DIR}/reports/all"),
-            patterns=["{name}.tsv"],
-            category="All",
-        ),
-        tables = expand(f"{OUTPUT_DIR}/reports/all/all_{{i}}.tsv",i=["chain_pairs", "chains", "master", "predictions", "sample_status", "usalign"]),
-    params:
-        outdir= f"{OUTPUT_DIR}/reports/all",
-        layout=LAYOUT,
-        usalign_base=f"--usalign-base {OUTPUT_DIR}/reports/usalign" if GROUND_TRUTH != {} else ""
-    shell:
-        """
-        python "{WORKFLOW_DIR}/scripts/all_report.py" \
-        --report-samples "{SAMPLESHEET}" \
-        --af3-base "{OUTPUT_DIR}/reports/alphafold3" \
-        {params.usalign_base} \
-        -o "{params.outdir}"
-        """
-
-rule SUMMARY_PLOTS:
-    input:
-        tables = expand(f"{OUTPUT_DIR}/reports/all/all_{{i}}.tsv",i=OUTPUT_TABLES),
-    output:
-        report_plots=report(
-            directory(f"{OUTPUT_DIR}/reports/all/plots"),
-            patterns=["{name}.html"],
-            category="All",
-            ),
-        actual_plots = expand(f"{OUTPUT_DIR}/reports/all/plots/{{i}}.html", i=OUTPUT_PLOTS)
-    params:
-        outdir= f"{OUTPUT_DIR}/reports/all",
-        layout=LAYOUT,
-        tm_plot = f"--tm-plot {OUTPUT_DIR}/reports/all/plots/tm_score_distribution.html" if GROUND_TRUTH != {} else ""
-    shell:
-        """
-        python "{WORKFLOW_DIR}/scripts/all_plot.py" \
-        --pair-tsv "{OUTPUT_DIR}/reports/all/all_chain_pairs.tsv" \
-        --master-tsv "{OUTPUT_DIR}/reports/all/all_master.tsv" \
-        -o "{OUTPUT_DIR}/reports/all/plots/chain_iptm_distribution.html" \
-        {params.tm_plot}
-        """
+        extra = "",
+    log:
+        os.path.join(OUTPUT_DIR, "logs", "rule_REPORT", "datavzrd.log"),
+    wrapper:
+        "v3.13.4/utils/datavzrd"
