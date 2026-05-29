@@ -39,7 +39,7 @@ This workflow extends standard AlphaFold 3 with:
 
 | Mode | Description |
 |------|-------------|
-| `custom` | Predict each complex exactly as defined in the sample sheet |
+| `custom` | Predict each monomer/complex exactly as defined in the sample sheet |
 | `all-vs-all` | Generate all pairwise combinations (including self-pairs) across all jobs |
 | `pulldown` | Pair every `bait` job with every `target` job; skip same-group pairs |
 | `virtual-drug-screen` | Ligand-centric screen using a compact format with entity copy counts |
@@ -50,8 +50,7 @@ This workflow extends standard AlphaFold 3 with:
 ## Prerequisites
 
 ### Hardware
-- NVIDIA GPU with compute capability ≥ 7.0 (Volta or newer). A100 40 GB or 80 GB recommended for large complexes.
-- Flash attention is automatically disabled for pre-Ampere GPUs (CC < 8).
+- NVIDIA GPU 
 
 ### Software
 - [Singularity](https://docs.sylabs.io/guides/3.3/user-guide/installation.html) ≥ 3.x
@@ -95,7 +94,6 @@ mamba activate $(pwd)/venv
 
 ```bash
 micromamba env create -p $(pwd)/venv -f environment.yml
-eval "$(micromamba shell hook --shell=bash)"
 micromamba activate $(pwd)/venv
 ```
 </details>
