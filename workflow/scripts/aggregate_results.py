@@ -14,6 +14,16 @@ For a given job directory (OUTPUT_DIR/rule_AF3_INFERENCE/{job}/), this script:
 Chain IDs are always derived from token_chain_ids in confidences.json (insertion-
 order deduplicated), so the script works regardless of whether unique_chain_ids
 is present in summary_confidences.json.
+
+AF3 naming conventions
+----------------------
+New (≥ some AF3 version): files inside seed-{seed}_sample-{sample}/ are prefixed
+with the job name, e.g. {job_name}_seed-{seed}_sample-{sample}_model.cif.
+
+Old (< that version): files are simply named model.cif, confidences.json,
+summary_confidences.json with no job-name prefix.
+
+This script probes for the new convention first and falls back to the old one.
 """
 
 import json
@@ -63,22 +73,69 @@ def _mean_plddt_per_chain(conf: dict, chain_ids: list[str]) -> dict[str, float]:
     return result
 
 
+def _resolve_sample_paths(
+    subdir: Path,
+    job_name: str,
+    seed: int,
+    sample: int,
+) -> tuple[Path, Path, Path]:
+    """Resolve (cif_path, summary_path, conf_path) for one sample.
+
+    Probes the new AF3 naming convention (prefixed with job_name) first,
+    then falls back to the old convention (bare filenames).
+
+    Raises FileNotFoundError if neither convention produces existing files.
+    """
+    prefix = f"{job_name}_seed-{seed}_sample-{sample}"
+
+    # ── New convention (AF3 ≥ some version) ──────────────────────────────────
+    new_cif     = subdir / f"{prefix}_model.cif"
+    new_summary = subdir / f"{prefix}_summary_confidences.json"
+    new_conf    = subdir / f"{prefix}_confidences.json"
+
+    if new_cif.exists() and new_summary.exists() and new_conf.exists():
+        return new_cif, new_summary, new_conf
+
+    # ── Old convention (bare filenames) ──────────────────────────────────────
+    old_cif     = subdir / "model.cif"
+    old_summary = subdir / "summary_confidences.json"
+    old_conf    = subdir / "confidences.json"
+
+    if old_cif.exists() and old_summary.exists() and old_conf.exists():
+        return old_cif, old_summary, old_conf
+
+    # ── Neither found ─────────────────────────────────────────────────────────
+    raise FileNotFoundError(
+        f"Could not find AF3 output files in {subdir} under either naming convention.\n"
+        f"  New convention checked: {new_cif.name}, {new_summary.name}, {new_conf.name}\n"
+        f"  Old convention checked: {old_cif.name}, {old_summary.name}, {old_conf.name}"
+    )
+
+
 # ── Per-sample processing ─────────────────────────────────────────────────────
 
 def process_sample(
     job_name: str,
+    base_name: str,
     seed: int,
     sample: int,
     subdir: Path,
-    cif_path: Path,
 ) -> tuple[dict, list[dict], list[dict]]:
-    """
-    Returns (global_row, per_chain_rows, per_pair_rows) for one sample.
-    """
-    prefix = f"{job_name}_seed-{seed}_sample-{sample}"
+    """Return (global_row, per_chain_rows, per_pair_rows) for one sample.
 
-    summary_path = subdir / f"{prefix}_summary_confidences.json"
-    conf_path    = subdir / f"{prefix}_confidences.json"
+    Parameters
+    ----------
+    job_name:
+        Full directory name, e.g. ``job3_test_seed-10``. Used only for
+        resolving file paths under the new AF3 naming convention.
+    base_name:
+        Seed-stripped job name, e.g. ``job3_test``. Used as the ``name``
+        column in all output rows so that samples from the same input but
+        different seeds share a common grouping key.
+    """
+    cif_path, summary_path, conf_path = _resolve_sample_paths(
+        subdir, job_name, seed, sample
+    )
 
     with open(summary_path) as f:
         summary = json.load(f)
@@ -89,7 +146,7 @@ def process_sample(
     mean_plddt_by_chain = _mean_plddt_per_chain(conf, chain_ids)
 
     id_cols = {
-        "name":   job_name,
+        "name":   base_name,
         "seed":   seed,
         "sample": sample,
         "file":   str(cif_path),
@@ -98,12 +155,12 @@ def process_sample(
     # ── Global row ────────────────────────────────────────────────────────────
     global_row = {
         **id_cols,
-        "ranking_score":      summary["ranking_score"],
-        "iptm":               summary["iptm"],
-        "ptm":                summary["ptm"],
-        "mean_plddt":         _mean_plddt_global(conf),
+        "ranking_score":       summary["ranking_score"],
+        "iptm":                summary["iptm"],
+        "ptm":                 summary["ptm"],
+        "mean_plddt":          _mean_plddt_global(conf),
         "fraction_disordered": summary["fraction_disordered"],
-        "has_clash":          summary["has_clash"],
+        "has_clash":           summary["has_clash"],
     }
 
     # ── Per-chain rows ────────────────────────────────────────────────────────
@@ -128,8 +185,8 @@ def process_sample(
     per_pair_rows = [
         {
             **id_cols,
-            "chain_i":          chain_ids[i],
-            "chain_j":          chain_ids[j],
+            "chain_i":            chain_ids[i],
+            "chain_j":            chain_ids[j],
             "chain_pair_pae_min": chain_pair_pae_min[i][j],
             "chain_pair_iptm":    chain_pair_iptm[i][j],
         }
@@ -144,7 +201,10 @@ def process_sample(
 
 def main(inference_dir: str, global_tsv: str, per_chain_tsv: str, per_pair_tsv: str):
     inference_dir = Path(inference_dir)
-    job_name = inference_dir.name
+    job_name  = inference_dir.name
+    # Strip _seed-{N} suffix so that all seeds of the same input share a name.
+    # For entry points where job_name has no seed suffix this is a no-op.
+    base_name = re.sub(r"_seed-\d+$", "", job_name)
 
     # Discover all seed-*_sample-* subdirectories, sorted for determinism
     subdirs = sorted(
@@ -160,9 +220,7 @@ def main(inference_dir: str, global_tsv: str, per_chain_tsv: str, per_pair_tsv: 
 
     for subdir in subdirs:
         seed, sample = _parse_seed_sample(subdir.name)
-        cif_path = subdir / f"{job_name}_seed-{seed}_sample-{sample}_model.cif"
-
-        g, c, p = process_sample(job_name, seed, sample, subdir, cif_path)
+        g, c, p = process_sample(job_name, base_name, seed, sample, subdir)
         global_rows.append(g)
         per_chain_rows.extend(c)
         per_pair_rows.extend(p)
