@@ -22,7 +22,7 @@ include: "rules/aggregate.smk"
 include: "rules/report.smk"
 
 # ── Local rules ──────────────────────────────────────────────────────────────
-localrules: PREPROCESSING
+localrules: PREPROCESSING, MERGE_MONO_AND_MULTI_JSON
 
 if config.get("run_data_pipeline_locally", False):
     localrules: AF3_DATA_SPEEDY_PIPELINE
