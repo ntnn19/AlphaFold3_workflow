@@ -257,16 +257,17 @@ def _collect_inference_targets(wildcards, *, use_lock: bool) -> list:
     if not RAW_DATA_DF.empty:
         PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
         JOB_NAMES_MULTIMERS, = glob_wildcards(os.path.join(PREPROCESSING_DIR, "multimers", "{multi}.json"))
-        if use_lock:
-            internal.append(list(expand(
-                os.path.join(OUTPUT_DIR, "rule_CREATE_AF3_INFERENCE_JOBS", "{multi}_af3_inference_job.txt"),
-                multi=JOB_NAMES_MULTIMERS
-            )))
-        else:
-            internal.append(list(expand(
-                os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{multi}", "{multi}_model.cif"),
-                multi=JOB_NAMES_MULTIMERS
-            )))
+        internal.append(list(expand(os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{multi}", "{multi}_model.cif"),multi=JOB_NAMES_MULTIMERS)))
+        #if use_lock:
+        #    internal.append(list(expand(
+        #        os.path.join(OUTPUT_DIR, "rule_CREATE_AF3_INFERENCE_JOBS", "{multi}_af3_inference_job.txt"),
+        #        multi=JOB_NAMES_MULTIMERS
+        #    )))
+        #else:
+        #    internal.append(list(expand(
+        #        os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{multi}", "{multi}_model.cif"),
+        #        multi=JOB_NAMES_MULTIMERS
+        #    )))
 
     if internal and external:
         return [*flatten(internal), *flatten(external)]
