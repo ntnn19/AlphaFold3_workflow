@@ -114,6 +114,9 @@ properties:
       inference_ready:
         type: string
         description: "TSV pointing to final input JSONs. Runs inference only."
+      mutations:
+        type: string
+        description: "TSV with mutation information per chain."
 
   af3_flags:
     type: object

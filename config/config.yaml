@@ -6,7 +6,8 @@
 # Input
 # ---------------------------------------------------------------------------
 sample_sheets: # Type of sample sheet: raw_data | data_pipeline_ready | merge_ready | inference_ready
-  raw_data: "example/custom.tsv"   # TSV with columns defined in docs/input.md
+  raw_data: "example/K670_1000_seeds.tsv"   # TSV with columns defined in docs/input.md
+#  mutations: "example/mutations.tsv"   # TSV with columns defined in docs/input.md
                                  # raw_data          → full pipeline (MSA + merge + inference)
                                  # data_pipeline_ready → skip MSA generation; provide pre-computed monomer JSONs
                                  # merge_ready       → skip MSA + merge; provide pre-merged multimer JSONs
@@ -22,7 +23,7 @@ mode: "custom"
 # ---------------------------------------------------------------------------
 # Sampling
 # ---------------------------------------------------------------------------
-#n_seeds: 3          # random seeds per job (overrides model_seeds column)
+n_seeds: 1000          # random seeds per job (overrides model_seeds column)
 n_samples: 5        # diffusion samples per seed
 
 # ---------------------------------------------------------------------------
@@ -33,7 +34,7 @@ msa_option: "auto"  # auto | none | upload
 # ---------------------------------------------------------------------------
 # Paths (required)
 # ---------------------------------------------------------------------------
-output_dir: "results"
+output_dir: "/scratch/home/nagarnat/projects/scaturro/zika_ns5/results_K670_1000_seeds"
 
 # ---------------------------------------------------------------------------
 # Container
@@ -56,11 +57,11 @@ af3_flags:
     --uniref90_database_path='/var/lib/databases/af3db/uniref90_2022_05.fa.shuffled.split/uniref90_2022_05.fa@128' \
     --uniref90_z_value=153742194 \
     --ntrna_database_path='/var/lib/databases/af3db/nt_rna_2023_02_23_clust_seq_id_90_cov_80_rep_seq.fasta.shuffled.split/nt_rna_2023_02_23_clust_seq_id_90_cov_80_rep_seq.fasta@256' \
-    --ntrna_z_value=76752.808514 \
+    --ntrna_z_value=76752 \
     --rfam_database_path='/var/lib/databases/af3db/rfam_14_9_clust_seq_id_90_cov_80_rep_seq.fasta.shuffled.split/rfam_14_9_clust_seq_id_90_cov_80_rep_seq.fasta@16' \
-    --rfam_z_value=138.115553 \
+    --rfam_z_value=138 \
     --rna_central_database_path='/var/lib/databases/af3db/rnacentral_active_seq_id_90_cov_80_linclust.fasta.shuffled.split/rnacentral_active_seq_id_90_cov_80_linclust.fasta@64' \
-    --rna_central_z_value=13271.415730 \
+    --rna_central_z_value=13271 \
     --jackhmmer_n_cpu=2 \
     --jackhmmer_max_parallel_shards=16 \
     --nhmmer_n_cpu=2 \

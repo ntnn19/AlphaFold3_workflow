@@ -1270,14 +1270,19 @@ def main(sample_sheet, output_dir, mode, predict_individual_components, n_seeds,
         for mapping in inference_to_data_pipeline_map.values()
         for monomer_file in mapping.values()
     }
-    if not df_dedup_dependent.empty:
-        for monomer_path in os.listdir(f"{output_dir}/rule_PREPROCESSING/monomers"):
+    logger.info(f"Referenced monomer files: {referenced_monomer_files}")
+    monomers_dir = f"{output_dir}/rule_PREPROCESSING/monomers"
+    if os.path.isdir(monomers_dir):
+        c = 0
+        for i, monomer_path in enumerate(os.listdir(monomers_dir)):
             if (monomer_path.endswith(".json") and
                     os.path.join(f"{output_dir}/rule_AF3_DATA_PIPELINE",
-                                 os.path.basename(monomer_path).replace(".json",
-                                                                        "_data.json")) not in referenced_monomer_files):
+                                 os.path.basename(monomer_path).replace(".json", "_data.json"))
+                    not in referenced_monomer_files):
                 logger.info(f"Deleting redundant fold input: {monomer_path}")
-                Path(os.path.join(f"{output_dir}/rule_PREPROCESSING/monomers", monomer_path)).unlink()
+                Path(os.path.join(monomers_dir, monomer_path)).unlink()
+                c += 1
+        logger.info(f"Deleted {c} redundant fold inputs")
 
     inference_to_data_pipeline_df = pd.DataFrame.from_dict(inference_to_data_pipeline_map, orient="index")
     inference_to_data_pipeline_df = inference_to_data_pipeline_df.reset_index()
@@ -1399,9 +1404,10 @@ def main(sample_sheet, output_dir, mode, predict_individual_components, n_seeds,
 
     data_pipeline_df.to_csv(f"{metadata_dir}/data_pipeline_samples.tsv", sep="\t", index=False)
 
-    inference_df.sort_values(["job_name", "seed", "sample"])[
-        ["job_name", "inference_samples", "expected_output"]].rename(columns={"job_name":"sample_id","inference_samples":"file"}).to_csv(
-        f"{metadata_dir}/inference_samples.tsv", sep="\t", index=False)
+    inference_df = inference_df.sort_values(["job_name", "seed", "sample"])[["job_name", "inference_samples", "expected_output"]].rename(columns={"job_name":"sample_id","inference_samples":"file"})
+    inference_df["file"] = inference_df["file"].apply(lambda x: x.replace("rule_PREPROCESSING/multimers", "rule_MERGE_MONOMERS_TO_MULTIMERS"))
+    inference_df["expected_output"] = inference_df["expected_output"].apply(lambda x: x.replace("rule_PREPROCESSING/multimers", "rule_AF3_INFERENCE"))
+    inference_df.to_csv(f"{metadata_dir}/inference_samples.tsv", sep="\t", index=False)
 
     logger.info(f"Rule PREPROCESSING was completed successfully!")
     logger.info(

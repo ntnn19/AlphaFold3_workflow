@@ -5,7 +5,7 @@ use-conda: true
 conda-frontend: mamba # or micromamba
 singularity-args: "--nv"
 printshellcmds: true
-keep-going: true
+keep-going: false
 rerun-incomplete: true
 rerun-triggers: mtime
 latency-wait: 60

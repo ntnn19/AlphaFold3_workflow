@@ -61,15 +61,18 @@ def main(multimer_file, monomer_file, output_file, inference_to_data_map):
 
         merged_multimer = copy.deepcopy(multimer_data)
         logger.debug("merged_multimer: %s", merged_multimer)
-        for entry, mf in zip(merged_multimer["sequences"], monomer_file):
+        POLYMER_TYPES = {"protein", "rna", "dna"}
+        
+        for entry, mf in zip(
+            [e for e in merged_multimer["sequences"] if next(iter(e)) in POLYMER_TYPES],
+            monomer_file
+        ):
             mol_type = next(iter(entry))
             monomer_entry = json.load(open(mf))["sequences"][0][mol_type]
             monomer_entry.pop("id")
             entry[mol_type].update(monomer_entry)
 
-    # A3 fix: the {multi} wildcard encodes exactly one seed (e.g. job1_seed-10),
-    # so merged_multimer["modelSeeds"] is already a single-element list.
-    # Write the merged JSON once — no seed loop needed.
+
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
     with open(output_file, "w") as f:
         json.dump(merged_multimer, f, indent=4)

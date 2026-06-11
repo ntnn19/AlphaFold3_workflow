@@ -11,19 +11,20 @@ rule AGGREGATE_RESULTS:
     rule works regardless of the AF3 version installed in the container.
     """
     input:
-        cif = os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{multi}", "{multi}_model.cif"),
+        cif = os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{multi}", "{multi}_model.cif") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{mut}", "{mut}_model.cif"),
+        ipsae_15_15 = os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{multi}", "{multi}_model_15_15.txt") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{mut}", "{mut}_model_15_15.txt"),
+        ipsae_10_10 = os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{multi}", "{multi}_model_10_10.txt") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{mut}", "{mut}_model_10_10.txt"),
     output:
-        global_tsv    = os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "{multi}_global.tsv"),
-        per_chain_tsv = os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "{multi}_per_chain.tsv"),
-        per_pair_tsv  = os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "{multi}_per_chain_pair.tsv"),
+        global_tsv    = os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "{multi}_global.tsv") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "{mut}_global.tsv"),
+        per_chain_tsv = os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "{multi}_per_chain.tsv") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "{mut}_per_chain.tsv"),
+        per_pair_tsv  = os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "{multi}_per_chain_pair.tsv") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "{mut}_per_chain_pair.tsv"),
     params:
-        inference_dir = os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{multi}"),
+        inference_dir = os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{multi}") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{mut}"),
         script        = workflow.source_path("../scripts/aggregate_results.py"),
-#        _helper       = workflow.source_path("../scripts/aggregate_results.py"),
     log:
-        os.path.join(OUTPUT_DIR, "logs", "rule_AGGREGATE_RESULTS", "{multi}.log"),
+        os.path.join(OUTPUT_DIR, "logs", "rule_AGGREGATE_RESULTS", "{multi}.log") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "logs", "rule_AGGREGATE_RESULTS", "{mut}.log"),
     benchmark:
-        os.path.join(OUTPUT_DIR, "benchmarks", "rule_AGGREGATE_RESULTS", "{multi}.tsv"),
+        os.path.join(OUTPUT_DIR, "benchmarks", "rule_AGGREGATE_RESULTS", "{multi}.tsv") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "benchmarks", "rule_AGGREGATE_RESULTS", "{mut}.tsv"),
     resources:
         mem_mb  = 2000,
         runtime = 10,

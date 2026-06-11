@@ -19,20 +19,27 @@ fi
 rule AF3_INFERENCE:
     input:
         data = branch(
-            lookup(query="sample_id == '{multi}'",within=INFERENCE_READY_DF,cols="file"),
-            then=lookup(query="sample_id == '{multi}'",within=INFERENCE_READY_DF,cols="file"),
-            otherwise=os.path.join(OUTPUT_DIR,"rule_MERGE_MONOMERS_TO_MULTIMERS","{multi}_data.json")
-        ),
+            lookup(query="sample_id == '{mut}'" if MUTATION_DF_PATH is not None else "sample_id == '{multi}'", within=INFERENCE_READY_DF, cols="file"),
+            then=lookup(query="sample_id == '{mut}'" if MUTATION_DF_PATH is not None else "sample_id == '{multi}'", within=INFERENCE_READY_DF, cols="file"),
+            otherwise=lambda w: os.path.join(
+                OUTPUT_DIR, "rule_MUTATE",
+                re.match(r"(.+_seed-\d+)", w.mut).group(1),
+                f"{w.mut}.json"
+            ) if (MUTATION_DF_PATH is not None and re.search(r"_seed-\d+_.+", w.mut)) else os.path.join(
+                OUTPUT_DIR, "rule_MERGE_MONOMERS_TO_MULTIMERS", f"{w.multi}_data.json"
+            )
+        )
     output:
-        os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{multi}", "{multi}_model.cif")
+        os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{multi}", "{multi}_model.cif") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{mut}", "{mut}_model.cif"),
     log:
-        os.path.join(OUTPUT_DIR, "logs", "rule_AF3_INFERENCE", "{multi}.log"),
+        os.path.join(OUTPUT_DIR, "logs", "rule_AF3_INFERENCE", "{multi}.log") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "logs", "rule_AF3_INFERENCE", "{mut}.log"),
+    benchmark:
+        os.path.join(OUTPUT_DIR, "benchmarks", "rule_AF3_INFERENCE", "{multi}.tsv") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "benchmarks", "rule_AF3_INFERENCE", "{mut}.tsv"),
     resources:
         mem_mb      = 16000,
         runtime     = 480,
-        nvidia_gpu  = 1,   # standard Snakemake GPU resource
-    benchmark:
-        os.path.join(OUTPUT_DIR, "benchmarks", "rule_AF3_INFERENCE", "{multi}.tsv"),
+        gpu  = 1,   # standard Snakemake GPU resource
+        threads  = 2,   # standard Snakemake GPU resource
     params:
         extra_af3_flags = EXTRA_AF3_FLAGS,
         exclusive_lock = "true" if EXCLUSIVE_LOCK else "false",

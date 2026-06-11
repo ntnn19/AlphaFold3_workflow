@@ -15,7 +15,6 @@ import pandas as pd
 import resource
 from snakemake.utils import validate, min_version
 from snakemake.exceptions import WorkflowError
-
 # ── Snakemake version guard ──────────────────────────────────────────────────
 min_version("8.0")
 
@@ -58,6 +57,7 @@ SAMPLE_SHEET_SCHEMAS = {
     "data_pipeline_ready": ["sample_id", "file"],
     "inference_ready": ["sample_id", "file"],
     "merge_ready_samples": ["sample_id", "multimer_file", "monomer_chain_id", "monomer_file"],
+    "mutations": ["sample_id", "type", "id", "mutation"],
 }
 
 def sanitise(name: str) -> str:
@@ -98,6 +98,7 @@ RAW_DATA_PATH, RAW_DATA_DF = load_sample_sheet("raw_data")
 DATA_PIPELINE_READY_PATH, DATA_PIPELINE_READY_DF = load_sample_sheet("data_pipeline_ready")
 INFERENCE_READY_PATH, INFERENCE_READY_DF = load_sample_sheet("inference_ready")
 MERGE_READY_PATH, MERGE_READY_DF = load_sample_sheet("merge_ready")
+MUTATION_DF_PATH, MUTATION_DF = load_sample_sheet("mutations")
 
 # ── Sample-sheet validation ──────────────────────────────────────────────────
 if not RAW_DATA_DF.empty:
@@ -258,17 +259,26 @@ def _collect_inference_targets(wildcards, *, use_lock: bool) -> list:
         PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
         JOB_NAMES_MULTIMERS, = glob_wildcards(os.path.join(PREPROCESSING_DIR, "multimers", "{multi}.json"))
         internal.append(list(expand(os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{multi}", "{multi}_model.cif"),multi=JOB_NAMES_MULTIMERS)))
-        #if use_lock:
-        #    internal.append(list(expand(
-        #        os.path.join(OUTPUT_DIR, "rule_CREATE_AF3_INFERENCE_JOBS", "{multi}_af3_inference_job.txt"),
-        #        multi=JOB_NAMES_MULTIMERS
-        #    )))
-        #else:
-        #    internal.append(list(expand(
-        #        os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{multi}", "{multi}_model.cif"),
-        #        multi=JOB_NAMES_MULTIMERS
-        #    )))
 
+    if not MUTATION_DF.empty:
+        all_mutations = []
+        PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
+        JOB_NAMES_MULTIMERS, = glob_wildcards(
+            os.path.join(PREPROCESSING_DIR, "multimers", "{multi}.json")
+        )
+        # filter to only jobs that have mutations defined
+        base_names_with_mutations = set(MUTATION_DF["sample_id"].unique())
+        for multi in JOB_NAMES_MULTIMERS:
+            if re.sub(r"_seed-\d+$", "", multi) not in base_names_with_mutations:
+                continue
+            MUTATE_DIR = checkpoints.MUTATE.get(multi=multi).output[0]
+            muts, = glob_wildcards(os.path.join(MUTATE_DIR, "{mut}.json"))
+            all_mutations.extend(muts)
+        internal.append(list(expand(
+            os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{mut}", "{mut}_model.cif"),
+            mut=all_mutations
+        )))
+        
     if internal and external:
         return [*flatten(internal), *flatten(external)]
     if internal:
