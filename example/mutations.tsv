@@ -1,0 +1,7 @@
+sample_id	type	id	mutation
+job1	protein	A	14W
+job3_test	protein	A	22W,35W
+job3_test	protein	B	22W,35W
+
+job1 2seeds*2muts
+job3  2* 2
