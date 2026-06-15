@@ -254,31 +254,48 @@ def _collect_inference_targets(wildcards, *, use_lock: bool) -> list:
             .apply(lambda x: f"{OUTPUT_DIR}/rule_AF3_INFERENCE/{Path(x).stem}/{Path(x).stem}_model.cif")
             .unique().tolist()
         )
-
     if not RAW_DATA_DF.empty:
         PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
         JOB_NAMES_MULTIMERS, = glob_wildcards(os.path.join(PREPROCESSING_DIR, "multimers", "{multi}.json"))
-        internal.append(list(expand(os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{multi}", "{multi}_model.cif"),multi=JOB_NAMES_MULTIMERS)))
-
+        SEEDS = list(map(lambda x: re.search(r'seed-(\d+)', x).group(1), JOB_NAMES_MULTIMERS))
+        internal.append([
+            path
+            for multi, seed in zip(JOB_NAMES_MULTIMERS, SEEDS)
+            for path in expand(
+                os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{multi}",
+                                "seed-{seed}_sample-{sample}",
+                                "{multi}_seed-{seed}_sample-{sample}_model.cif"),
+                multi=multi, seed=seed, sample=range(N_SAMPLES)
+            )
+        ])
+    
     if not MUTATION_DF.empty:
         all_mutations = []
+        all_seeds = []
         PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
         JOB_NAMES_MULTIMERS, = glob_wildcards(
             os.path.join(PREPROCESSING_DIR, "multimers", "{multi}.json")
         )
-        # filter to only jobs that have mutations defined
         base_names_with_mutations = set(MUTATION_DF["sample_id"].unique())
         for multi in JOB_NAMES_MULTIMERS:
             if re.sub(r"_seed-\d+$", "", multi) not in base_names_with_mutations:
                 continue
             MUTATE_DIR = checkpoints.MUTATE.get(multi=multi).output[0]
             muts, = glob_wildcards(os.path.join(MUTATE_DIR, "{mut}.json"))
+            seeds = list(map(lambda x: re.search(r'seed-(\d+)', x).group(1), muts))
             all_mutations.extend(muts)
-        internal.append(list(expand(
-            os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{mut}", "{mut}_model.cif"),
-            mut=all_mutations
-        )))
-        
+            all_seeds.extend(seeds)
+        internal.append([
+            path
+            for mut, seed in zip(all_mutations, all_seeds)
+            for path in expand(
+                os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{mut}",
+                                "seed-{seed}_sample-{sample}",
+                                "{mut}_seed-{seed}_sample-{sample}_model.cif"),
+                mut=mut, seed=seed, sample=range(N_SAMPLES)
+            )
+        ])
+    
     if internal and external:
         return [*flatten(internal), *flatten(external)]
     if internal:

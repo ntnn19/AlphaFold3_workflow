@@ -30,7 +30,30 @@ rule AF3_INFERENCE:
             )
         )
     output:
-        os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{multi}", "{multi}_model.cif") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{mut}", "{mut}_model.cif"),
+        expand(
+            os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{{multi}}",
+                            "seed-{{seed}}_sample-{sample}",
+                            "{{multi}}_seed-{{seed}}_sample-{sample}_model.cif"),
+            sample=range(N_SAMPLES)
+        ) if MUTATION_DF.empty else
+        expand(
+            os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{{mut}}",
+                            "seed-{{seed}}_sample-{sample}",
+                            "{{mut}}_seed-{{seed}}_sample-{sample}_model.cif"),
+            sample=range(N_SAMPLES)
+        ),
+        expand(
+            os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{{multi}}",
+                            "seed-{{seed}}_sample-{sample}",
+                            "{{multi}}_seed-{{seed}}_sample-{sample}_confidences.json"),
+            sample=range(N_SAMPLES)
+        ) if MUTATION_DF.empty else
+        expand(
+            os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{{mut}}",
+                            "seed-{{seed}}_sample-{sample}",
+                            "{{mut}}_seed-{{seed}}_sample-{sample}_confidences.json"),
+            sample=range(N_SAMPLES)
+        ),
     log:
         os.path.join(OUTPUT_DIR, "logs", "rule_AF3_INFERENCE", "{multi}.log") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "logs", "rule_AF3_INFERENCE", "{mut}.log"),
     benchmark:
