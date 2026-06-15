@@ -11,20 +11,67 @@ rule AGGREGATE_RESULTS:
     rule works regardless of the AF3 version installed in the container.
     """
     input:
-        cif = os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{multi}", "{multi}_model.cif") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{mut}", "{mut}_model.cif"),
-        #ipsae_15_15 = os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{multi}", "{multi}_model_15_15.txt") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{mut}", "{mut}_model_15_15.txt"),
-        #ipsae_10_10 = os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{multi}", "{multi}_model_10_10.txt") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{mut}", "{mut}_model_10_10.txt"),
+        expand(
+            os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{{multi}}",
+                         "seed-{{seed}}_sample-{sample}",
+                         "{{multi}}_seed-{{seed}}_sample-{sample}_model_15_15.txt"),
+            sample=range(N_SAMPLES)
+        ) if MUTATION_DF.empty else
+        expand(
+            os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{{mut}}",
+                         "seed-{{seed}}_sample-{sample}",
+                         "{{mut}}_seed-{{seed}}_sample-{sample}_model_15_15.txt"),
+            sample=range(N_SAMPLES)
+        ),
+        expand(
+            os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{{multi}}",
+                         "seed-{{seed}}_sample-{sample}",
+                         "{{multi}}_seed-{{seed}}_sample-{sample}_model_10_15.txt"),
+            sample=range(N_SAMPLES)
+        ) if MUTATION_DF.empty else
+        expand(
+            os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{{mut}}",
+                         "seed-{{seed}}_sample-{sample}",
+                         "{{mut}}_seed-{{seed}}_sample-{sample}_model_10_15.txt"),
+            sample=range(N_SAMPLES)
+        ),
+        expand(
+            os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{{multi}}",
+                            "seed-{{seed}}_sample-{sample}",
+                            "{{multi}}_seed-{{seed}}_sample-{sample}_model.cif"),
+            sample=range(N_SAMPLES)
+        ) if MUTATION_DF.empty else
+        expand(
+            os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{{mut}}",
+                            "seed-{{seed}}_sample-{sample}",
+                            "{{mut}}_seed-{{seed}}_sample-{sample}_model.cif"),
+            sample=range(N_SAMPLES)
+        ),
+        expand(
+            os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{{multi}}",
+                            "seed-{{seed}}_sample-{sample}",
+                            "{{multi}}_seed-{{seed}}_sample-{sample}_confidences.json"),
+            sample=range(N_SAMPLES)
+        ) if MUTATION_DF.empty else
+        expand(
+            os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{{mut}}",
+                            "seed-{{seed}}_sample-{sample}",
+                            "{{mut}}_seed-{{seed}}_sample-{sample}_confidences.json"),
+            sample=range(N_SAMPLES)
+        ),
     output:
-        global_tsv    = os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "{multi}_global.tsv") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "{mut}_global.tsv"),
-        per_chain_tsv = os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "{multi}_per_chain.tsv") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "{mut}_per_chain.tsv"),
-        per_pair_tsv  = os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "{multi}_per_chain_pair.tsv") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "{mut}_per_chain_pair.tsv"),
+        global_tsv    = expand(os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "{{multi}}", "{{multi}}_seed-{{seed}}_sample-{sample}_global.tsv"), sample=range(N_SAMPLES)) if MUTATION_DF.empty else expand(os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS","{{mul}}", "{{mut}}_seed-{{seed}}_sample-{sample}_global.tsv"), sample=range(N_SAMPLES)),
+        per_chain_tsv = expand(os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "{{multi}}", "{{multi}}_seed-{{seed}}_sample-{sample}_per_chain.tsv"), sample=range(N_SAMPLES)) if MUTATION_DF.empty else expand(os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "{{mul}}", "{{mut}}_seed-{{seed}}_sample-{sample}_per_chain.tsv"), sample=range(N_SAMPLES)),
+        per_pair_tsv  = expand(os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "{{multi}}", "{{multi}}_seed-{{seed}}_sample-{sample}_per_chain_pair.tsv"), sample=range(N_SAMPLES)) if MUTATION_DF.empty else expand(os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "{{mul}}", "{{mut}}_seed-{{seed}}_sample-{sample}_per_chain_pair.tsv"), sample=range(N_SAMPLES)),
+#        touch(os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS","{multi}_seed-{seed}_done.txt" if MUTATION_DF.empty else "{mut}_seed-{seed}_done.txt"))
     params:
         inference_dir = os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{multi}") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{mut}"),
-        script        = workflow.source_path("../scripts/aggregate_results.py"),
+        out_dir = os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "{multi}") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "{mut}"),
+        script = workflow.source_path("../scripts/aggregate_results.py"),
     log:
-        os.path.join(OUTPUT_DIR, "logs", "rule_AGGREGATE_RESULTS", "{multi}.log") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "logs", "rule_AGGREGATE_RESULTS", "{mut}.log"),
+        os.path.join(OUTPUT_DIR, "logs", "rule_AGGREGATE_RESULTS", "{multi}", "{multi}_seed-{seed}.log") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "logs", "rule_AGGREGATE_RESULTS",{mut}, "{mut}_seed-{seed}.log"),
     benchmark:
-        os.path.join(OUTPUT_DIR, "benchmarks", "rule_AGGREGATE_RESULTS", "{multi}.tsv") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "benchmarks", "rule_AGGREGATE_RESULTS", "{mut}.tsv"),
+        os.path.join(OUTPUT_DIR, "benchmarks", "rule_AGGREGATE_RESULTS", "{multi}", "{multi}_seed-{seed}.tsv") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "benchmarks", "rule_AGGREGATE_RESULTS",{mut}, "{mut}_seed-{seed}.tsv"),            
     resources:
         mem_mb  = 2000,
         runtime = 10,
@@ -32,10 +79,8 @@ rule AGGREGATE_RESULTS:
     shell:
         """
         python {params.script} \
-            {params.inference_dir} \
-            {output.global_tsv} \
-            {output.per_chain_tsv} \
-            {output.per_pair_tsv} \
+            --inference_dir {params.inference_dir} \
+            --out_dir {params.out_dir} \
         2>&1 | tee {log}
         """
 
@@ -65,14 +110,12 @@ rule META_AGGREGATE:
         os.path.join(OUTPUT_DIR, "logs", "rule_META_AGGREGATE", "meta_aggregate.log"),
     benchmark:
         os.path.join(OUTPUT_DIR, "benchmarks", "rule_META_AGGREGATE", "meta_aggregate.tsv"),
-    resources:
-        mem_mb  = 4000,
-        runtime = 30,
+    #resources:
+    #    mem_mb  = 4000,
+    #    runtime = 30,
     conda: "../envs/preprocessing.yaml"
     shell:
         """
-        # Write filelists using find — no shell glob expansion, no ARG_MAX issue.
-        # Exclude the all_*.tsv outputs themselves to avoid self-inclusion on reruns.
         find {params.agg_dir} -maxdepth 1 -name '*_global.tsv'        ! -name 'all_*' | sort > {params.agg_dir}/filelist_global.txt
         find {params.agg_dir} -maxdepth 1 -name '*_per_chain.tsv'     ! -name 'all_*' | sort > {params.agg_dir}/filelist_per_chain.txt
         find {params.agg_dir} -maxdepth 1 -name '*_per_chain_pair.tsv' ! -name 'all_*' | sort > {params.agg_dir}/filelist_per_chain_pair.txt

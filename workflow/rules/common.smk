@@ -38,7 +38,7 @@ EXTRA_AF3_FLAGS = config["af3_flags"].get("--extra_af3_flags", config["af3_flags
 MODELS_DIR   = config["af3_flags"]["models_dir"]
 DB_DIR       = config["af3_flags"]["databases_dir"]
 PREDICT_INDIVIDUAL_COMPONENTS = '--predict-individual-components' if config.get('predict_individual_components', False) else ''
-
+AF3_VERSION = config.get("af3_version","v3.0.2")
 # ── Utility ──────────────────────────────────────────────────────────────────
 _ALLOWED = frozenset("abcdefghijklmnopqrstuvwxyz0123456789_-.")
 
@@ -58,6 +58,7 @@ SAMPLE_SHEET_SCHEMAS = {
     "inference_ready": ["sample_id", "file"],
     "merge_ready_samples": ["sample_id", "multimer_file", "monomer_chain_id", "monomer_file"],
     "mutations": ["sample_id", "type", "id", "mutation"],
+    "scoring_ready": ["sample_id", "type", "model", "confidences"],
 }
 
 def sanitise(name: str) -> str:
@@ -99,6 +100,7 @@ DATA_PIPELINE_READY_PATH, DATA_PIPELINE_READY_DF = load_sample_sheet("data_pipel
 INFERENCE_READY_PATH, INFERENCE_READY_DF = load_sample_sheet("inference_ready")
 MERGE_READY_PATH, MERGE_READY_DF = load_sample_sheet("merge_ready")
 MUTATION_DF_PATH, MUTATION_DF = load_sample_sheet("mutations")
+SCORING_READY_PATH, SCORING_READY_DF = load_sample_sheet("scoring_ready")
 
 # ── Sample-sheet validation ──────────────────────────────────────────────────
 if not RAW_DATA_DF.empty:
@@ -307,7 +309,7 @@ def _collect_inference_targets(wildcards, *, use_lock: bool) -> list:
 
 def inference_outputs(wildcards):
     """Return all final inference output paths for the `rule all` target."""
-    return _collect_inference_targets(wildcards, use_lock=EXCLUSIVE_LOCK)
+    return _collect_inference_targets(wildcards, use_lock=EXCLUSIVE_LOCK)[:10]
 
 
 def get_multimeric_json_with_msas(wildcards):
@@ -348,6 +350,10 @@ def datavzrd_output(wildcards):
     """Return the datavzrd HTML report directory path."""
     return [os.path.join(OUTPUT_DIR, "rule_REPORT")]
 
+def _get_seed(wildcards):
+        PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
+        JOB_NAMES_MULTIMERS, = glob_wildcards(os.path.join(PREPROCESSING_DIR, "multimers", "{multi}.json"))
+        return dict(zip(JOB_NAMES_MULTIMERS,[re.search(r'seed-(\d+)', multi).group(1) for multi in JOB_NAMES_MULTIMERS]))
 # ── Singularity / Apptainer utils ────────────────────────────────────────────
 
 def _first_level_root(p: Path) -> Path | None:

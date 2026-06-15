@@ -1,0 +1,79 @@
+# AlphaFold 3 Snakemake Workflow — Configuration
+# All paths can be absolute or relative to the working directory.
+# Run `snakemake --lint` to validate this file against the schema.
+
+# ---------------------------------------------------------------------------
+# Input
+# ---------------------------------------------------------------------------
+sample_sheets: # Type of sample sheet: raw_data | data_pipeline_ready | merge_ready | inference_ready
+  raw_data: "example/custom_with_mutations.tsv"   # TSV with columns defined in docs/input.md
+                                 # raw_data          → full pipeline (MSA + merge + inference)
+                                 # data_pipeline_ready → skip MSA generation; provide pre-computed monomer JSONs
+                                 # merge_ready       → skip MSA + merge; provide pre-merged multimer JSONs
+                                 # inference_ready   → skip everything; run inference only
+
+
+# ---------------------------------------------------------------------------
+# Run mode
+# ---------------------------------------------------------------------------
+# custom | all-vs-all | pulldown | virtual-drug-screen | stoichio-screen
+mode: "custom"
+
+# ---------------------------------------------------------------------------
+# Sampling
+# ---------------------------------------------------------------------------
+#n_seeds: 3          # random seeds per job (overrides model_seeds column)
+n_samples: 5        # diffusion samples per seed
+
+# ---------------------------------------------------------------------------
+# MSA / template options  (applies when entry_point == raw_data)
+# ---------------------------------------------------------------------------
+msa_option: "auto"  # auto | none | upload
+
+# ---------------------------------------------------------------------------
+# Paths (required)
+# ---------------------------------------------------------------------------
+output_dir: "results"
+
+# ---------------------------------------------------------------------------
+# Container
+# ---------------------------------------------------------------------------
+af3_flags:
+  af3_container: "/data/singularity/alphafold3/alphafold3_v3.0.2_f6a5aec.sif"
+  models_dir: "/data/singularity/alphafold3/weights"       # AlphaFold 3 model weights
+  databases_dir: "/var/lib/databases/af3db" # Genetic databases (~2 TB)
+  tmp_dir: "tmp"                     # Scratch space for AF3 temp files
+  # ---------------------------------------------------------------------------
+  # Extra AlphaFold 3 flags (passed verbatim to run_alphafold.py)
+  # ---------------------------------------------------------------------------
+  extra_af3_flags: "--force_output_dir=true \
+    --small_bfd_database_path='/var/lib/databases/af3db/bfd-first_non_consensus_sequences.fasta.shuffled.split/bfd-first_non_consensus_sequences.fasta@64' \
+    --small_bfd_z_value=65984053 \
+    --mgnify_database_path='/var/lib/databases/af3db/mgy_clusters_2022_05.fa.shuffled.split/mgy_clusters_2022_05.fa@512' \
+    --mgnify_z_value=623796864 \
+    --uniprot_cluster_annot_database_path='/var/lib/databases/af3db/uniprot_all_2021_04.fa.shuffled.split/uniprot_all_2021_04.fa@256' \
+    --uniprot_cluster_annot_z_value=225619586 \
+    --uniref90_database_path='/var/lib/databases/af3db/uniref90_2022_05.fa.shuffled.split/uniref90_2022_05.fa@128' \
+    --uniref90_z_value=153742194 \
+    --ntrna_database_path='/var/lib/databases/af3db/nt_rna_2023_02_23_clust_seq_id_90_cov_80_rep_seq.fasta.shuffled.split/nt_rna_2023_02_23_clust_seq_id_90_cov_80_rep_seq.fasta@256' \
+    --ntrna_z_value=76752.808514 \
+    --rfam_database_path='/var/lib/databases/af3db/rfam_14_9_clust_seq_id_90_cov_80_rep_seq.fasta.shuffled.split/rfam_14_9_clust_seq_id_90_cov_80_rep_seq.fasta@16' \
+    --rfam_z_value=138.115553 \
+    --rna_central_database_path='/var/lib/databases/af3db/rnacentral_active_seq_id_90_cov_80_linclust.fasta.shuffled.split/rnacentral_active_seq_id_90_cov_80_linclust.fasta@64' \
+    --rna_central_z_value=13271.415730 \
+    --jackhmmer_n_cpu=2 \
+    --jackhmmer_max_parallel_shards=16 \
+    --nhmmer_n_cpu=2 \
+    --nhmmer_max_parallel_shards=16"    # Compresses output mmCIF and confidence JSON files. Remove --compress_large_output_files to disable.
+
+
+
+# ---------------------------------------------------------------------------
+# HPC / resource options
+# ---------------------------------------------------------------------------
+# Set to true on clusters that allocate whole nodes (no consumable GPU slots).
+# The workflow will batch inference jobs and dispatch them with GNU parallel.
+exclusive_lock: false
+
+# Run the CPU-bound data pipeline on the submission node (avoids short GPU jobs)
+run_data_pipeline_locally: false

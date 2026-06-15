@@ -19,6 +19,7 @@ include: "rules/data_pipeline.smk"
 include: "rules/merge_msas.smk"
 include: "rules/mutate.smk"
 include: "rules/inference.smk"
+include: "rules/ipsae.smk"
 include: "rules/aggregate.smk"
 include: "rules/report.smk"
 

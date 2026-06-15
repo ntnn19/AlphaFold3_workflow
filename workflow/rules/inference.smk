@@ -54,10 +54,12 @@ rule AF3_INFERENCE:
                             "{{mut}}_seed-{{seed}}_sample-{sample}_confidences.json"),
             sample=range(N_SAMPLES)
         ),
-    log:
-        os.path.join(OUTPUT_DIR, "logs", "rule_AF3_INFERENCE", "{multi}.log") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "logs", "rule_AF3_INFERENCE", "{mut}.log"),
-    benchmark:
-        os.path.join(OUTPUT_DIR, "benchmarks", "rule_AF3_INFERENCE", "{multi}.tsv") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "benchmarks", "rule_AF3_INFERENCE", "{mut}.tsv"),
+#        os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{multi}", "{multi}_model.cif") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{mut}", "{mut}_model.cif"),
+#        os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{multi}", "{multi}_confidences.json") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{mut}", "{mut}_confidences.json"),
+#    log:
+#        os.path.join(OUTPUT_DIR, "logs", "rule_AF3_INFERENCE", "{multi}.log") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "logs", "rule_AF3_INFERENCE", "{mut}.log"),
+#    benchmark:
+#        os.path.join(OUTPUT_DIR, "benchmarks", "rule_AF3_INFERENCE", "{multi}.tsv") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "benchmarks", "rule_AF3_INFERENCE", "{mut}.tsv"),
     resources:
         mem_mb      = 16000,
         runtime     = 480,
