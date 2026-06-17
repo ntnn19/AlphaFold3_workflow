@@ -15,6 +15,8 @@ import pandas as pd
 import resource
 from snakemake.utils import validate, min_version
 from snakemake.exceptions import WorkflowError
+from itertools import product
+import json
 # ── Snakemake version guard ──────────────────────────────────────────────────
 min_version("8.0")
 
@@ -205,6 +207,10 @@ def get_merge_inputs(wildcards):
 
 
 # ── Inference target collection ──────────────────────────────────────────────
+def get_seeds(json_path):
+    with open(json_path) as f:
+        data = json.load(f)
+    return data["modelSeeds"]  # adjust key if your AF3 json uses a different field
 
 def _collect_inference_targets(wildcards, *, use_lock: bool) -> list:
     """
@@ -226,12 +232,29 @@ def _collect_inference_targets(wildcards, *, use_lock: bool) -> list:
     external = []
 
     if not DATA_PIPELINE_READY_DF.empty:
-        external.append(
-            DATA_PIPELINE_READY_DF["file"]
-            .apply(lambda x: f"{OUTPUT_DIR}/rule_AF3_INFERENCE/{Path(x).stem}/{Path(x).stem}_model.cif")
-            .unique().tolist()
+        def expand_paths(x):
+            stem = Path(x).stem
+            seeds = get_seeds(x)
+            return (
+                [
+                    f"{OUTPUT_DIR}/rule_AF3_INFERENCE/{stem}/seed-{seed}_sample-{sample}/{stem}_seed-{seed}_sample-{sample}_model.cif"
+                    for seed, sample in product(seeds, range(N_SAMPLES))
+                ]
+                + [
+                    f"{OUTPUT_DIR}/rule_AF3_INFERENCE/{stem}/seed-{seed}_sample-{sample}/{stem}_seed-{seed}_sample-{sample}_model_15_15.txt"
+                    for seed, sample in product(seeds, range(N_SAMPLES))
+                ]
+                + [
+                    f"{OUTPUT_DIR}/rule_AF3_INFERENCE/{stem}/seed-{seed}_sample-{sample}/{stem}_seed-{seed}_sample-{sample}_model_10_15.txt"
+                    for seed, sample in product(seeds, range(N_SAMPLES))
+                ]
+            )
+    
+        external.extend(
+            path
+            for paths in DATA_PIPELINE_READY_DF["file"].apply(expand_paths)
+            for path in paths
         )
-
     if not MERGE_READY_DF.empty:
         # MERGE_READY_DF may contain both user-supplied merge_ready rows AND
         # synthetic rows appended from data_pipeline_ready.  Collect unique
@@ -244,22 +267,59 @@ def _collect_inference_targets(wildcards, *, use_lock: bool) -> list:
             )
         ]
         if not _user_mr.empty:
-            external.append(
-                _user_mr["multimer_file"]
-                .apply(lambda x: f"{OUTPUT_DIR}/rule_AF3_INFERENCE/{Path(x).stem}/{Path(x).stem}_model.cif")
-                .unique().tolist()
+            def expand_paths_mr(x):
+                stem = Path(x).stem
+                seeds = get_seeds(x)
+                combos = list(product(seeds, range(N_SAMPLES)))
+                base = lambda seed, sample: f"{OUTPUT_DIR}/rule_AF3_INFERENCE/{stem}/seed-{seed}_sample-{sample}/{stem}_seed-{seed}_sample-{sample}"
+                return (
+                    [f"{base(seed, sample)}_model.cif" for seed, sample in combos]
+                    + [f"{base(seed, sample)}_model_15_15.txt" for seed, sample in combos]
+                    + [f"{base(seed, sample)}_model_10_15.txt" for seed, sample in combos]
+                )
+    
+            external.extend(
+                path
+                for paths in _user_mr["multimer_file"].apply(expand_paths_mr)
+                for path in paths
             )
-
+    
     if not INFERENCE_READY_DF.empty:
-        external.append(
-            INFERENCE_READY_DF["file"]
-            .apply(lambda x: f"{OUTPUT_DIR}/rule_AF3_INFERENCE/{Path(x).stem}/{Path(x).stem}_model.cif")
-            .unique().tolist()
+        def expand_paths_inf(x):
+            stem = Path(x).stem
+            seeds = get_seeds(x)
+            combos = list(product(seeds, range(N_SAMPLES)))
+            base = lambda seed, sample: f"{OUTPUT_DIR}/rule_AF3_INFERENCE/{stem}/seed-{seed}_sample-{sample}/{stem}_seed-{seed}_sample-{sample}"
+            return (
+                [f"{base(seed, sample)}_model.cif" for seed, sample in combos]
+                + [f"{base(seed, sample)}_model_15_15.txt" for seed, sample in combos]
+                + [f"{base(seed, sample)}_model_10_15.txt" for seed, sample in combos]
+            )
+    
+        external.extend(
+            path
+            for paths in INFERENCE_READY_DF["file"].apply(expand_paths_inf)
+            for path in paths
         )
+    
+    external = list(dict.fromkeys(external))  # dedupe while preserving order
+
     if not RAW_DATA_DF.empty:
         PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
         JOB_NAMES_MULTIMERS, = glob_wildcards(os.path.join(PREPROCESSING_DIR, "multimers", "{multi}.json"))
+    
+        base_names_with_mutations = set(MUTATION_DF["sample_id"].unique()) if not MUTATION_DF.empty else set()
+        JOB_NAMES_MULTIMERS = [
+            m for m in JOB_NAMES_MULTIMERS
+            if re.sub(r"_seed-\d+$", "", m) not in base_names_with_mutations
+        ]
+    
         SEEDS = list(map(lambda x: re.search(r'seed-(\d+)', x).group(1), JOB_NAMES_MULTIMERS))
+
+#    if not RAW_DATA_DF.empty:
+#        PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
+#        JOB_NAMES_MULTIMERS, = glob_wildcards(os.path.join(PREPROCESSING_DIR, "multimers", "{multi}.json"))
+#        SEEDS = list(map(lambda x: re.search(r'seed-(\d+)', x).group(1), JOB_NAMES_MULTIMERS))
         internal.append([
             path
             for multi, seed in zip(JOB_NAMES_MULTIMERS, SEEDS)
@@ -270,7 +330,28 @@ def _collect_inference_targets(wildcards, *, use_lock: bool) -> list:
                 multi=multi, seed=seed, sample=range(N_SAMPLES)
             )
         ])
-    
+        internal.append([
+            path
+            for multi, seed in zip(JOB_NAMES_MULTIMERS, SEEDS)
+            for path in expand(
+                os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{multi}",
+                                "seed-{seed}_sample-{sample}",
+                                "{multi}_seed-{seed}_sample-{sample}_model_15_15.txt"),
+                multi=multi, seed=seed, sample=range(N_SAMPLES)
+            )
+        ])
+        internal.append([
+            path
+            for multi, seed in zip(JOB_NAMES_MULTIMERS, SEEDS)
+            for path in expand(
+                os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{multi}",
+                                "seed-{seed}_sample-{sample}",
+                                "{multi}_seed-{seed}_sample-{sample}_model_10_15.txt"),
+                multi=multi, seed=seed, sample=range(N_SAMPLES)
+            )
+        ])
+
+
     if not MUTATION_DF.empty:
         all_mutations = []
         all_seeds = []
@@ -297,19 +378,39 @@ def _collect_inference_targets(wildcards, *, use_lock: bool) -> list:
                 mut=mut, seed=seed, sample=range(N_SAMPLES)
             )
         ])
-    
+        internal.append([
+            path
+            for mut, seed in zip(all_mutations, all_seeds)
+            for path in expand(
+                os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{mut}",
+                                "seed-{seed}_sample-{sample}",
+                                "{mut}_seed-{seed}_sample-{sample}_10_15.txt"),
+                mut=mut, seed=seed, sample=range(N_SAMPLES)
+            )
+        ])
+        internal.append([
+            path
+            for mut, seed in zip(all_mutations, all_seeds)
+            for path in expand(
+                os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{mut}",
+                                "seed-{seed}_sample-{sample}",
+                                "{mut}_seed-{seed}_sample-{sample}_15_15.txt"),
+                mut=mut, seed=seed, sample=range(N_SAMPLES)
+            )
+        ])
+
     if internal and external:
-        return [*flatten(internal), *flatten(external)]
+        return [*flatten(internal), *external]
     if internal:
         return flatten(internal)
     if external:
-        return flatten(external)
+        return external
     return []
 
 
 def inference_outputs(wildcards):
     """Return all final inference output paths for the `rule all` target."""
-    return _collect_inference_targets(wildcards, use_lock=EXCLUSIVE_LOCK)[:10]
+    return _collect_inference_targets(wildcards, use_lock=EXCLUSIVE_LOCK)
 
 
 def get_multimeric_json_with_msas(wildcards):
@@ -320,40 +421,43 @@ def aggregate_outputs(wildcards):
     """Return global TSV paths for all inference jobs (one per job)."""
     cif_paths = _collect_inference_targets(wildcards, use_lock=False)
     global_ = [
-        os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", f"{Path(p).parent.name}_global.tsv")
-        for p in cif_paths
-        if p.endswith("_model.cif")
-    ] 
-    per_chain_ = [
-        os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", f"{Path(p).parent.name}_per_chain.tsv")
-        for p in cif_paths
-        if p.endswith("_model.cif")
-    ] 
-    per_chain_pair_ = [
-        os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", f"{Path(p).parent.name}_per_chain_pair.tsv")
+        os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", f"{Path(p).parent.parent.name}",f"{Path(p).parent.parent.name}_{Path(p).parent.name}_af_global.tsv")
         for p in cif_paths
         if p.endswith("_model.cif")
     ]
 
-    return [*global_,*per_chain_,*per_chain_pair_]
+    per_chain_ = [
+        os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", f"{Path(p).parent.parent.name}", f"{Path(p).parent.parent.name}_{Path(p).parent.name}_af_per_chain.tsv")
+        for p in cif_paths
+        if p.endswith("_model.cif")
+    ]
+    per_chain_pair_ = [
+        os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", f"{Path(p).parent.parent.name}", f"{Path(p).parent.parent.name}_{Path(p).parent.name}_af_per_chain_pair.tsv")
+        for p in cif_paths
+        if p.endswith("_model.cif")
+    ]
+
+    ipsae = [
+        os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", f"{Path(p).parent.parent.name}", f"{Path(p).parent.parent.name}_{Path(p).parent.name}_ipsae.tsv")
+        for p in cif_paths
+        if p.endswith("_model.cif")
+    ]
+    return [*global_, *per_chain_, *per_chain_pair_, *ipsae]
 
 
 def meta_aggregate_outputs(wildcards):
     """Return the three project-level summary TSV paths."""
     return [
-        os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "all_global.tsv"),
-        os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "all_per_chain.tsv"),
-        os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "all_per_chain_pair.tsv"),
+        os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "all_af_global.tsv"),
+        os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "all_af_per_chain.tsv"),
+        os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "all_af_per_chain_pair.tsv"),
+        os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "all_ipsae.tsv"),
     ]
 
 def datavzrd_output(wildcards):
     """Return the datavzrd HTML report directory path."""
     return [os.path.join(OUTPUT_DIR, "rule_REPORT")]
 
-def _get_seed(wildcards):
-        PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
-        JOB_NAMES_MULTIMERS, = glob_wildcards(os.path.join(PREPROCESSING_DIR, "multimers", "{multi}.json"))
-        return dict(zip(JOB_NAMES_MULTIMERS,[re.search(r'seed-(\d+)', multi).group(1) for multi in JOB_NAMES_MULTIMERS]))
 # ── Singularity / Apptainer utils ────────────────────────────────────────────
 
 def _first_level_root(p: Path) -> Path | None:

@@ -7,6 +7,7 @@
 # ---------------------------------------------------------------------------
 sample_sheets: # Type of sample sheet: raw_data | data_pipeline_ready | merge_ready | inference_ready
   raw_data: "example/K670_1000_seeds.tsv"   # TSV with columns defined in docs/input.md
+#  inference_ready: "inference_ready.tsv"
 #  mutations: "example/mutations.tsv"   # TSV with columns defined in docs/input.md
                                  # raw_data          → full pipeline (MSA + merge + inference)
                                  # data_pipeline_ready → skip MSA generation; provide pre-computed monomer JSONs
@@ -35,6 +36,7 @@ msa_option: "auto"  # auto | none | upload
 # Paths (required)
 # ---------------------------------------------------------------------------
 output_dir: "/scratch/home/nagarnat/projects/scaturro/zika_ns5/results_K670_1000_seeds"
+#output_dir: "test"
 
 # ---------------------------------------------------------------------------
 # Container

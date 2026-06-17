@@ -47,5 +47,6 @@ rule all:
     """Collect all final outputs."""
     input:
         inference_outputs,
+#        os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS","done.txt")
         datavzrd_output
     default_target: True

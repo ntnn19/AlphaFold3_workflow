@@ -21,13 +21,24 @@ rule AF3_INFERENCE:
         data = branch(
             lookup(query="sample_id == '{mut}'" if MUTATION_DF_PATH is not None else "sample_id == '{multi}'", within=INFERENCE_READY_DF, cols="file"),
             then=lookup(query="sample_id == '{mut}'" if MUTATION_DF_PATH is not None else "sample_id == '{multi}'", within=INFERENCE_READY_DF, cols="file"),
-            otherwise=lambda w: os.path.join(
-                OUTPUT_DIR, "rule_MUTATE",
-                re.match(r"(.+_seed-\d+)", w.mut).group(1),
-                f"{w.mut}.json"
-            ) if (MUTATION_DF_PATH is not None and re.search(r"_seed-\d+_.+", w.mut)) else os.path.join(
-                OUTPUT_DIR, "rule_MERGE_MONOMERS_TO_MULTIMERS", f"{w.multi}_data.json"
+            otherwise=lambda w: (
+                os.path.join(
+                    OUTPUT_DIR, "rule_MUTATE",
+                    re.match(r"(.+_seed-\d+)", w.mut).group(1),
+                    f"{w.mut}.json"
+                )
+                if MUTATION_DF_PATH is not None
+                else os.path.join(
+                    OUTPUT_DIR, "rule_MERGE_MONOMERS_TO_MULTIMERS", f"{w.multi}_data.json"
+                )
             )
+#            otherwise=lambda w: os.path.join(
+#                OUTPUT_DIR, "rule_MUTATE",
+#                re.match(r"(.+_seed-\d+)", w.mut).group(1),
+#                f"{w.mut}.json"
+#            ) if (MUTATION_DF_PATH is not None and re.search(r"_seed-\d+_.+", w.mut)) else os.path.join(
+#                OUTPUT_DIR, "rule_MERGE_MONOMERS_TO_MULTIMERS", f"{w.multi}_data.json"
+#            )
         )
     output:
         expand(
@@ -54,12 +65,10 @@ rule AF3_INFERENCE:
                             "{{mut}}_seed-{{seed}}_sample-{sample}_confidences.json"),
             sample=range(N_SAMPLES)
         ),
-#        os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{multi}", "{multi}_model.cif") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{mut}", "{mut}_model.cif"),
-#        os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{multi}", "{multi}_confidences.json") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{mut}", "{mut}_confidences.json"),
-#    log:
-#        os.path.join(OUTPUT_DIR, "logs", "rule_AF3_INFERENCE", "{multi}.log") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "logs", "rule_AF3_INFERENCE", "{mut}.log"),
-#    benchmark:
-#        os.path.join(OUTPUT_DIR, "benchmarks", "rule_AF3_INFERENCE", "{multi}.tsv") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "benchmarks", "rule_AF3_INFERENCE", "{mut}.tsv"),
+    log:
+        os.path.join(OUTPUT_DIR, "logs", "rule_AF3_INFERENCE", "{multi}_seed-{seed}.log") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "logs", "rule_AF3_INFERENCE", "{mut}_seed-{seed}.log"),
+    benchmark:
+        os.path.join(OUTPUT_DIR, "benchmarks", "rule_AF3_INFERENCE", "{multi}_seed-{seed}.tsv") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "benchmarks", "rule_AF3_INFERENCE", "{mut}_seed-{seed}.tsv"),
     resources:
         mem_mb      = 16000,
         runtime     = 480,

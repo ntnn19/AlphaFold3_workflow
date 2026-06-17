@@ -7,27 +7,31 @@
 
 executor: slurm
 use-apptainer: true
-jobs: 200
+jobs: 1000
 rerun-incomplete: true
 keep-going: true
 printshellcmds: true
-
+keep-incomplete: true
 
 default-resources:
     slurm_partition: "normal"       # CHANGE ME: your cluster partition name
-    mem_mb: 500
+    mem_mb: 250
+    runtime: 10000
 #    slurm_account: "nagarnat"        # CHANGE ME: your SLURM account/project
 
 set-resources:
+    AGGREGATE_RESULTS:
+        mem_mb: 250
+        runtime: 10000
     AF3_INFERENCE:
         slurm_partition: "normal"   # CHANGE ME: GPU partition name
         nodes: 1
         runtime: 10000
         gres: "gpu:1"
-#        tasks_per_gpu: 0
         mem_mb: 16000
-    AF3_DATA_SPEEDY_PIPELINE:
-        slurm_partition: "normal"   # CHANGE ME: CPU partition name
-        nodes: 1
-        runtime: 10000
-        mem_mb: 120000
+#        slurm_extra: "'--nodelist=cssblivuke067'"
+#        slurm_extra: "'--nodelist=cssblivuke105'"
+#    AF3_DATA_SPEEDY_PIPELINE:
+#        slurm_partition: "normal"   # CHANGE ME: CPU partition name
+#        runtime: 10000
+#        mem_mb: 120000

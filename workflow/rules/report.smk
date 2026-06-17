@@ -11,9 +11,10 @@ rule DATAVZRD_REPORT:
     """
     input:
         config       = workflow.source_path("../resources/datavzrd.yaml"),
-        global_tsv   = os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "all_global.tsv"),
-        per_chain_tsv= os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "all_per_chain.tsv"),
-        per_pair_tsv = os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "all_per_chain_pair.tsv"),
+        global_tsv   = os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "all_af_global.tsv"),
+        per_chain_tsv= os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "all_af_per_chain.tsv"),
+        per_pair_tsv = os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "all_af_per_chain_pair.tsv"),
+        ipsae        = os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "all_ipsae.tsv")
     output:
         report(
             directory(os.path.join(OUTPUT_DIR, "rule_REPORT")),

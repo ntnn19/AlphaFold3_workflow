@@ -1,15 +1,4 @@
-rule AGGREGATE_RESULTS:
-    """Aggregate per-sample AF3 confidence outputs into three TSV tables.
-
-    For each inference job, reads all seed-*/sample-* subdirectories and
-    produces:
-      - {multi}_global.tsv        one row per sample
-      - {multi}_per_chain.tsv     one row per (sample, chain)
-      - {multi}_per_chain_pair.tsv one row per (sample, chain_i, chain_j)
-
-    Chain IDs are derived from token_chain_ids in confidences.json, so this
-    rule works regardless of the AF3 version installed in the container.
-    """
+rule EXTRACT_SCORES:
     input:
         expand(
             os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{{multi}}",
@@ -60,18 +49,18 @@ rule AGGREGATE_RESULTS:
             sample=range(N_SAMPLES)
         ),
     output:
-        global_tsv    = expand(os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "{{multi}}", "{{multi}}_seed-{{seed}}_sample-{sample}_global.tsv"), sample=range(N_SAMPLES)) if MUTATION_DF.empty else expand(os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS","{{mul}}", "{{mut}}_seed-{{seed}}_sample-{sample}_global.tsv"), sample=range(N_SAMPLES)),
-        per_chain_tsv = expand(os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "{{multi}}", "{{multi}}_seed-{{seed}}_sample-{sample}_per_chain.tsv"), sample=range(N_SAMPLES)) if MUTATION_DF.empty else expand(os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "{{mul}}", "{{mut}}_seed-{{seed}}_sample-{sample}_per_chain.tsv"), sample=range(N_SAMPLES)),
-        per_pair_tsv  = expand(os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "{{multi}}", "{{multi}}_seed-{{seed}}_sample-{sample}_per_chain_pair.tsv"), sample=range(N_SAMPLES)) if MUTATION_DF.empty else expand(os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "{{mul}}", "{{mut}}_seed-{{seed}}_sample-{sample}_per_chain_pair.tsv"), sample=range(N_SAMPLES)),
-#        touch(os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS","{multi}_seed-{seed}_done.txt" if MUTATION_DF.empty else "{mut}_seed-{seed}_done.txt"))
+        global_tsv    = temp(expand(os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", "{{multi}}", "{{multi}}_seed-{{seed}}_sample-{sample}_af_global.tsv"), sample=range(N_SAMPLES)) if MUTATION_DF.empty else temp(expand(os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES","{{mut}}", "{{mut}}_seed-{{seed}}_sample-{sample}_global.tsv"), sample=range(N_SAMPLES)))),
+        per_chain_tsv = temp(expand(os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", "{{multi}}", "{{multi}}_seed-{{seed}}_sample-{sample}_af_per_chain.tsv"), sample=range(N_SAMPLES)) if MUTATION_DF.empty else temp(expand(os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", "{{mut}}", "{{mut}}_seed-{{seed}}_sample-{sample}_per_chain.tsv"), sample=range(N_SAMPLES)))),
+        per_pair_tsv  = temp(expand(os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", "{{multi}}", "{{multi}}_seed-{{seed}}_sample-{sample}_af_per_chain_pair.tsv"), sample=range(N_SAMPLES)) if MUTATION_DF.empty else temp(expand(os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", "{{mut}}", "{{mut}}_seed-{{seed}}_sample-{sample}_per_chain_pair.tsv"), sample=range(N_SAMPLES)))),
+        ipsae  = temp(expand(os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", "{{multi}}", "{{multi}}_seed-{{seed}}_sample-{sample}_ipsae.tsv"), sample=range(N_SAMPLES)) if MUTATION_DF.empty else temp(expand(os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", "{{mut}}", "{{mut}}_seed-{{seed}}_sample-{sample}_ipsae.tsv"), sample=range(N_SAMPLES)))),
     params:
         inference_dir = os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{multi}") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{mut}"),
-        out_dir = os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "{multi}") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "{mut}"),
-        script = workflow.source_path("../scripts/aggregate_results.py"),
+        out_dir = os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", "{multi}") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", "{mut}"),
+        script = workflow.source_path("../scripts/extract_scores.py"),
     log:
-        os.path.join(OUTPUT_DIR, "logs", "rule_AGGREGATE_RESULTS", "{multi}", "{multi}_seed-{seed}.log") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "logs", "rule_AGGREGATE_RESULTS",{mut}, "{mut}_seed-{seed}.log"),
+        os.path.join(OUTPUT_DIR, "logs", "rule_EXTRACT_SCORES", "{multi}", "{multi}_seed-{seed}.log") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "logs", "rule_EXTRACT_SCORES","{mut}", "{mut}_seed-{seed}.log"),
     benchmark:
-        os.path.join(OUTPUT_DIR, "benchmarks", "rule_AGGREGATE_RESULTS", "{multi}", "{multi}_seed-{seed}.tsv") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "benchmarks", "rule_AGGREGATE_RESULTS",{mut}, "{mut}_seed-{seed}.tsv"),            
+        os.path.join(OUTPUT_DIR, "benchmarks", "rule_EXTRACT_SCORES", "{multi}", "{multi}_seed-{seed}.tsv") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "benchmarks", "rule_EXTRACT_SCORES","{mut}", "{mut}_seed-{seed}.tsv"),
     resources:
         mem_mb  = 2000,
         runtime = 10,
@@ -87,7 +76,7 @@ rule AGGREGATE_RESULTS:
 
 
 
-rule META_AGGREGATE:
+rule AGGREGATE_RESULTS:
     """Concatenate all per-job TSVs into three project-level summary tables.
 
     Uses a file-of-filenames approach to avoid shell argument-length limits
@@ -100,27 +89,27 @@ rule META_AGGREGATE:
     input:
         aggregate_outputs,
     output:
-        global_tsv    = os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "all_global.tsv"),
-        per_chain_tsv = os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "all_per_chain.tsv"),
-        per_pair_tsv  = os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "all_per_chain_pair.tsv"),
+        global_tsv    = os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "all_af_global.tsv"),
+        per_chain_tsv = os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "all_af_per_chain.tsv"),
+        per_pair_tsv  = os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "all_af_per_chain_pair.tsv"),
+        ipsae_tsv     = os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "all_ipsae.tsv"),
     params:
-        script     = workflow.source_path("../scripts/meta_aggregate.py"),
-        agg_dir    = os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS"),
+        script     = workflow.source_path("../scripts/aggregate_scores.py"),
+        agg_dir    = os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES"),
     log:
-        os.path.join(OUTPUT_DIR, "logs", "rule_META_AGGREGATE", "meta_aggregate.log"),
+        os.path.join(OUTPUT_DIR, "logs", "rule_AGGREGATE_RESULTS", "aggregate.log"),
     benchmark:
-        os.path.join(OUTPUT_DIR, "benchmarks", "rule_META_AGGREGATE", "meta_aggregate.tsv"),
-    #resources:
-    #    mem_mb  = 4000,
-    #    runtime = 30,
+        os.path.join(OUTPUT_DIR, "benchmarks", "rule_AGGREGATE_RESULTS", "aggregate.tsv")
     conda: "../envs/preprocessing.yaml"
     shell:
         """
-        find {params.agg_dir} -maxdepth 1 -name '*_global.tsv'        ! -name 'all_*' | sort > {params.agg_dir}/filelist_global.txt
-        find {params.agg_dir} -maxdepth 1 -name '*_per_chain.tsv'     ! -name 'all_*' | sort > {params.agg_dir}/filelist_per_chain.txt
-        find {params.agg_dir} -maxdepth 1 -name '*_per_chain_pair.tsv' ! -name 'all_*' | sort > {params.agg_dir}/filelist_per_chain_pair.txt
+        find {params.agg_dir} -name '*_af_global.tsv'        ! -name 'all_*' | sort > {params.agg_dir}/filelist_af_global.txt
+        find {params.agg_dir} -name '*_af_per_chain.tsv'     ! -name 'all_*' | sort > {params.agg_dir}/filelist_af_per_chain.txt
+        find {params.agg_dir} -name '*_af_per_chain_pair.tsv' ! -name 'all_*' | sort > {params.agg_dir}/filelist_af_per_chain_pair.txt
+        find {params.agg_dir} -name '*_ipsae.tsv' ! -name 'all_*' | sort > {params.agg_dir}/filelist_ipsae.txt
 
-        python {params.script} {params.agg_dir}/filelist_global.txt        {output.global_tsv}    2>> {log}
-        python {params.script} {params.agg_dir}/filelist_per_chain.txt     {output.per_chain_tsv} 2>> {log}
-        python {params.script} {params.agg_dir}/filelist_per_chain_pair.txt {output.per_pair_tsv} 2>> {log}
+        python {params.script} {params.agg_dir}/filelist_af_global.txt        {output.global_tsv}    2>> {log}
+        python {params.script} {params.agg_dir}/filelist_af_per_chain.txt     {output.per_chain_tsv} 2>> {log}
+        python {params.script} {params.agg_dir}/filelist_af_per_chain_pair.txt {output.per_pair_tsv} 2>> {log}
+        python {params.script} {params.agg_dir}/filelist_ipsae.txt            {output.ipsae_tsv}    2>> {log}
         """
