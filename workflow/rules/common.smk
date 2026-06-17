@@ -384,7 +384,7 @@ def _collect_inference_targets(wildcards, *, use_lock: bool) -> list:
             for path in expand(
                 os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{mut}",
                                 "seed-{seed}_sample-{sample}",
-                                "{mut}_seed-{seed}_sample-{sample}_10_15.txt"),
+                                "{mut}_seed-{seed}_sample-{sample}_model_10_15.txt"),
                 mut=mut, seed=seed, sample=range(N_SAMPLES)
             )
         ])
@@ -394,11 +394,11 @@ def _collect_inference_targets(wildcards, *, use_lock: bool) -> list:
             for path in expand(
                 os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{mut}",
                                 "seed-{seed}_sample-{sample}",
-                                "{mut}_seed-{seed}_sample-{sample}_15_15.txt"),
+                                "{mut}_seed-{seed}_sample-{sample}_model_15_15.txt"),
                 mut=mut, seed=seed, sample=range(N_SAMPLES)
             )
         ])
-
+    print([*flatten(internal)][-1])
     if internal and external:
         return [*flatten(internal), *external]
     if internal:
@@ -413,9 +413,6 @@ def inference_outputs(wildcards):
     return _collect_inference_targets(wildcards, use_lock=EXCLUSIVE_LOCK)
 
 
-def get_multimeric_json_with_msas(wildcards):
-    """Return inference targets used by the report rule."""
-    return _collect_inference_targets(wildcards, use_lock=EXCLUSIVE_LOCK)
 
 def aggregate_outputs(wildcards):
     """Return global TSV paths for all inference jobs (one per job)."""

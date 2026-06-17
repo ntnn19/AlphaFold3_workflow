@@ -49,9 +49,9 @@ rule EXTRACT_SCORES:
             sample=range(N_SAMPLES)
         ),
     output:
-        global_tsv    = temp(expand(os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", "{{multi}}", "{{multi}}_seed-{{seed}}_sample-{sample}_af_global.tsv"), sample=range(N_SAMPLES)) if MUTATION_DF.empty else temp(expand(os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES","{{mut}}", "{{mut}}_seed-{{seed}}_sample-{sample}_global.tsv"), sample=range(N_SAMPLES)))),
-        per_chain_tsv = temp(expand(os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", "{{multi}}", "{{multi}}_seed-{{seed}}_sample-{sample}_af_per_chain.tsv"), sample=range(N_SAMPLES)) if MUTATION_DF.empty else temp(expand(os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", "{{mut}}", "{{mut}}_seed-{{seed}}_sample-{sample}_per_chain.tsv"), sample=range(N_SAMPLES)))),
-        per_pair_tsv  = temp(expand(os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", "{{multi}}", "{{multi}}_seed-{{seed}}_sample-{sample}_af_per_chain_pair.tsv"), sample=range(N_SAMPLES)) if MUTATION_DF.empty else temp(expand(os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", "{{mut}}", "{{mut}}_seed-{{seed}}_sample-{sample}_per_chain_pair.tsv"), sample=range(N_SAMPLES)))),
+        global_tsv    = temp(expand(os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", "{{multi}}", "{{multi}}_seed-{{seed}}_sample-{sample}_af_global.tsv"), sample=range(N_SAMPLES)) if MUTATION_DF.empty else temp(expand(os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES","{{mut}}", "{{mut}}_seed-{{seed}}_sample-{sample}_af_global.tsv"), sample=range(N_SAMPLES)))),
+        per_chain_tsv = temp(expand(os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", "{{multi}}", "{{multi}}_seed-{{seed}}_sample-{sample}_af_per_chain.tsv"), sample=range(N_SAMPLES)) if MUTATION_DF.empty else temp(expand(os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", "{{mut}}", "{{mut}}_seed-{{seed}}_sample-{sample}_af_per_chain.tsv"), sample=range(N_SAMPLES)))),
+        per_pair_tsv  = temp(expand(os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", "{{multi}}", "{{multi}}_seed-{{seed}}_sample-{sample}_af_per_chain_pair.tsv"), sample=range(N_SAMPLES)) if MUTATION_DF.empty else temp(expand(os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", "{{mut}}", "{{mut}}_seed-{{seed}}_sample-{sample}_af_per_chain_pair.tsv"), sample=range(N_SAMPLES)))),
         ipsae  = temp(expand(os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", "{{multi}}", "{{multi}}_seed-{{seed}}_sample-{sample}_ipsae.tsv"), sample=range(N_SAMPLES)) if MUTATION_DF.empty else temp(expand(os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", "{{mut}}", "{{mut}}_seed-{{seed}}_sample-{sample}_ipsae.tsv"), sample=range(N_SAMPLES)))),
     params:
         inference_dir = os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{multi}") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{mut}"),
@@ -77,15 +77,6 @@ rule EXTRACT_SCORES:
 
 
 rule AGGREGATE_RESULTS:
-    """Concatenate all per-job TSVs into three project-level summary tables.
-
-    Uses a file-of-filenames approach to avoid shell argument-length limits
-    (ARG_MAX), which would be hit when concatenating thousands of per-job files.
-    Produces:
-      - all_global.tsv
-      - all_per_chain.tsv
-      - all_per_chain_pair.tsv
-    """
     input:
         aggregate_outputs,
     output:

@@ -78,7 +78,7 @@ rule AF3_INFERENCE:
         extra_af3_flags = EXTRA_AF3_FLAGS,
         exclusive_lock = "true" if EXCLUSIVE_LOCK else "false",
         models_dir = MODELS_DIR,
-        output_dir = lambda w, output: str(Path(output[0]).parents[2]),
+        output_dir = OUTPUT_DIR,
         database_dir = DB_DIR,
         shell_preamble = _FLASH_DETECT + _EXCLUSIVE_LOCK,
     container:
