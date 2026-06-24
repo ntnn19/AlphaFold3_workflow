@@ -40,6 +40,7 @@ if [[ "$NUM_GPUS" -eq 0 ]]; then
     exit 1
 fi
 
+mkdir -p "$LOCK_DIR"
 while true; do
     for gpu in $(seq 0 $((NUM_GPUS - 1))); do
         exec {lock_fd}>>"${LOCK_DIR}/gpu_${gpu}.lock"
