@@ -506,7 +506,7 @@ def prepare_container_binds(
         value = config["af3_flags"].get(key)
         if value:
             interest.add(Path(value))
-    interest.add(Path("/app/scripts/gpu_lock.sh")
+    interest.add(Path(workflow.source_path("../scripts/gpu_lock.sh")))
     roots = sorted(_collect_roots(interest))
     bind_spec = ",".join(f"{r}:{r}" for r in roots)
     for var in ("APPTAINER_BINDPATH", "SINGULARITY_BINDPATH"):
