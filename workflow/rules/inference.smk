@@ -79,12 +79,5 @@ rule AF3_INFERENCE:
         AF3_CONTAINER
     shell:
         """
-        {params.shell_preamble} python \
-            /app/alphafold/run_alphafold.py $FLASH_ARG --json_path={input.data} \
-            --model_dir={params.models_dir} \
-            --output_dir={params.output_dir}/rule_AF3_INFERENCE \
-            --db_dir={params.database_dir} \
-            --run_data_pipeline=false \
-            --run_inference=true \
-            {params.extra_af3_flags} 2>&1 | tee {log}
+        {params.shell_preamble} python /app/alphafold/run_alphafold.py $FLASH_ARG --json_path={input.data} --model_dir={params.models_dir} --output_dir={params.output_dir}/rule_AF3_INFERENCE --db_dir={params.database_dir} --run_data_pipeline=false --run_inference=true {params.extra_af3_flags} 2>&1 | tee {log}
         """
