@@ -6,8 +6,9 @@ else:
     _EXCLUSIVE_LOCK = r""""""
 
 _FLASH_DETECT = r"""
-CC=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader,nounits \
-        2>/dev/null | head -n 1 | cut -d'.' -f1 || echo 0)
+CC=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader,nounits 2>/dev/null \
+     | head -n1 | cut -d'.' -f1 | tr -dc '0-9')
+CC=${CC:-0}
 if [[ "$CC" -ge 8 ]]; then
     FLASH_ARG=""
 else
@@ -32,13 +33,6 @@ rule AF3_INFERENCE:
                     OUTPUT_DIR, "rule_MERGE_MONOMERS_TO_MULTIMERS", f"{w.multi}_data.json"
                 )
             )
-#            otherwise=lambda w: os.path.join(
-#                OUTPUT_DIR, "rule_MUTATE",
-#                re.match(r"(.+_seed-\d+)", w.mut).group(1),
-#                f"{w.mut}.json"
-#            ) if (MUTATION_DF_PATH is not None and re.search(r"_seed-\d+_.+", w.mut)) else os.path.join(
-#                OUTPUT_DIR, "rule_MERGE_MONOMERS_TO_MULTIMERS", f"{w.multi}_data.json"
-#            )
         )
     output:
         expand(
