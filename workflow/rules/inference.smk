@@ -1,9 +1,7 @@
 if EXCLUSIVE_LOCK:
-    _EXCLUSIVE_LOCK = r"""
-    bash /app/scripts/gpu_lock.sh $PWD/.snakemake/.gpu_locks
-    """
+    _EXCLUSIVE_LOCK = "bash /app/scripts/gpu_lock.sh $PWD/.snakemake/.gpu_locks"
 else:
-    _EXCLUSIVE_LOCK = r""""""
+    _EXCLUSIVE_LOCK = ""
 
 _FLASH_DETECT = r"""
 CC=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader,nounits 2>/dev/null \
