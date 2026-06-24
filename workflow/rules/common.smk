@@ -398,7 +398,6 @@ def _collect_inference_targets(wildcards, *, use_lock: bool) -> list:
                 mut=mut, seed=seed, sample=range(N_SAMPLES)
             )
         ])
-    print([*flatten(internal)][-1])
     if internal and external:
         return [*flatten(internal), *external]
     if internal:
