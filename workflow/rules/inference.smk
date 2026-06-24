@@ -80,7 +80,7 @@ rule AF3_INFERENCE:
         models_dir = MODELS_DIR,
         output_dir = OUTPUT_DIR,
         database_dir = DB_DIR,
-        shell_preamble = _FLASH_DETECT + _EXCLUSIVE_LOCK,
+        shell_preamble = _FLASH_DETECT + _EXCLUSIVE_LOCK
     container:
         AF3_CONTAINER
     shell:
