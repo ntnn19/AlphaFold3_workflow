@@ -507,8 +507,6 @@ def prepare_container_binds(
         if value:
             interest.add(Path(value))
     interest.add(Path(workflow.source_path("../scripts/gpu_lock.sh")))
-    print(Path(workflow.source_path("../scripts/gpu_lock.sh")))
-    exit()
     roots = sorted(_collect_roots(interest))
     bind_spec = ",".join(f"{r}:{r}" for r in roots)
     for var in ("APPTAINER_BINDPATH", "SINGULARITY_BINDPATH"):
