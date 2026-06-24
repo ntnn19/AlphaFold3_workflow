@@ -79,8 +79,7 @@ rule AF3_INFERENCE:
         AF3_CONTAINER
     shell:
         """
-        {params.shell_preamble}
-        python \
+        {params.shell_preamble} python \
             /app/alphafold/run_alphafold.py $FLASH_ARG --json_path={input.data} \
             --model_dir={params.models_dir} \
             --output_dir={params.output_dir}/rule_AF3_INFERENCE \

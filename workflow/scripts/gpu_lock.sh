@@ -1,8 +1,8 @@
 #!/bin/bash
-# gpu_lock_run.sh — acquire an exclusive GPU slot then run a command.
+# gpu_lock.sh — acquire an exclusive GPU slot then run a command.
 #
 # Usage:
-#   gpu_lock_run.sh <lock_dir> <command> [args...]
+#   gpu_lock.sh <lock_dir> <command> [args...]
 #
 # Arguments:
 #   lock_dir   Directory for GPU lock files. Must be on a filesystem shared
@@ -20,23 +20,23 @@
 #     automatically on exit, crash, or SIGKILL (OS-level guarantee).
 #
 # Example (from a Snakemake shell directive):
-#   bash /app/scripts/gpu_lock_run.sh /root/af_output/.gpu_locks \
+#   bash /app/scripts/gpu_lock.sh /root/af_output/.gpu_locks \
 #     python /app/alphafold/run_alphafold.py --json_path=... [other flags]
 
 set -euo pipefail
 
-LOCK_DIR="${1:?gpu_lock_run.sh: lock_dir argument is required}"
+LOCK_DIR="${1:?gpu_lock.sh: lock_dir argument is required}"
 shift  # remaining args are the command to run
 
 if [[ $# -eq 0 ]]; then
-    echo "gpu_lock_run.sh: no command specified" >&2
+    echo "gpu_lock.sh: no command specified" >&2
     exit 1
 fi
 
 NUM_GPUS=$(nvidia-smi --query-gpu=name --format=csv,noheader | wc -l)
 
 if [[ "$NUM_GPUS" -eq 0 ]]; then
-    echo "gpu_lock_run.sh: no GPUs detected by nvidia-smi" >&2
+    echo "gpu_lock.sh: no GPUs detected by nvidia-smi" >&2
     exit 1
 fi
 
