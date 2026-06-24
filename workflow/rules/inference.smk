@@ -1,7 +1,9 @@
 if EXCLUSIVE_LOCK:
-    _EXCLUSIVE_LOCK = "bash /app/scripts/gpu_lock.sh $PWD/.snakemake/.gpu_locks"
+    _EXCLUSIVE_LOCK = r"""
+    bash /app/scripts/gpu_lock.sh $PWD/.snakemake/.gpu_locks
+    """
 else:
-    _EXCLUSIVE_LOCK = ""
+    _EXCLUSIVE_LOCK = r""""""
 
 _FLASH_DETECT = r"""
 CC=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader,nounits 2>/dev/null \
@@ -72,7 +74,7 @@ rule AF3_INFERENCE:
         models_dir = MODELS_DIR,
         output_dir = OUTPUT_DIR,
         database_dir = DB_DIR,
-        shell_preamble = _FLASH_DETECT + _EXCLUSIVE_LOCK
+        shell_preamble = _FLASH_DETECT.strip() + "\n" + _EXCLUSIVE_LOCK.strip(),
     container:
         AF3_CONTAINER
     shell:
