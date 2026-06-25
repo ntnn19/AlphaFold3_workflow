@@ -1,14 +1,6 @@
-if EXCLUSIVE_LOCK:
-    _EXCLUSIVE_LOCK = r"""
-    bash /app/scripts/gpu_lock.sh $PWD/.snakemake/.gpu_locks
-    """
-else:
-    _EXCLUSIVE_LOCK = r""""""
-
 _FLASH_DETECT = r"""
-CC=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader,nounits 2>/dev/null \
-     | head -n1 | cut -d'.' -f1 | tr -dc '0-9')
-CC=${CC:-0}
+CC=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader,nounits \
+        2>/dev/null | head -n 1 | cut -d'.' -f1 || echo 0)
 if [[ "$CC" -ge 8 ]]; then
     FLASH_ARG=""
 else
@@ -17,8 +9,10 @@ else
 fi
 """
 
+
 rule AF3_INFERENCE:
     input:
+        _helper = workflow.source_path("../scripts/gpu_lock.sh"),
         data = branch(
             lookup(query="sample_id == '{mut}'" if MUTATION_DF_PATH is not None else "sample_id == '{multi}'", within=INFERENCE_READY_DF, cols="file"),
             then=lookup(query="sample_id == '{mut}'" if MUTATION_DF_PATH is not None else "sample_id == '{multi}'", within=INFERENCE_READY_DF, cols="file"),
@@ -74,10 +68,20 @@ rule AF3_INFERENCE:
         models_dir = MODELS_DIR,
         output_dir = OUTPUT_DIR,
         database_dir = DB_DIR,
-        shell_preamble = _FLASH_DETECT.strip() + "\n" + _EXCLUSIVE_LOCK.strip(),
+        flash_detect = _FLASH_DETECT
     container:
         AF3_CONTAINER
     shell:
         """
-        {params.shell_preamble} python /app/alphafold/run_alphafold.py $FLASH_ARG --json_path={input.data} --model_dir={params.models_dir} --output_dir={params.output_dir}/rule_AF3_INFERENCE --db_dir={params.database_dir} --run_data_pipeline=false --run_inference=true {params.extra_af3_flags} 2>&1 | tee {log}
+        {params.flash_detect}
+        if [ "{params.exclusive_lock}" = "true" ]; then
+            LOCK_PREFIX="bash {input._helper} $PWD/.snakemake/.gpu_locks"
+        fi
+        $LOCK_PREFIX python /app/alphafold/run_alphafold.py $FLASH_ARG --json_path={input.data} \
+        --model_dir={params.models_dir} \
+        --output_dir={params.output_dir}/rule_AF3_INFERENCE \
+        --db_dir={params.database_dir} \
+        --run_data_pipeline=false \
+        --run_inference=true \
+        {params.extra_af3_flags} 2>&1 | tee {log}
         """
