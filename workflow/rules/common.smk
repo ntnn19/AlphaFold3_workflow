@@ -401,8 +401,6 @@ def _collect_inference_targets(wildcards, *, use_lock: bool) -> list:
     if internal and external:
         return [*flatten(internal), *external]
     if internal:
-        print(internal)
-        exit()
         return flatten(internal)
     if external:
         return external
