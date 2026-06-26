@@ -16,9 +16,11 @@ checkpoint MUTATE:
         runtime     = 480,
     benchmark:
         os.path.join(OUTPUT_DIR, "benchmarks", "rule_MUTATE", "{multi}.tsv"),
+    params:
+        output_dir = OUTPUT_DIR 
     conda: 
         "../envs/preprocessing.yaml"
     shell:
         """
-        python {input._helper} {input.data} {input.mutation_list} {OUTPUT_DIR}/rule_MUTATE/{wildcards.multi}
+        python {input._helper} {input.data} {input.mutation_list} {params.output_dir}/rule_MUTATE/{wildcards.multi}
         """
