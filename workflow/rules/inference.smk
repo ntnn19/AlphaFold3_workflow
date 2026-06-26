@@ -76,6 +76,8 @@ rule AF3_INFERENCE:
         {params.flash_detect}
         if [ "{params.exclusive_lock}" = "true" ]; then
             LOCK_PREFIX="bash {input._helper} $PWD/.snakemake/.gpu_locks"
+        else
+            LOCK_PREFIX=""
         fi
         $LOCK_PREFIX python /app/alphafold/run_alphafold.py $FLASH_ARG --json_path={input.data} \
         --model_dir={params.models_dir} \
