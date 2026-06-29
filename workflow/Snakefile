@@ -27,7 +27,7 @@ include: "rules/report.smk"
 localrules: PREPROCESSING, MERGE_MONO_AND_MULTI_JSON
 
 if config.get("run_data_pipeline_locally", False):
-    localrules: AF3_DATA_SPEEDY_PIPELINE,PREPROCESSING, MERGE_MONO_AND_MULTI_JSON
+    localrules: AF3_DATA_SPEEDY_PIPELINE,PREPROCESSING, MERGE_MONO_AND_MULTI_JSON, AGGREGATE_RESULTS, DATAVZRD_REPORT, MUTATE
 
 # ── Wildcard constraints ─────────────────────────────────────────────────────
 wildcard_constraints:
