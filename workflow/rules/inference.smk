@@ -32,25 +32,25 @@ rule AF3_INFERENCE:
         model=expand(
             os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{{multi}}",
                             "seed-{{seed}}_sample-{sample}",
-                            "{{multi}}_seed-{{seed}}_sample-{sample}_model.cif" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "seed-{{seed}}_sample-{sample}_model.cif"),
+                            "{{multi}}_seed-{{seed}}_sample-{sample}_model.cif" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "model.cif"),
             sample=range(N_SAMPLES)
         ) if MUTATION_DF.empty else
         expand(
             os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{{mut}}",
                             "seed-{{seed}}_sample-{sample}",
-                            "{{mut}}_seed-{{seed}}_sample-{sample}_model.cif" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "seed-{{seed}}_sample-{sample}_model.cif"),
+                            "{{mut}}_seed-{{seed}}_sample-{sample}_model.cif" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "model.cif"),
             sample=range(N_SAMPLES)
         ),
         scores=expand(
             os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{{multi}}",
                             "seed-{{seed}}_sample-{sample}",
-                            "{{multi}}_seed-{{seed}}_sample-{sample}_confidences.json" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "seed-{{seed}}_sample-{sample}_confidences.json"),
+                            "{{multi}}_seed-{{seed}}_sample-{sample}_confidences.json" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "confidences.json"),
             sample=range(N_SAMPLES)
         ) if MUTATION_DF.empty else
         expand(
             os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{{mut}}",
                             "seed-{{seed}}_sample-{sample}",
-                            "{{mut}}_seed-{{seed}}_sample-{sample}_confidences.json" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "seed-{{seed}}_sample-{sample}_confidences.json"), 
+                            "{{mut}}_seed-{{seed}}_sample-{sample}_confidences.json" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "confidences.json"), 
             sample=range(N_SAMPLES)
         ),
     log:
