@@ -69,9 +69,11 @@ rule IPSAE:
             sample=range(N_SAMPLES)
         ),
     log:
-        os.path.join(OUTPUT_DIR, "logs", "rule_IPSAE", "{multi}.log") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "logs", "rule_IPSAE", "{mut}.log"),
+        os.path.join(OUTPUT_DIR, "logs", "rule_IPSAE", "{multi}_seed-{seed}.log") if MUTATION_DF.empty else
+        os.path.join(OUTPUT_DIR, "logs", "rule_IPSAE", "{mut}_seed-{seed}.log"),
     benchmark:
-        os.path.join(OUTPUT_DIR, "benchmarks", "rule_IPSAE", "{multi}.tsv") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "benchmarks", "rule_IPSAE", "{mut}.tsv"),
+        os.path.join(OUTPUT_DIR, "benchmarks", "rule_IPSAE", "{multi}_seed-{seed}.tsv") if MUTATION_DF.empty else
+        os.path.join(OUTPUT_DIR, "benchmarks", "rule_IPSAE", "{mut}_seed-{seed}.tsv"),
     resources:
         mem_mb  = 1000,
         runtime = 480,
