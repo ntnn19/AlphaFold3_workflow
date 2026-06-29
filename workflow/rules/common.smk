@@ -421,23 +421,11 @@ def _collect_inference_targets(wildcards, *, use_lock: bool) -> list:
             )
         ])
     if internal and external:
-        print("BOTH")
-        exit()
         return [*flatten(internal), *external]
     if internal:
-        print("INTERNAL")
-        print(f"len(flatten(internal))={len(flatten(internal))}")
-        print("INTERNA=",flatten(internal)[0:3])
-        print("INTERNA=",flatten(internal)[5000:5003])
-        print("INTERNA=",flatten(internal)[10000:10003])
-        exit()
         return flatten(internal)
     if external:
-        print("EXTERNAL")
-        exit()
         return external
-    print("EMPTY")
-    exit()
     return []
 
 
@@ -450,30 +438,30 @@ def inference_outputs(wildcards):
 def aggregate_outputs(wildcards):
     """Return global TSV paths for all inference jobs (one per job)."""
     cif_paths = _collect_inference_targets(wildcards, use_lock=False)
-    global_ = [
-        os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", f"{Path(p).parent.parent.name}",f"{Path(p).parent.parent.name}_{Path(p).parent.name}_af_global.tsv")
-        for p in cif_paths
-        if p.endswith("_model.cif")
-    ]
+    model_suffix = "_model.cif" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "model.cif"
 
+    global_ = [
+        os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", f"{Path(p).parent.parent.name}", f"{Path(p).parent.parent.name}_{Path(p).parent.name}_af_global.tsv")
+        for p in cif_paths
+        if p.endswith(model_suffix)
+    ]
     per_chain_ = [
         os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", f"{Path(p).parent.parent.name}", f"{Path(p).parent.parent.name}_{Path(p).parent.name}_af_per_chain.tsv")
         for p in cif_paths
-        if p.endswith("_model.cif")
+        if p.endswith(model_suffix)
     ]
     per_chain_pair_ = [
         os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", f"{Path(p).parent.parent.name}", f"{Path(p).parent.parent.name}_{Path(p).parent.name}_af_per_chain_pair.tsv")
         for p in cif_paths
-        if p.endswith("_model.cif")
+        if p.endswith(model_suffix)
     ]
-
     ipsae = [
         os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", f"{Path(p).parent.parent.name}", f"{Path(p).parent.parent.name}_{Path(p).parent.name}_ipsae.tsv")
         for p in cif_paths
-        if p.endswith("_model.cif")
+        if p.endswith(model_suffix)
     ]
     return [*global_, *per_chain_, *per_chain_pair_, *ipsae]
-
+    
 
 def meta_aggregate_outputs(wildcards):
     """Return the three project-level summary TSV paths."""
