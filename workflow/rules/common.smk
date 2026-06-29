@@ -348,6 +348,16 @@ def _collect_inference_targets(wildcards, *, use_lock: bool) -> list:
             for path in expand(
                 os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{multi}",
                                 "seed-{seed}_sample-{sample}",
+                                "{multi}_seed-{seed}_sample-{sample}_confidences.json" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "confidences.json"),
+                multi=multi, seed=seed, sample=range(N_SAMPLES)
+            )
+        ])
+        internal.append([
+            path
+            for multi, seed in zip(JOB_NAMES_MULTIMERS, SEEDS)
+            for path in expand(
+                os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{multi}",
+                                "seed-{seed}_sample-{sample}",
                                 "{multi}_seed-{seed}_sample-{sample}_model_15_15.txt" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "model_15_15.txt"),
                 multi=multi, seed=seed, sample=range(N_SAMPLES)
             )
