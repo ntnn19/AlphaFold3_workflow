@@ -58,10 +58,9 @@ rule AF3_INFERENCE:
     benchmark:
         os.path.join(OUTPUT_DIR, "benchmarks", "rule_AF3_INFERENCE", "{multi}_seed-{seed}.tsv") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "benchmarks", "rule_AF3_INFERENCE", "{mut}_seed-{seed}.tsv"),
     resources:
-        mem_mb      = 16000,
         runtime     = 480,
-        gpu  = 1,   # standard Snakemake GPU resource
-        threads  = 2,   # standard Snakemake GPU resource
+        gpu  = 1,   
+        threads  = 1
     params:
         extra_af3_flags = EXTRA_AF3_FLAGS,
         exclusive_lock = "true" if EXCLUSIVE_LOCK else "false",
