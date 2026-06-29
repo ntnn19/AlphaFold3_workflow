@@ -415,13 +415,20 @@ def _collect_inference_targets(wildcards, *, use_lock: bool) -> list:
     print("INTERNA=",flatten(internal)[10000:10003])
     print("INTERNA=",flatten(internal)[15000:15003])
     print("INTERNA=",flatten(internal)[20000:20003])
-    exit()
     if internal and external:
+        print("BOTH")
+        exit()
         return [*flatten(internal), *external]
     if internal:
+        print("INTERNAL")
+        exit()
         return flatten(internal)
     if external:
+        print("EXTERNAL")
+        exit()
         return external
+    print("EMPTY")
+    exit()
     return []
 
 
