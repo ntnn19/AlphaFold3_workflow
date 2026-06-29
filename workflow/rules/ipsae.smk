@@ -44,36 +44,34 @@ rule IPSAE:
             )
         ),
     output:
-        expand(
+        ipsae_15_15 = expand(
             os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{{multi}}",
                          "seed-{{seed}}_sample-{sample}",
-                         "{{multi}}_seed-{{seed}}_sample-{sample}_model_15_15.txt"),
+                         "{{multi}}_seed-{{seed}}_sample-{sample}_model_15_15.txt" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "seed-{{seed}}_sample-{sample}_model_15_15.txt"),
             sample=range(N_SAMPLES)
         ) if MUTATION_DF.empty else
         expand(
             os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{{mut}}",
                          "seed-{{seed}}_sample-{sample}",
-                         "{{mut}}_seed-{{seed}}_sample-{sample}_model_15_15.txt"),
+                         "{{mut}}_seed-{{seed}}_sample-{sample}_model_15_15.txt" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "seed-{{seed}}_sample-{sample}_model_15_15.txt"),
             sample=range(N_SAMPLES)
         ),
-        expand(
+        ipsae_10_15 = expand(
             os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{{multi}}",
                          "seed-{{seed}}_sample-{sample}",
-                         "{{multi}}_seed-{{seed}}_sample-{sample}_model_10_15.txt"),
+                         "{{multi}}_seed-{{seed}}_sample-{sample}_model_10_15.txt" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "seed-{{seed}}_sample-{sample}_model_10_15.txt"),
             sample=range(N_SAMPLES)
         ) if MUTATION_DF.empty else
         expand(
             os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{{mut}}",
                          "seed-{{seed}}_sample-{sample}",
-                         "{{mut}}_seed-{{seed}}_sample-{sample}_model_10_15.txt"),
+                         "{{mut}}_seed-{{seed}}_sample-{sample}_model_10_15.txt" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "seed-{{seed}}_sample-{sample}_model_10_15.txt"),
             sample=range(N_SAMPLES)
         ),
-#    log:
-#        os.path.join(OUTPUT_DIR, "logs", "rule_IPSAE", "{multi}.log") if MUTATION_DF.empty else
-#        os.path.join(OUTPUT_DIR, "logs", "rule_IPSAE", "{mut}.log"),
-#    benchmark:
-#        os.path.join(OUTPUT_DIR, "benchmarks", "rule_IPSAE", "{multi}.tsv") if MUTATION_DF.empty else
-#        os.path.join(OUTPUT_DIR, "benchmarks", "rule_IPSAE", "{mut}.tsv"),
+    log:
+        os.path.join(OUTPUT_DIR, "logs", "rule_IPSAE", "{multi}.log") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "logs", "rule_IPSAE", "{mut}.log"),
+    benchmark:
+        os.path.join(OUTPUT_DIR, "benchmarks", "rule_IPSAE", "{multi}.tsv") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "benchmarks", "rule_IPSAE", "{mut}.tsv"),
     resources:
         mem_mb  = 1000,
         runtime = 480,

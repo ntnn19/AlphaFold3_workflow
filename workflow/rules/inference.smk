@@ -29,28 +29,28 @@ rule AF3_INFERENCE:
             )
         )
     output:
-        expand(
+        model=expand(
             os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{{multi}}",
                             "seed-{{seed}}_sample-{sample}",
-                            "{{multi}}_seed-{{seed}}_sample-{sample}_model.cif"),
+                            "{{multi}}_seed-{{seed}}_sample-{sample}_model.cif" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "seed-{{seed}}_sample-{sample}_model.cif"),
             sample=range(N_SAMPLES)
         ) if MUTATION_DF.empty else
         expand(
             os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{{mut}}",
                             "seed-{{seed}}_sample-{sample}",
-                            "{{mut}}_seed-{{seed}}_sample-{sample}_model.cif"),
+                            "{{mut}}_seed-{{seed}}_sample-{sample}_model.cif" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "seed-{{seed}}_sample-{sample}_model.cif"),
             sample=range(N_SAMPLES)
         ),
-        expand(
+        scores=expand(
             os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{{multi}}",
                             "seed-{{seed}}_sample-{sample}",
-                            "{{multi}}_seed-{{seed}}_sample-{sample}_confidences.json"),
+                            "{{multi}}_seed-{{seed}}_sample-{sample}_confidences.json" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "seed-{{seed}}_sample-{sample}_confidences.json"),
             sample=range(N_SAMPLES)
         ) if MUTATION_DF.empty else
         expand(
             os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{{mut}}",
                             "seed-{{seed}}_sample-{sample}",
-                            "{{mut}}_seed-{{seed}}_sample-{sample}_confidences.json"),
+                            "{{mut}}_seed-{{seed}}_sample-{sample}_confidences.json" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "seed-{{seed}}_sample-{sample}_confidences.json"), 
             sample=range(N_SAMPLES)
         ),
     log:
@@ -58,9 +58,10 @@ rule AF3_INFERENCE:
     benchmark:
         os.path.join(OUTPUT_DIR, "benchmarks", "rule_AF3_INFERENCE", "{multi}_seed-{seed}.tsv") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "benchmarks", "rule_AF3_INFERENCE", "{mut}_seed-{seed}.tsv"),
     resources:
+        mem_mb      = 16000,
         runtime     = 480,
-        gpu  = 1,   
-        threads  = 1
+        gpu  = 1,   # standard Snakemake GPU resource
+        threads  = 2,   # standard Snakemake GPU resource
     params:
         extra_af3_flags = EXTRA_AF3_FLAGS,
         exclusive_lock = "true" if EXCLUSIVE_LOCK else "false",

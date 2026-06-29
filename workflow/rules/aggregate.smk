@@ -1,53 +1,9 @@
 rule EXTRACT_SCORES:
     input:
-        expand(
-            os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{{multi}}",
-                         "seed-{{seed}}_sample-{sample}",
-                         "{{multi}}_seed-{{seed}}_sample-{sample}_model_15_15.txt"),
-            sample=range(N_SAMPLES)
-        ) if MUTATION_DF.empty else
-        expand(
-            os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{{mut}}",
-                         "seed-{{seed}}_sample-{sample}",
-                         "{{mut}}_seed-{{seed}}_sample-{sample}_model_15_15.txt"),
-            sample=range(N_SAMPLES)
-        ),
-        expand(
-            os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{{multi}}",
-                         "seed-{{seed}}_sample-{sample}",
-                         "{{multi}}_seed-{{seed}}_sample-{sample}_model_10_15.txt"),
-            sample=range(N_SAMPLES)
-        ) if MUTATION_DF.empty else
-        expand(
-            os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{{mut}}",
-                         "seed-{{seed}}_sample-{sample}",
-                         "{{mut}}_seed-{{seed}}_sample-{sample}_model_10_15.txt"),
-            sample=range(N_SAMPLES)
-        ),
-        expand(
-            os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{{multi}}",
-                            "seed-{{seed}}_sample-{sample}",
-                            "{{multi}}_seed-{{seed}}_sample-{sample}_model.cif"),
-            sample=range(N_SAMPLES)
-        ) if MUTATION_DF.empty else
-        expand(
-            os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{{mut}}",
-                            "seed-{{seed}}_sample-{sample}",
-                            "{{mut}}_seed-{{seed}}_sample-{sample}_model.cif"),
-            sample=range(N_SAMPLES)
-        ),
-        expand(
-            os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{{multi}}",
-                            "seed-{{seed}}_sample-{sample}",
-                            "{{multi}}_seed-{{seed}}_sample-{sample}_confidences.json"),
-            sample=range(N_SAMPLES)
-        ) if MUTATION_DF.empty else
-        expand(
-            os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{{mut}}",
-                            "seed-{{seed}}_sample-{sample}",
-                            "{{mut}}_seed-{{seed}}_sample-{sample}_confidences.json"),
-            sample=range(N_SAMPLES)
-        ),
+        rules.IPSAE.output.ipsae_15_15,
+        rules.IPSAE.output.ipsae_10_15,
+        rules.AF3_INFERENCE.output.model,
+        rules.AF3_INFERENCE.output.scores,
     output:
         global_tsv    = temp(expand(os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", "{{multi}}", "{{multi}}_seed-{{seed}}_sample-{sample}_af_global.tsv"), sample=range(N_SAMPLES)) if MUTATION_DF.empty else temp(expand(os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES","{{mut}}", "{{mut}}_seed-{{seed}}_sample-{sample}_af_global.tsv"), sample=range(N_SAMPLES)))),
         per_chain_tsv = temp(expand(os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", "{{multi}}", "{{multi}}_seed-{{seed}}_sample-{sample}_af_per_chain.tsv"), sample=range(N_SAMPLES)) if MUTATION_DF.empty else temp(expand(os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", "{{mut}}", "{{mut}}_seed-{{seed}}_sample-{sample}_af_per_chain.tsv"), sample=range(N_SAMPLES)))),
