@@ -3,7 +3,7 @@ rule EXTRACT_SCORES:
         rules.IPSAE.output.ipsae_15_15,
         rules.IPSAE.output.ipsae_10_15,
         rules.AF3_INFERENCE.output.model,
-        rules.AF3_INFERENCE.output.scores,
+        rules.AF3_INFERENCE.output.scores
     output:
         global_tsv    = temp(expand(os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", "{{multi}}", "{{multi}}_seed-{{seed}}_sample-{sample}_af_global.tsv"), sample=range(N_SAMPLES)) if MUTATION_DF.empty else temp(expand(os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES","{{mut}}", "{{mut}}_seed-{{seed}}_sample-{sample}_af_global.tsv"), sample=range(N_SAMPLES)))),
         per_chain_tsv = temp(expand(os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", "{{multi}}", "{{multi}}_seed-{{seed}}_sample-{sample}_af_per_chain.tsv"), sample=range(N_SAMPLES)) if MUTATION_DF.empty else temp(expand(os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", "{{mut}}", "{{mut}}_seed-{{seed}}_sample-{sample}_af_per_chain.tsv"), sample=range(N_SAMPLES)))),
