@@ -41,6 +41,7 @@ MODELS_DIR   = config["af3_flags"]["models_dir"]
 DB_DIR       = config["af3_flags"]["databases_dir"]
 PREDICT_INDIVIDUAL_COMPONENTS = '--predict-individual-components' if config.get('predict_individual_components', False) else ''
 AF3_VERSION = config.get("af3_version","v3.0.2")
+print("AF3_VERSION=", AF3_VERSION)
 # ── Utility ──────────────────────────────────────────────────────────────────
 _ALLOWED = frozenset("abcdefghijklmnopqrstuvwxyz0123456789_-.")
 
