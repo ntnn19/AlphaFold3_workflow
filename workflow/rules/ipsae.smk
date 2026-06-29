@@ -81,12 +81,15 @@ rule IPSAE:
     params:
         inference_dir = os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{multi}") if MUTATION_DF.empty else
                         os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{mut}"),
+        confidences_glob = "*_confidences.json" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "confidences.json",
+        confidences_suffix = "_confidences.json" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "confidences.json",
+        model_suffix = "_model.cif" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "model.cif",
         script = workflow.source_path("../scripts/ipsae.py"),
     shell:
         """
-        for f in {params.inference_dir}/seed-*_sample-*/*confidences.json; do
+        for f in {params.inference_dir}/seed-*_sample-*/{params.confidences_glob}; do
             if [[ "$f" != *summary* ]]; then
-                model="${{f/_confidences.json/_model.cif}}"
+                model="${{f%{params.confidences_suffix}}}{params.model_suffix}"
                 python {params.script} "$f" "$model" 10 15
                 python {params.script} "$f" "$model" 15 15
             fi
