@@ -1,10 +1,9 @@
-import copy
+import pandas as pd
 import json
 import os
 from pathlib import Path
-
+import copy
 import click
-import pandas as pd
 from loguru import logger
 
 
@@ -23,9 +22,7 @@ def main(multimer_file, monomer_file, output_file, inference_to_data_map):
     if inference_to_data_map:
         # A2 fix: use the correctly-named variable throughout
         inference_to_data_map_df = pd.read_csv(inference_to_data_map, sep="\t")
-            inference_to_data_map_df.multimer_file.str.contains(
-                Path(multimer_file).stem
-            )
+        job_map_df = inference_to_data_map_df[
             inference_to_data_map_df.multimer_file.str.contains(Path(multimer_file).stem)
         ]
         input_multimer_file = job_map_df.multimer_file.unique()[0]
@@ -58,15 +55,24 @@ def main(multimer_file, monomer_file, output_file, inference_to_data_map):
         logger.debug("merged_multimer: {}", merged_multimer)
         POLYMER_TYPES = {"protein", "rna", "dna"}
 
+        polymer_entries = [
+            e for e in merged_multimer["sequences"] if next(iter(e)) in POLYMER_TYPES
+        ]
+        if not polymer_entries:
+            seen_keys = sorted({next(iter(e)) for e in merged_multimer["sequences"]})
+            raise click.UsageError(
+                f"No entries in '{multimer_file}' matched POLYMER_TYPES "
+                f"{sorted(POLYMER_TYPES)}. Molecule-type keys actually present: "
+                f"{seen_keys}. Update POLYMER_TYPES to match your schema."
+            )
+
         # Build chain_id -> (entry, mol_type) for every polymer chain in the
         # multimer. Matching is done by chain id, never by argument order, so
         # monomer_file can be passed in any order without risk of attaching
         # the wrong monomer's data to a chain.
         target_map = {}
-        for entry in merged_multimer["sequences"]:
+        for entry in polymer_entries:
             mol_type = next(iter(entry))
-            if mol_type not in POLYMER_TYPES:
-                continue
             chain_id = entry[mol_type].get("id")
             target_map[chain_id] = (entry, mol_type)
 
