@@ -4,14 +4,18 @@ import json
 import os
 import re
 import string
-from typing import Dict, Iterable, List, Optional, Set, Tuple
+from typing import Iterable, List, Optional, Set, Tuple
 
 import click
 import pandas as pd
 
-UFM_SEQUENCE = "MSKVSFKITLTSDPRLPYKVLSVPESTPFTAVLKFAAEEFKVPAATSAIITNDGIGINPAQTAGNVFLKHGSELRIIPRDRVG"
+UFM_SEQUENCE = (
+    "MSKVSFKITLTSDPRLPYKVLSVPESTPFTAVLKFAAEEFKVPAATSAIITNDGIGINPAQTAGNVFLKHGSELRIIPRDRVG"
+)
 UFM_CTERM_RESIDUE = 83  # residue bearing the OXT used for conjugation
 LINKER_CCD_CODE = "TME"
+
+SUPPORTED_PTMS = {"ufm"}  # 'ubq' is a recognized choice but not yet implemented
 
 
 # --------------------------------------------------------------------------
@@ -106,18 +110,6 @@ def apply_mutation_to_a3m(a3m_string: str, mutation: str) -> str:
     return "\n".join(new_lines)
 
 
-def parse_mutation_entry(entry: str) -> Tuple[str, bool]:
-    """
-    Parse a single mutation token. A trailing '*' marks the position as a
-    UFM/PTM conjugation site, e.g. '14K*' -> ('14K', True); '20R' -> ('20R', False).
-    """
-    entry = entry.strip()
-    is_ufm_site = entry.endswith("*")
-    if is_ufm_site:
-        entry = entry[:-1].strip()
-    return entry, is_ufm_site
-
-
 def mutation_position(mutation_code: str) -> Optional[int]:
     match = re.match(r"(\d+)", mutation_code)
     return int(match.group(1)) if match else None
@@ -129,28 +121,67 @@ def strip_seed(name: str) -> str:
 
 
 # --------------------------------------------------------------------------
-# Mutation table loading (backward compatible with the original 4-column
-# format; supports an optional 'variant' column to group multiple chain
-# rows into a single output design)
+# Mutation table loading
+#
+# Two accepted formats:
+#   1. Legacy, headerless, exactly 4 tab-separated columns:
+#        sample_id  type  id  mutation
+#      Every row is treated as its own independent output variant, and no
+#      PTM/ligation behaviour is available (fully backward compatible).
+#
+#   2. Header-based, any of these columns, in any order:
+#        sample_id (required), type (required), id (required),
+#        mutation (required), variant (optional), ptm (optional)
+#      - 'variant': rows sharing the same (sample_id, variant) are combined
+#        into a single output design, so multiple chains can be mutated
+#        together.
+#      - 'ptm': if set to 'ufm' for a row, every mutation listed in that
+#        row's 'mutation' field becomes a UFM conjugation site (a UFM chain
+#        + linker ligand + bondedAtomPairs are generated for it). Leave
+#        blank for a plain mutation with no PTM.
 # --------------------------------------------------------------------------
+REQUIRED_COLUMNS = {"sample_id", "type", "id", "mutation"}
+
+
 def load_mutation_table(path: str) -> pd.DataFrame:
-    raw = pd.read_csv(path, sep="\t", header=None, comment="#", dtype=str)
-    ncols = raw.shape[1]
+    with open(path) as f:
+        first_line = f.readline()
+    header_tokens = [t.strip().strip('"').lower() for t in first_line.rstrip("\n").split("\t")]
+    has_header = "sample_id" in header_tokens
 
-    if ncols == 5:
-        raw.columns = ["sample_id", "variant", "type", "id", "mutation"]
-    elif ncols == 4:
-        raw.columns = ["sample_id", "type", "id", "mutation"]
-        # Original behaviour: every row is its own independent variant.
-        raw["variant"] = [f"row{i}" for i in range(len(raw))]
+    if has_header:
+        df = pd.read_csv(path, sep="\t", dtype=str, keep_default_na=False)
+        df.columns = [c.strip().lower() for c in df.columns]
+
+        missing = REQUIRED_COLUMNS - set(df.columns)
+        if missing:
+            raise ValueError(
+                f"Mutation table header is missing required column(s): {sorted(missing)}"
+            )
+
+        if "variant" not in df.columns:
+            df["variant"] = [f"row{i}" for i in range(len(df))]
+        if "ptm" not in df.columns:
+            df["ptm"] = ""
     else:
-        raise ValueError(
-            f"Unexpected number of columns ({ncols}) in mutation table; "
-            "expected 4 (sample_id, type, id, mutation) or "
-            "5 (sample_id, variant, type, id, mutation)."
-        )
+        df = pd.read_csv(path, sep="\t", header=None, comment="#", dtype=str, keep_default_na=False)
+        ncols = df.shape[1]
+        if ncols != 4:
+            raise ValueError(
+                f"Headerless mutation table must have exactly 4 columns "
+                f"(sample_id, type, id, mutation); found {ncols}. "
+                "Add a header row if you want to use 'variant' and/or 'ptm' columns."
+            )
+        df.columns = ["sample_id", "type", "id", "mutation"]
+        df["variant"] = [f"row{i}" for i in range(len(df))]
+        df["ptm"] = ""
 
-    return raw
+    # Track whether the caller gave real variant names (used to disambiguate
+    # output filenames) vs. auto-generated 'rowN' placeholders.
+    df.attrs["explicit_variant"] = has_header and "variant" in header_tokens
+    df["variant"] = df["variant"].fillna("").astype(str)
+    df["ptm"] = df["ptm"].fillna("").astype(str).str.strip().str.lower()
+    return df
 
 
 # --------------------------------------------------------------------------
@@ -178,7 +209,9 @@ def add_ufm_site(
     )
 
     bonded = mutated_data.setdefault("bondedAtomPairs", [])
-    bonded.append([[target_chain_id, position, "CB"], [ligand_chain_id, 1, "C1"]])
+    bonded.append(
+        [[target_chain_id, position, "CB"], [ligand_chain_id, 1, "C1"]]
+    )
     bonded.append(
         [[ufm_chain_id, UFM_CTERM_RESIDUE, "OXT"], [ligand_chain_id, 1, "C3"]]
     )
@@ -191,30 +224,13 @@ def add_ufm_site(
 @click.argument("input_json", type=click.Path(exists=True))
 @click.argument("mutation_list", type=click.Path(exists=True))
 @click.argument("output_dir", type=click.Path())
-@click.option(
-    "--ptm",
-    type=click.Choice(["ufm", "ubq"]),
-    help=(
-        "If 'ufm', any mutation marked with a trailing '*' (e.g. '14K*') is "
-        "treated as a UFM conjugation site: a UFM chain and a linker ligand "
-        "are added and bonded to that position. Without --ptm, '*' markers "
-        "are ignored and only stripped."
-    ),
-)
-def mutate(input_json, mutation_list, output_dir, ptm):
+def mutate(input_json, mutation_list, output_dir):
     """
     Mutate sequences in an AlphaFold3 JSON based on a mutations TSV table.
 
-    Mutation table columns (tab separated):
-        sample_id  [variant]  type  id  mutation
-
-    - 'variant' is optional. If present, all rows sharing the same
-      (sample_id, variant) are combined into a single output design, which
-      lets you mutate several chains (several targets) at once. If absent,
-      each row is its own design (original behaviour).
-    - 'mutation' is a comma separated list of mutations, e.g. '14K,20R'.
-      Append '*' to a mutation to mark it as a UFM ligation site when
-      --ptm ufm is given, e.g. '14K*,20R'.
+    See load_mutation_table() for the two accepted table formats. In short:
+    add a header row with an optional 'ptm' column and set it to 'ufm' on
+    any row to have that row's mutation(s) generate a UFM conjugation site.
     """
     with open(input_json) as f:
         data = json.load(f)
@@ -251,11 +267,17 @@ def mutate(input_json, mutation_list, output_dir, ptm):
 
             chain_type = row["type"]
             chain_id = str(row["id"])
+            row_ptm = row["ptm"]
+            if row_ptm and row_ptm not in SUPPORTED_PTMS:
+                click.echo(
+                    f"Warning: PTM type '{row_ptm}' requested for "
+                    f"type={chain_type}, id={chain_id} is not yet implemented; "
+                    "mutation(s) will be applied without PTM ligation."
+                )
+
             applied: List[str] = []
 
-            for raw_mut in raw_muts:
-                mutation_code, is_ufm_site = parse_mutation_entry(raw_mut)
-
+            for mutation_code in raw_muts:
                 matched = False
                 for seq_entry in sequences:
                     if chain_type not in seq_entry:
@@ -302,15 +324,12 @@ def mutate(input_json, mutation_list, output_dir, ptm):
                         f"Warning: No matching entry for "
                         f"type={chain_type}, id={chain_id}, mutation={mutation_code}"
                     )
-                    continue
 
-                if is_ufm_site:
-                    if ptm != "ufm":
-                        click.echo(
-                            f"Note: '{raw_mut}' marked as a UFM site but "
-                            "--ptm ufm was not given; marker ignored."
-                        )
-                    else:
+            if applied:
+                chain_mutations.append((chain_id, applied))
+
+                if row_ptm == "ufm":
+                    for mutation_code in applied:
                         position = mutation_position(mutation_code)
                         if position is None:
                             click.echo(
@@ -319,9 +338,6 @@ def mutate(input_json, mutation_list, output_dir, ptm):
                             )
                         else:
                             ufm_sites.append((chain_type, chain_id, position))
-
-            if applied:
-                chain_mutations.append((chain_id, applied))
 
         if not chain_mutations:
             click.echo(f"Warning: No mutations applied for variant '{variant_id}'.")
@@ -335,15 +351,22 @@ def mutate(input_json, mutation_list, output_dir, ptm):
             suffix = "_".join(
                 f"{cid}-" + "_".join(muts) for cid, muts in chain_mutations
             )
-        new_name = f"{full_name}_{suffix}"
+
+        # If the table explicitly names variants, include the variant name in
+        # the filename. This guarantees uniqueness even when two variants
+        # apply the same mutations but differ only in PTM status (e.g. one
+        # row set has ptm=ufm and another doesn't), which the mutation
+        # suffix alone would not distinguish.
+        if mut_df.attrs.get("explicit_variant"):
+            new_name = f"{full_name}_{variant_id}_{suffix}"
+        else:
+            new_name = f"{full_name}_{suffix}"
         mutated_data["name"] = new_name
 
-        if ptm == "ufm" and ufm_sites:
+        if ufm_sites:
             chain_ids = collect_chain_ids(sequences)
             for chain_type, target_chain_id, position in ufm_sites:
-                add_ufm_site(
-                    mutated_data, chain_ids, chain_type, target_chain_id, position
-                )
+                add_ufm_site(mutated_data, chain_ids, chain_type, target_chain_id, position)
                 click.echo(
                     f"  Added UFM ligation at {target_chain_id}{position} "
                     f"(chain type '{chain_type}')"
