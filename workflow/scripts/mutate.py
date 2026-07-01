@@ -34,6 +34,26 @@ def next_chain_id(existing: Iterable[str]) -> str:
     raise ValueError("No available chain ids left")
 
 
+def collect_existing_ufm_chain_ids(sequences: List[dict]) -> List[str]:
+    """Find chain ids of any entries already present in the input JSON whose
+    sequence matches the UFM sequence, so they can be reused instead of
+    adding a duplicate UFM chain."""
+    ids: List[str] = []
+    for entry in sequences:
+        for key in entry:
+            inner = entry[key]
+            if not isinstance(inner, dict):
+                continue
+            if inner.get("sequence") != UFM_SEQUENCE:
+                continue
+            cid = inner.get("id")
+            if isinstance(cid, list):
+                ids.extend(str(c) for c in cid)
+            elif cid is not None:
+                ids.append(str(cid))
+    return ids
+
+
 def collect_chain_ids(sequences: List[dict]) -> Set[str]:
     """Gather every chain id currently used in a `sequences` list (list-valued
     ids, e.g. homo-oligomers, are expanded)."""
@@ -193,17 +213,23 @@ def add_ufm_site(
     chain_type: str,
     target_chain_id: str,
     position: int,
-) -> None:
-    """Add a UFM protein chain + linker ligand + the two bonded atom pairs
-    connecting target_chain_id/position -> linker -> UFM chain."""
-    ufm_chain_id = next_chain_id(chain_ids)
-    chain_ids.add(ufm_chain_id)
+    reused_ufm_chain_id: Optional[str] = None,
+) -> str:
+    """Add a linker ligand + the two bonded atom pairs connecting
+    target_chain_id/position -> linker -> UFM chain. If reused_ufm_chain_id
+    is given, that pre-existing UFM chain is bonded to instead of adding a
+    new (duplicate) UFM protein chain. Returns the UFM chain id used."""
+    if reused_ufm_chain_id is not None:
+        ufm_chain_id = reused_ufm_chain_id
+    else:
+        ufm_chain_id = next_chain_id(chain_ids)
+        chain_ids.add(ufm_chain_id)
+        mutated_data["sequences"].append(
+            {chain_type: {"id": ufm_chain_id, "sequence": UFM_SEQUENCE}}
+        )
+
     ligand_chain_id = next_chain_id(chain_ids)
     chain_ids.add(ligand_chain_id)
-
-    mutated_data["sequences"].append(
-        {chain_type: {"id": ufm_chain_id, "sequence": UFM_SEQUENCE}}
-    )
     mutated_data["sequences"].append(
         {"ligand": {"id": ligand_chain_id, "ccdCodes": [LINKER_CCD_CODE]}}
     )
@@ -215,6 +241,8 @@ def add_ufm_site(
     bonded.append(
         [[ufm_chain_id, UFM_CTERM_RESIDUE, "OXT"], [ligand_chain_id, 1, "C3"]]
     )
+
+    return ufm_chain_id
 
 
 # --------------------------------------------------------------------------
@@ -365,12 +393,22 @@ def mutate(input_json, mutation_list, output_dir):
 
         if ufm_sites:
             chain_ids = collect_chain_ids(sequences)
+            available_ufm_ids = collect_existing_ufm_chain_ids(sequences)
             for chain_type, target_chain_id, position in ufm_sites:
-                add_ufm_site(mutated_data, chain_ids, chain_type, target_chain_id, position)
-                click.echo(
-                    f"  Added UFM ligation at {target_chain_id}{position} "
-                    f"(chain type '{chain_type}')"
+                reused_id = available_ufm_ids.pop(0) if available_ufm_ids else None
+                used_id = add_ufm_site(
+                    mutated_data, chain_ids, chain_type, target_chain_id, position, reused_id
                 )
+                if reused_id:
+                    click.echo(
+                        f"  Ligated {target_chain_id}{position} to existing "
+                        f"UFM chain '{used_id}' (no duplicate UFM chain added)"
+                    )
+                else:
+                    click.echo(
+                        f"  Added UFM ligation at {target_chain_id}{position} "
+                        f"(chain type '{chain_type}', new UFM chain '{used_id}')"
+                    )
 
         out_path = os.path.join(output_dir, f"{new_name}.json")
         with open(out_path, "w") as f:
