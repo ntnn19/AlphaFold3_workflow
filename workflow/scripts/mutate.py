@@ -9,9 +9,7 @@ from typing import Iterable, List, Optional, Set, Tuple
 import click
 import pandas as pd
 
-UFM_SEQUENCE = (
-    "MSKVSFKITLTSDPRLPYKVLSVPESTPFTAVLKFAAEEFKVPAATSAIITNDGIGINPAQTAGNVFLKHGSELRIIPRDRVG"
-)
+UFM_SEQUENCE = "MSKVSFKITLTSDPRLPYKVLSVPESTPFTAVLKFAAEEFKVPAATSAIITNDGIGINPAQTAGNVFLKHGSELRIIPRDRVG"
 UFM_CTERM_RESIDUE = 83  # residue bearing the OXT used for conjugation
 LINKER_CCD_CODE = "TME"
 
@@ -45,6 +43,7 @@ def collect_existing_ufm_chain_ids(sequences: List[dict]) -> List[str]:
             if not isinstance(inner, dict):
                 continue
             if inner.get("sequence") != UFM_SEQUENCE:
+                print("HERE")
                 continue
             cid = inner.get("id")
             if isinstance(cid, list):
@@ -166,7 +165,9 @@ REQUIRED_COLUMNS = {"sample_id", "type", "id", "mutation"}
 def load_mutation_table(path: str) -> pd.DataFrame:
     with open(path) as f:
         first_line = f.readline()
-    header_tokens = [t.strip().strip('"').lower() for t in first_line.rstrip("\n").split("\t")]
+    header_tokens = [
+        t.strip().strip('"').lower() for t in first_line.rstrip("\n").split("\t")
+    ]
     has_header = "sample_id" in header_tokens
 
     if has_header:
@@ -184,7 +185,9 @@ def load_mutation_table(path: str) -> pd.DataFrame:
         if "ptm" not in df.columns:
             df["ptm"] = ""
     else:
-        df = pd.read_csv(path, sep="\t", header=None, comment="#", dtype=str, keep_default_na=False)
+        df = pd.read_csv(
+            path, sep="\t", header=None, comment="#", dtype=str, keep_default_na=False
+        )
         ncols = df.shape[1]
         if ncols != 4:
             raise ValueError(
@@ -235,9 +238,7 @@ def add_ufm_site(
     )
 
     bonded = mutated_data.setdefault("bondedAtomPairs", [])
-    bonded.append(
-        [[target_chain_id, position, "CB"], [ligand_chain_id, 1, "C1"]]
-    )
+    bonded.append([[target_chain_id, position, "CB"], [ligand_chain_id, 1, "C1"]])
     bonded.append(
         [[ufm_chain_id, UFM_CTERM_RESIDUE, "OXT"], [ligand_chain_id, 1, "C3"]]
     )
@@ -397,7 +398,12 @@ def mutate(input_json, mutation_list, output_dir):
             for chain_type, target_chain_id, position in ufm_sites:
                 reused_id = available_ufm_ids.pop(0) if available_ufm_ids else None
                 used_id = add_ufm_site(
-                    mutated_data, chain_ids, chain_type, target_chain_id, position, reused_id
+                    mutated_data,
+                    chain_ids,
+                    chain_type,
+                    target_chain_id,
+                    position,
+                    reused_id,
                 )
                 if reused_id:
                     click.echo(
