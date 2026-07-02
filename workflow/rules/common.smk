@@ -128,7 +128,7 @@ if not DATA_PIPELINE_READY_DF.empty:
     _dp_synthetic = DATA_PIPELINE_READY_DF.copy()
     _dp_synthetic = _dp_synthetic.rename(columns={"file": "multimer_file"})
     _dp_synthetic["monomer_file"] = _dp_synthetic["multimer_file"].apply(
-        lambda x: os.path.join(OUTPUT_DIR, "rule_AF3_DATA_PIPELINE", Path(x).stem, f"{Path(x).stem}_data.json")
+        lambda x: os.path.join(OUTPUT_DIR, "rule_AF3_DATA_PIPELINE", sanitise(Path(x).stem), f"{sanitise(Path(x).stem)}_data.json")
     )
     _dp_synthetic["monomer_chain_id"] = "A"
     DATA_PIPELINE_OUTPUTS = _dp_synthetic["monomer_file"].tolist()
