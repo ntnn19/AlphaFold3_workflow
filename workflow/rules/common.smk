@@ -256,7 +256,7 @@ def _collect_inference_targets(wildcards, *, use_lock: bool) -> list:
                     for seed, sample in product(seeds, range(N_SAMPLES))
                 ]
             )
-    
+
         external.extend(
             path
             for paths in DATA_PIPELINE_READY_DF["file"].apply(expand_paths)
@@ -289,13 +289,13 @@ def _collect_inference_targets(wildcards, *, use_lock: bool) -> list:
                     + [f"{base(seed, sample)}_model_15_15.txt" if versioned else f"{base(seed, sample)}model_15_15.txt" for seed, sample in combos]
                     + [f"{base(seed, sample)}_model_10_15.txt" if versioned else f"{base(seed, sample)}model_10_15.txt" for seed, sample in combos]
                 )
-    
+
             external.extend(
                 path
                 for paths in _user_mr["multimer_file"].apply(expand_paths_mr)
                 for path in paths
             )
-    
+
     if not INFERENCE_READY_DF.empty:
         def expand_paths_inf(x):
             stem = Path(x).stem
@@ -304,7 +304,7 @@ def _collect_inference_targets(wildcards, *, use_lock: bool) -> list:
             versioned = AF3_VERSION not in ["v3.0.0", "v3.0.1"]
             base_dir = lambda seed, sample: f"{OUTPUT_DIR}/rule_AF3_INFERENCE/{stem}/seed-{seed}_sample-{sample}"
             fname = lambda seed, sample, suffix: (
-                f"{stem}_seed-{seed}_sample-{sample}_{suffix}" if versioned else suffix
+                f"{sanitise(stem)}_seed-{seed}_sample-{sample}_{suffix}" if versioned else suffix
             )
             return (
                 [f"{base_dir(seed, sample)}/{fname(seed, sample, 'model.cif')}" for seed, sample in combos]
@@ -316,19 +316,19 @@ def _collect_inference_targets(wildcards, *, use_lock: bool) -> list:
             for paths in INFERENCE_READY_DF["file"].apply(expand_paths_inf)
             for path in paths
         )
-    
+
     external = list(dict.fromkeys(external))  # dedupe while preserving order
 
     if not RAW_DATA_DF.empty:
         PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
         JOB_NAMES_MULTIMERS, = glob_wildcards(os.path.join(PREPROCESSING_DIR, "multimers", "{multi}.json"))
-    
+
         base_names_with_mutations = set(MUTATION_DF["sample_id"].unique()) if not MUTATION_DF.empty else set()
         JOB_NAMES_MULTIMERS = [
             m for m in JOB_NAMES_MULTIMERS
             if re.sub(r"_seed-\d+$", "", m) not in base_names_with_mutations
         ]
-    
+
         SEEDS = list(map(lambda x: re.search(r'seed-(\d+)', x).group(1), JOB_NAMES_MULTIMERS))
 
 
@@ -461,7 +461,7 @@ def aggregate_outputs(wildcards):
         if p.endswith(model_suffix)
     ]
     return [*global_, *per_chain_, *per_chain_pair_, *ipsae]
-    
+
 
 def meta_aggregate_outputs(wildcards):
     """Return the three project-level summary TSV paths."""
