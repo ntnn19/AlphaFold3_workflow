@@ -92,6 +92,8 @@ def load_sample_sheet(sheet_key):
 
     try:
         df = pd.read_csv(path, sep="\t")
+        if sheet_key != "raw_data":
+            df["sample_id"] = df["sample_id"].apply(lambda x: sanitise(x))
         return path, df
     except Exception as e:
         raise WorkflowError(
