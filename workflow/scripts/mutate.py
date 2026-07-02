@@ -160,7 +160,7 @@ def strip_seed(name: str) -> str:
 #        blank for a plain mutation with no PTM.
 # --------------------------------------------------------------------------
 REQUIRED_COLUMNS = {"sample_id", "type", "id", "mutation"}
-
+_ALLOWED = frozenset("abcdefghijklmnopqrstuvwxyz0123456789_-.")
 
 def load_mutation_table(path: str) -> pd.DataFrame:
     with open(path) as f:
