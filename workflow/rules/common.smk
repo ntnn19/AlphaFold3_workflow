@@ -302,7 +302,7 @@ def _collect_inference_targets(wildcards, *, use_lock: bool) -> list:
             seeds = get_seeds(x)
             combos = list(product(seeds, range(N_SAMPLES)))
             versioned = AF3_VERSION not in ["v3.0.0", "v3.0.1"]
-            base_dir = lambda seed, sample: f"{OUTPUT_DIR}/rule_AF3_INFERENCE/{stem}/seed-{seed}_sample-{sample}"
+            base_dir = lambda seed, sample: f"{OUTPUT_DIR}/rule_AF3_INFERENCE/{sanitise(stem)}/seed-{seed}_sample-{sample}"
             fname = lambda seed, sample, suffix: (
                 f"{sanitise(stem)}_seed-{seed}_sample-{sample}_{suffix}" if versioned else suffix
             )
