@@ -246,6 +246,11 @@ def add_ufm_site(
     return ufm_chain_id
 
 
+def sanitise(name: str) -> str:
+    """Lowercase, replace spaces, strip non-alphanumeric chars."""
+    return "".join(c for c in name.lower().replace(" ", "_") if c in _ALLOWED)
+
+
 # --------------------------------------------------------------------------
 # Main
 # --------------------------------------------------------------------------
@@ -390,7 +395,7 @@ def mutate(input_json, mutation_list, output_dir):
             new_name = f"{full_name}_{variant_id}_{suffix}"
         else:
             new_name = f"{full_name}_{suffix}"
-        mutated_data["name"] = new_name
+        mutated_data["name"] = sanitise(new_name)
 
         if ufm_sites:
             chain_ids = collect_chain_ids(sequences)
@@ -416,7 +421,7 @@ def mutate(input_json, mutation_list, output_dir):
                         f"(chain type '{chain_type}', new UFM chain '{used_id}')"
                     )
 
-        out_path = os.path.join(output_dir, f"{new_name}.json")
+        out_path = os.path.join(output_dir, f"{sanitise(new_name)}.json")
         with open(out_path, "w") as f:
             json.dump(mutated_data, f, indent=2)
 
