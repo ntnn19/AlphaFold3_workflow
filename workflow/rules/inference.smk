@@ -60,8 +60,6 @@ rule AF3_INFERENCE:
     resources:
         mem_mb      = 16000,
         runtime     = 480,
-        gpu  = 1,   # standard Snakemake GPU resource
-        threads  = 1,   # standard Snakemake GPU resource
     params:
         extra_af3_flags = EXTRA_AF3_FLAGS,
         exclusive_lock = "true" if EXCLUSIVE_LOCK else "false",
