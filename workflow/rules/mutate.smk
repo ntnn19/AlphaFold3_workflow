@@ -4,21 +4,21 @@ checkpoint MUTATE:
         data = branch(
             lookup(query="sample_id == '{multi}'",within=INFERENCE_READY_DF,cols="file"),
             then=lookup(query="sample_id == '{multi}'",within=INFERENCE_READY_DF,cols="file"),
-            otherwise=os.path.join(OUTPUT_DIR,"rule_MERGE_MONOMERS_TO_MULTIMERS","{multi}_data.json")
+            otherwise=expand(os.path.join(OUTPUT_DIR,"rule_MERGE_MONOMERS_TO_MULTIMERS","{multi}_data.json"), multi=pd.read_csv(os.path.join(OUTPUT_DIR, "rule_PREPROCESSING", "metadata", "inference_samples.tsv"), sep="\t")["sample_id"].to_list())
         ),
         mutation_list = MUTATION_DF_PATH if MUTATION_DF_PATH is not None else []
     output:
-        directory(os.path.join(OUTPUT_DIR, "rule_MUTATE", "{multi}")) if MUTATION_DF_PATH is not None else []
+        directory(os.path.join(OUTPUT_DIR, "rule_MUTATE")) if MUTATION_DF_PATH is not None else []
     log:
-        os.path.join(OUTPUT_DIR, "logs", "rule_MUTATE", "{multi}.log")
+        os.path.join(OUTPUT_DIR, "logs", "rule_MUTATE", "MUTATE.log")
     resources:
         mem_mb      = 16000,
         runtime     = 480,
     benchmark:
-        os.path.join(OUTPUT_DIR, "benchmarks", "rule_MUTATE", "{multi}.tsv"),
+        os.path.join(OUTPUT_DIR, "benchmarks", "rule_MUTATE", "MUTATE.tsv"),
     params:
-        output_dir = OUTPUT_DIR 
-    conda: 
+        output_dir = OUTPUT_DIR
+    conda:
         "../envs/preprocessing.yaml"
     shell:
         """
