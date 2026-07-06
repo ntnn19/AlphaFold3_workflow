@@ -50,7 +50,7 @@ rule AF3_INFERENCE:
         expand(
             os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{{mut}}",
                             "seed-{{seed}}_sample-{sample}",
-                            "{{mut}}_seed-{{seed}}_sample-{sample}_confidences.json" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "confidences.json"), 
+                            "{{mut}}_seed-{{seed}}_sample-{sample}_confidences.json" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "confidences.json"),
             sample=range(N_SAMPLES)
         ),
     log:
@@ -58,9 +58,10 @@ rule AF3_INFERENCE:
     benchmark:
         os.path.join(OUTPUT_DIR, "benchmarks", "rule_AF3_INFERENCE", "{multi}_seed-{seed}.tsv") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "benchmarks", "rule_AF3_INFERENCE", "{mut}_seed-{seed}.tsv"),
     resources:
-        mem_mb      = 16000,
-        runtime     = 480,
-        threads  = 1,   # standard Snakemake GPU resource
+        cpus_per_task=1,
+        mem_mb=1000,
+        runtime="30m",
+        slurm_partition="vds"
     params:
         extra_af3_flags = EXTRA_AF3_FLAGS,
         exclusive_lock = "true" if EXCLUSIVE_LOCK else "false",
