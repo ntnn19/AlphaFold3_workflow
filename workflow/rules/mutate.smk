@@ -17,10 +17,14 @@ checkpoint MUTATE:
     benchmark:
         os.path.join(OUTPUT_DIR, "benchmarks", "rule_MUTATE", "MUTATE.tsv"),
     params:
-        output_dir = OUTPUT_DIR
+        output_dir = OUTPUT_DIR,
+        data_dir   = os.path.join(OUTPUT_DIR, "rule_MERGE_MONOMERS_TO_MULTIMERS"),
+    threads: 8
     conda:
         "../envs/preprocessing.yaml"
     shell:
         """
-        python {input._helper} {input.data} {input.mutation_list} {params.output_dir}/rule_MUTATE/{wildcards.multi}
+        find {params.data_dir} -maxdepth 1 -type f -name '*_data.json' -print0 \
+        | parallel -0 -j {threads} \
+            python {input._helper} {{}} {input.mutation_list} {params.output_dir}/rule_MUTATE/{{/.}}
         """
