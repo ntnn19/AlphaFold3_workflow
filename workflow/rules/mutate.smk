@@ -1,6 +1,6 @@
+#_helper = workflow.source_path("../scripts/mutate.py"), # added this to allow clean deployment
 checkpoint MUTATE:
     input:
-        _helper = workflow.source_path("../scripts/mutate.py"), # added this to allow clean deployment
         data = branch(
             lookup(query="sample_id == '{multi}'",within=INFERENCE_READY_DF,cols="file"),
             then=lookup(query="sample_id == '{multi}'",within=INFERENCE_READY_DF,cols="file"),
@@ -26,5 +26,5 @@ checkpoint MUTATE:
         """
         find {params.data_dir} -maxdepth 1 -type f -name '*_data.json' -print0 \
         | parallel -0 -j {threads} \
-            python {input._helper} {{}} {input.mutation_list} {params.output_dir}/rule_MUTATE/{{/.}}
+            python {WORKFLOW_DIR}/scripts/mutate.py {{}} {input.mutation_list} {params.output_dir}/rule_MUTATE/{{/.}}
         """

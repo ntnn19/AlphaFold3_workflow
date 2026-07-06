@@ -43,6 +43,7 @@ wildcard_constraints:
 _raise_nofile_limit()
 
 prepare_container_binds(
+    workflow_directory=WORKFLOW_DIR,
     output_directory=config["output_dir"],
     config=config
 )
