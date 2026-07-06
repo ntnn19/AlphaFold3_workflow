@@ -83,7 +83,7 @@ def load_sample_sheet(sheet_key):
     """Safely load a sample sheet, returns (path, dataframe)."""
     path = config.get("sample_sheets", {}).get(sheet_key)
     columns = SAMPLE_SHEET_SCHEMAS.get(sheet_key, [])
-        
+
     if not path:
         return None, pd.DataFrame(columns=columns)
 
@@ -375,38 +375,51 @@ def _collect_inference_targets(wildcards, *, use_lock: bool) -> list:
 
 
     if not MUTATION_DF.empty:
-        # Parallel-safe DAG expansion for the mutation stream.
-        #
-        # The previous implementation walked `checkpoints.MUTATE.get(multi=k)`
-        # inline in a Python `for` loop over multimers.  Because this input
-        # function belongs to a single Snakemake job (rule all / AGGREGATE_RESULTS),
-        # the first iteration's IncompleteCheckpointException aborted the whole
-        # expansion; Snakemake then re-ran this input function only after that
-        # specific MUTATE(multi=k) completed, so DP jobs for multimer k+1
-        # could not become schedulable until DP+MERGE+MUTATE for multimer k
-        # had all finished.  That is why AF3_DATA_SPEEDY_PIPELINE appeared to
-        # run serially per multimer under mutations.
-        #
-        # Fix: request a per-multimer sentinel from MUTANT_INFERENCE_SET
-        # instead.  That rule carries its own {multi} wildcard, so its
-        # `checkpoints.MUTATE.get(multi=wildcards.multi)` call is bound to
-        # a single wildcards object per instance, and Snakemake schedules
-        # every MUTATE(multi=k) — and therefore every chain's DP job across
-        # every mutated multimer — concurrently.
+        all_mutations = []
+        all_seeds = []
         PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
         JOB_NAMES_MULTIMERS, = glob_wildcards(
             os.path.join(PREPROCESSING_DIR, "multimers", "{multi}.json")
         )
         base_names_with_mutations = set(MUTATION_DF["sample_id"].unique())
-        mutated_multis = [
-            m for m in JOB_NAMES_MULTIMERS
-            if re.sub(r"_seed-\d+$", "", m) in base_names_with_mutations
-        ]
-        if mutated_multis:
-            internal.append(expand(
-                os.path.join(OUTPUT_DIR, "rule_AF3_MUTANT_SET_DONE", "{multi}.inference.done"),
-                multi=mutated_multis,
-            ))
+        for multi in JOB_NAMES_MULTIMERS:
+            if re.sub(r"_seed-\d+$", "", multi) not in base_names_with_mutations:
+                continue
+            MUTATE_DIR = checkpoints.MUTATE.get(multi=multi).output[0]
+            muts, = glob_wildcards(os.path.join(MUTATE_DIR, "{mut}.json"))
+            seeds = list(map(lambda x: re.search(r'seed-(\d+)', x).group(1), muts))
+            all_mutations.extend(muts)
+            all_seeds.extend(seeds)
+        internal.append([
+            path
+            for mut, seed in zip(all_mutations, all_seeds)
+            for path in expand(
+                os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{mut}",
+                                "seed-{seed}_sample-{sample}",
+                                "{mut}_seed-{seed}_sample-{sample}_model.cif" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "model.cif"),
+                mut=mut, seed=seed, sample=range(N_SAMPLES)
+            )
+        ])
+        internal.append([
+            path
+            for mut, seed in zip(all_mutations, all_seeds)
+            for path in expand(
+                os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{mut}",
+                                "seed-{seed}_sample-{sample}",
+                                "{mut}_seed-{seed}_sample-{sample}_model_10_15.txt" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "model_10_15.txt"),
+                mut=mut, seed=seed, sample=range(N_SAMPLES)
+            )
+        ])
+        internal.append([
+            path
+            for mut, seed in zip(all_mutations, all_seeds)
+            for path in expand(
+                os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{mut}",
+                                "seed-{seed}_sample-{sample}",
+                                "{mut}_seed-{seed}_sample-{sample}_model_15_15.txt" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "model_15_15.txt"),
+                mut=mut, seed=seed, sample=range(N_SAMPLES)
+            )
+        ])
     if internal and external:
         return [*flatten(internal), *external]
     if internal:
@@ -423,27 +436,10 @@ def inference_outputs(wildcards):
 
 
 def aggregate_outputs(wildcards):
-    """Return EXTRACT_SCORES TSV paths that AGGREGATE_RESULTS must ingest.
-
-    Split into two contributions:
-
-    1. Non-mutation streams (`data_pipeline_ready`, `merge_ready`,
-       `inference_ready`, `raw_data` without mutations): derive per-sample
-       TSV paths from the inference `.cif` paths returned by
-       `_collect_inference_targets(...)`.  This branch is unchanged from
-       the original behavior.
-
-    2. Mutation stream: request one `MUTANT_EXTRACT_SCORES_SET` sentinel per
-       mutated multimer.  Each sentinel carries its own `{multi}` wildcard,
-       so each `checkpoints.MUTATE.get(multi=wildcards.multi)` call is
-       independent and the DAG expansion is fully parallel across multimers
-       (same fix as for the `inference_outputs` mutation branch).
-    """
+    """Return global TSV paths for all inference jobs (one per job)."""
     cif_paths = _collect_inference_targets(wildcards, use_lock=False)
     model_suffix = "_model.cif" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "model.cif"
 
-    # Non-mutation streams: only paths ending in the versioned model suffix
-    # contribute; sentinel .done files are filtered out by the endswith test.
     global_ = [
         os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", f"{Path(p).parent.parent.name}", f"{Path(p).parent.parent.name}_{Path(p).parent.name}_af_global.tsv")
         for p in cif_paths
@@ -464,29 +460,7 @@ def aggregate_outputs(wildcards):
         for p in cif_paths
         if p.endswith(model_suffix)
     ]
-    result = [*global_, *per_chain_, *per_chain_pair_, *ipsae]
-    
-    # Mutation stream: request one sentinel per mutated multimer.  The
-    # sentinel's own input function (MUTANT_EXTRACT_SCORES_SET) is what
-    # fans out to the per-sample EXTRACT_SCORES TSVs.  This mirrors the
-    # `inference_outputs` mutation-stream refactor and is what unblocks
-    # parallel DP scheduling under mutation mode.
-    if not MUTATION_DF.empty:
-        PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
-        JOB_NAMES_MULTIMERS, = glob_wildcards(
-            os.path.join(PREPROCESSING_DIR, "multimers", "{multi}.json")
-        )
-        base_names_with_mutations = set(MUTATION_DF["sample_id"].unique())
-        mutated_multis = [
-            m for m in JOB_NAMES_MULTIMERS
-            if re.sub(r"_seed-\d+$", "", m) in base_names_with_mutations
-        ]
-        if mutated_multis:
-            result.extend(expand(
-                os.path.join(OUTPUT_DIR, "rule_AF3_MUTANT_SET_DONE", "{multi}.scores.done"),
-                multi=mutated_multis,
-            ))
-    return result
+    return [*global_, *per_chain_, *per_chain_pair_, *ipsae]
     
 
 def meta_aggregate_outputs(wildcards):
