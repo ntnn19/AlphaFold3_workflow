@@ -30,7 +30,7 @@ checkpoint PREPROCESSING:
         predict_individual_components = PREDICT_INDIVIDUAL_COMPONENTS,
         script     = f"{WORKFLOW_DIR}/scripts/preprocessing.py"
     resources:
-        mem_mb = 4000,
+        mem_mb = 4000,git clone --branch no_checkpoints --single-branch https://github.com/ntnn19/AlphaFold3_workflow .
         runtime = 60,
     conda: "../envs/preprocessing.yaml"
     shell:

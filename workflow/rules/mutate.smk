@@ -4,7 +4,7 @@ checkpoint MUTATE:
         data = branch(
             lookup(query="sample_id == '{multi}'",within=INFERENCE_READY_DF,cols="file"),
             then=lookup(query="sample_id == '{multi}'",within=INFERENCE_READY_DF,cols="file"),
-            otherwise=expand(os.path.join(OUTPUT_DIR,"rule_MERGE_MONOMERS_TO_MULTIMERS","{multi}_data.json"), multi=pd.read_csv(os.path.join(OUTPUT_DIR, "rule_PREPROCESSING", "metadata", "inference_samples.tsv"), sep="\t")["sample_id"].to_list())
+            otherwise=expand(os.path.join(OUTPUT_DIR,"rule_MERGE_MONOMERS_TO_MULTIMERS","{multi}_data.json"), multi=get_multi_to_monomeric_dict_)
         ),
         mutation_list = MUTATION_DF_PATH if MUTATION_DF_PATH is not None else []
     output:

@@ -169,6 +169,11 @@ def get_multi_to_monomeric_dict(wildcards):
     map_df = pd.read_csv(os.path.join(PREPROCESSING_DIR, "metadata", "inference_to_data_pipeline_map.tsv"), sep="\t")
     return map_df
 
+def get_multi_to_monomeric_dict_(wildcards):
+    PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
+    map_df = pd.read_csv(os.path.join(PREPROCESSING_DIR, "metadata", "inference_samples.tsv"), sep="\t")
+    return map_df.sample_id.to_list()
+
 def get_merge_inputs(wildcards):
     """
     Get inputs for merging. Check user-provided MERGE_READY_DF first,
@@ -427,6 +432,7 @@ def _collect_inference_targets(wildcards, *, use_lock: bool) -> list:
     if external:
         return external
     return []
+
 
 
 def inference_outputs(wildcards):
