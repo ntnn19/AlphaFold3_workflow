@@ -1,3 +1,6 @@
+#/gpfs/cssb/group/cssb-topf/vds/workflows/AlphaFold3_workflow_dev/workflow/rules/preprocessing.smk
+#workflow.source_path("../scripts/preprocessing.py"),
+
 has_seeds = (
     "model_seeds" in RAW_DATA_DF.columns
     and RAW_DATA_DF["model_seeds"].notna().any()
@@ -14,7 +17,6 @@ else:
 checkpoint PREPROCESSING:
     input:
         sample_sheet = RAW_DATA_PATH if not RAW_DATA_DF.empty else [],
-        _helper = workflow.source_path("../scripts/prepare_af3_templates.py"),
     output:
         directory(os.path.join(OUTPUT_DIR,"rule_PREPROCESSING")) if not RAW_DATA_DF.empty else []
     log:
@@ -28,7 +30,7 @@ checkpoint PREPROCESSING:
         msa_option = MSA_OPTION,
         out_dir    = lambda w, output: str(Path(output[0]).parent),
         predict_individual_components = PREDICT_INDIVIDUAL_COMPONENTS,
-        script     = workflow.source_path("../scripts/preprocessing.py"),
+        script     = os.path.join(WORKFLOW_DIR,"scripts","preprocessing.py")
     resources:
         mem_mb = 4000,
         runtime = 60,

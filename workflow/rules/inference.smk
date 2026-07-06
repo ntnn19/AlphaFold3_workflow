@@ -12,7 +12,6 @@ fi
 
 rule AF3_INFERENCE:
     input:
-        _helper = workflow.source_path("../scripts/gpu_lock.sh"),
         data = branch(
             lookup(query="sample_id == '{mut}'" if MUTATION_DF_PATH is not None else "sample_id == '{multi}'", within=INFERENCE_READY_DF, cols="file"),
             then=lookup(query="sample_id == '{mut}'" if MUTATION_DF_PATH is not None else "sample_id == '{multi}'", within=INFERENCE_READY_DF, cols="file"),
@@ -28,6 +27,7 @@ rule AF3_INFERENCE:
                 )
             )
         )
+        #_helper = workflow.source_path("../scripts/gpu_lock.sh"),
     output:
         model=expand(
             os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{{multi}}",
@@ -74,7 +74,7 @@ rule AF3_INFERENCE:
         """
         {params.flash_detect}
         if [ "{params.exclusive_lock}" = "true" ]; then
-            LOCK_PREFIX="bash {input._helper} $PWD/.snakemake/.gpu_locks"
+            LOCK_PREFIX="bash {WORKFLOW_DIR}/scripts/gpu_lock.sh $PWD/.snakemake/.gpu_locks"
         else
             LOCK_PREFIX=""
         fi
