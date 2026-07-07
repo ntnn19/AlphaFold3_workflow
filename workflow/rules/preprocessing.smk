@@ -14,8 +14,7 @@ else:
 checkpoint PREPROCESSING:
     input:
         sample_sheet = RAW_DATA_PATH if not RAW_DATA_DF.empty else [],
-        _helper =         _helper = workflow.source_path("../scripts/prepare_af3_templates.py"),
-("../scripts/prepare_af3_templates.py"),
+        _helper = f"{WORKFLOW_DIR}/scripts/prepare_af3_templates.py"
     output:
         directory(os.path.join(OUTPUT_DIR,"rule_PREPROCESSING")) if not RAW_DATA_DF.empty else []
     log:
