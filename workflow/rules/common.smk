@@ -328,8 +328,9 @@ def _collect_inference_targets(wildcards, *, use_lock: bool) -> list:
             m for m in JOB_NAMES_MULTIMERS
             if re.sub(r"_seed-\d+$", "", m) not in base_names_with_mutations
         ]
-            
+    
         SEEDS = list(map(lambda x: re.search(r'seed-(\d+)', x).group(1), JOB_NAMES_MULTIMERS))
+
 
         internal.append([
             path
@@ -401,8 +402,6 @@ def _collect_inference_targets(wildcards, *, use_lock: bool) -> list:
             m for m in JOB_NAMES_MULTIMERS
             if re.sub(r"_seed-\d+$", "", m) in base_names_with_mutations
         ]
-        print("mutated_multis=",mutated_multis[:-3])
-        print("q7z2t5_iso1_ufmylation_seed-1 in mutated_multis=", "q7z2t5_iso1_ufmylation_seed-1" in mutated_multis)
         if mutated_multis:
             internal.append(expand(
                 os.path.join(OUTPUT_DIR, "rule_AF3_MUTANT_SET_DONE", "{multi}.inference.done"),
@@ -542,7 +541,6 @@ def _collect_roots(paths: Iterable[str | Path]) -> set[str]:
 def prepare_container_binds(
     *,
     output_directory: str,
-    workflow_directory: str,
     config: dict[str, Any],
 ) -> None:
     # Credit: https://github.com/KosinskiLab/AlphaPulldownSnakemake
@@ -558,7 +556,7 @@ def prepare_container_binds(
             interest.add(Path(value))
     roots = sorted(_collect_roots(interest))
     bind_spec = ",".join(f"{r}:{r}" for r in roots)
-    bind_spec +=  f",{Path(workflow_directory)}:{workflow_directory}"
+    bind_spec +=  f",{Path(workflow.source_path('../scripts/gpu_lock.sh'))}:/app/scripts/gpu_lock.sh"
     for var in ("APPTAINER_BINDPATH", "SINGULARITY_BINDPATH"):
         os.environ.setdefault(var, bind_spec)
     for var in ("APPTAINER_NV", "SINGULARITY_NV"):
