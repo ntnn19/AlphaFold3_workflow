@@ -55,8 +55,8 @@ rule AGGREGATE_RESULTS:
         find {params.agg_dir} -name '*_af_per_chain_pair.tsv' ! -name 'all_*' | sort > {params.agg_dir}/filelist_af_per_chain_pair.txt
         find {params.agg_dir} -name '*_ipsae.tsv' ! -name 'all_*' | sort > {params.agg_dir}/filelist_ipsae.txt
 
-        python {params.script} {params.agg_dir}/filelist_af_global.txt        {output.global_tsv}    2>> {log}
-        python {params.script} {params.agg_dir}/filelist_af_per_chain.txt     {output.per_chain_tsv} 2>> {log}
-        python {params.script} {params.agg_dir}/filelist_af_per_chain_pair.txt {output.per_pair_tsv} 2>> {log}
-        python {params.script} {params.agg_dir}/filelist_ipsae.txt            {output.ipsae_tsv}    2>> {log}
+        python {params.helper_} {params.agg_dir}/filelist_af_global.txt        {output.global_tsv}    2>> {log}
+        python {params.helper_} {params.agg_dir}/filelist_af_per_chain.txt     {output.per_chain_tsv} 2>> {log}
+        python {params.helper_} {params.agg_dir}/filelist_af_per_chain_pair.txt {output.per_pair_tsv} 2>> {log}
+        python {params.helper_} {params.agg_dir}/filelist_ipsae.txt            {output.ipsae_tsv}    2>> {log}
         """
