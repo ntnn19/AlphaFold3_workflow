@@ -1,15 +1,3 @@
-_FLASH_DETECT = r"""
-CC=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader,nounits \
-        2>/dev/null | head -n 1 | cut -d'.' -f1 || echo 0)
-if [[ "$CC" -ge 8 ]]; then
-    FLASH_ARG=""
-else
-    export XLA_FLAGS="--xla_disable_hlo_passes=custom-kernel-fusion-rewriter"
-    FLASH_ARG="--flash_attention_implementation=xla"
-fi
-"""
-
-
 rule AF3_INFERENCE:
     input:
         _helper = workflow.source_path("../scripts/gpu_lock.sh"),
@@ -72,7 +60,16 @@ rule AF3_INFERENCE:
         AF3_CONTAINER
     shell:
         """
-        {params.flash_detect}
+        CC=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader,nounits \
+                2>/dev/null | head -n 1 | cut -d'.' -f1 || echo 0)
+        if [[ "$CC" -ge 8 ]]; then
+            FLASH_ARG=""
+        else
+            export XLA_FLAGS="--xla_disable_hlo_passes=custom-kernel-fusion-rewriter"
+            FLASH_ARG="--flash_attention_implementation=xla"
+        fi
+        echo "FLASH_ARG"
+        echo $FLASH_ARG
         if [ "{params.exclusive_lock}" = "true" ]; then
             LOCK_PREFIX="bash {input._helper} $PWD/.snakemake/.gpu_locks"
         else
