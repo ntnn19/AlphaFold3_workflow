@@ -162,7 +162,6 @@ def strip_seed(name: str) -> str:
 REQUIRED_COLUMNS = {"sample_id", "type", "id", "mutation"}
 _ALLOWED = frozenset("abcdefghijklmnopqrstuvwxyz0123456789_-.")
 
-
 def load_mutation_table(path: str) -> pd.DataFrame:
     with open(path) as f:
         first_line = f.readline()
@@ -363,7 +362,7 @@ def mutate(input_json, mutation_list, output_dir):
             if applied:
                 chain_mutations.append((chain_id, applied))
 
-                if row_ptm in ["ufm", "ufmylation"]:
+                if row_ptm == "ufm":
                     for mutation_code in applied:
                         position = mutation_position(mutation_code)
                         if position is None:

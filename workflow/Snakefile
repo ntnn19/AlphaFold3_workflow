@@ -24,14 +24,10 @@ include: "rules/aggregate.smk"
 include: "rules/report.smk"
 
 # ── Local rules ──────────────────────────────────────────────────────────────
-# MUTANT_INFERENCE_SET and MUTANT_EXTRACT_SCORES_SET are added here because
-# they are trivial sentinel rules (they only assemble a file list and touch
-# a marker); running them on the head/local node avoids paying scheduler
-# submission overhead for what amounts to a `touch`.
-localrules: PREPROCESSING, MERGE_MONO_AND_MULTI_JSON, MUTANT_INFERENCE_SET, MUTANT_EXTRACT_SCORES_SET
+localrules: PREPROCESSING, MERGE_MONO_AND_MULTI_JSON
 
 if config.get("run_data_pipeline_locally", False):
-    localrules: AF3_DATA_SPEEDY_PIPELINE, PREPROCESSING, MERGE_MONO_AND_MULTI_JSON, AGGREGATE_RESULTS, DATAVZRD_REPORT, MUTATE, MUTANT_INFERENCE_SET, MUTANT_EXTRACT_SCORES_SET
+    localrules: AF3_DATA_SPEEDY_PIPELINE,PREPROCESSING, MERGE_MONO_AND_MULTI_JSON, AGGREGATE_RESULTS, DATAVZRD_REPORT, MUTATE
 
 # ── Wildcard constraints ─────────────────────────────────────────────────────
 wildcard_constraints:
