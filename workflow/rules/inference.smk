@@ -38,7 +38,7 @@ rule AF3_INFERENCE:
         expand(
             os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{{mut}}",
                             "seed-{{seed}}_sample-{sample}",
-                            "{{mut}}_seed-{{seed}}_sample-{sample}_confidences.json" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "confidences.json"), 
+                            "{{mut}}_seed-{{seed}}_sample-{sample}_confidences.json" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "confidences.json"),
             sample=range(N_SAMPLES)
         ),
     log:
@@ -61,14 +61,14 @@ rule AF3_INFERENCE:
         """
         CC=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader,nounits \
                 2>/dev/null | head -n 1 | cut -d'.' -f1 || echo 0)
+        echo CC
+        echo $CC
         if [[ "$CC" -ge 8 ]]; then
             FLASH_ARG=""
         else
             export XLA_FLAGS="--xla_disable_hlo_passes=custom-kernel-fusion-rewriter"
             FLASH_ARG="--flash_attention_implementation=xla"
         fi
-        echo "FLASH_ARG"
-        echo $FLASH_ARG
         if [ "{params.exclusive_lock}" = "true" ]; then
             LOCK_PREFIX="bash {input._helper} $PWD/.snakemake/.gpu_locks"
         else
