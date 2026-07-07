@@ -54,8 +54,7 @@ rule AF3_INFERENCE:
         exclusive_lock = "true" if EXCLUSIVE_LOCK else "false",
         models_dir = MODELS_DIR,
         output_dir = OUTPUT_DIR,
-        database_dir = DB_DIR,
-        flash_detect = _FLASH_DETECT
+        database_dir = DB_DIR
     container:
         AF3_CONTAINER
     shell:
