@@ -1,6 +1,5 @@
 checkpoint MUTATE:
-    input:
-        _helper = workflow.source_path("../scripts/mutate.py"), # added this to allow clean deployment
+    input:      
         data = branch(
             lookup(query="sample_id == '{multi}'",within=INFERENCE_READY_DF,cols="file"),
             then=lookup(query="sample_id == '{multi}'",within=INFERENCE_READY_DF,cols="file"),
@@ -17,10 +16,11 @@ checkpoint MUTATE:
     benchmark:
         os.path.join(OUTPUT_DIR, "benchmarks", "rule_MUTATE", "{multi}.tsv"),
     params:
-        output_dir = OUTPUT_DIR 
+        output_dir = OUTPUT_DIR,
+        _helper = f"{WORKFLOW_DIR}/scripts/mutate.py" # added this to allow clean deployment
     conda: 
         "../envs/preprocessing.yaml"
     shell:
         """
-        python {input._helper} {input.data} {input.mutation_list} {params.output_dir}/rule_MUTATE/{wildcards.multi}
+        python {params._helper} {input.data} {input.mutation_list} {params.output_dir}/rule_MUTATE/{wildcards.multi}
         """

@@ -9,12 +9,12 @@ rule MERGE_MONO_AND_MULTI_JSON:
         mem_mb  = 2000,
         runtime = 10,
     params:
-        script = workflow.source_path("../scripts/merge_mono_and_multi_jsons.py"),
+        _helper = f"{WORKFLOW_DIR}/scripts/merge_mono_and_multi_jsons.py"
     output:
         os.path.join(OUTPUT_DIR,"rule_MERGE_MONOMERS_TO_MULTIMERS","{multi}_data.json") if MODE in ["custom","all-vs-all","pulldown","virtual-drug-screen","stoichio-screen"] else [],
     conda: "../envs/preprocessing.yaml"
     shell:
         """
-        python {params.script} {input} {output} \
+        python {params._helper} {input} {output} \
         2>&1 | tee {log}
         """
