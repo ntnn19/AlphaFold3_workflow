@@ -1,13 +1,11 @@
 rule AF3_INFERENCE:
     input:
-        _helper = workflow.source_path("../scripts/gpu_lock.sh"),
         data = branch(
             lookup(query="sample_id == '{mut}'" if MUTATION_DF_PATH is not None else "sample_id == '{multi}'", within=INFERENCE_READY_DF, cols="file"),
             then=lookup(query="sample_id == '{mut}'" if MUTATION_DF_PATH is not None else "sample_id == '{multi}'", within=INFERENCE_READY_DF, cols="file"),
             otherwise=lambda w: (
                 os.path.join(
                     OUTPUT_DIR, "rule_MUTATE",
-                    re.match(r"(.+_seed-\d+)", w.mut).group(1),
                     f"{w.mut}.json"
                 )
                 if MUTATION_DF_PATH is not None
@@ -45,10 +43,11 @@ rule AF3_INFERENCE:
         os.path.join(OUTPUT_DIR, "logs", "rule_AF3_INFERENCE", "{multi}_seed-{seed}.log") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "logs", "rule_AF3_INFERENCE", "{mut}_seed-{seed}.log"),
     benchmark:
         os.path.join(OUTPUT_DIR, "benchmarks", "rule_AF3_INFERENCE", "{multi}_seed-{seed}.tsv") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "benchmarks", "rule_AF3_INFERENCE", "{mut}_seed-{seed}.tsv"),
-    threads: 16
     resources:
-        mem_mb      = 16000,
-        runtime     = 480,
+        cpus_per_task=1,
+        mem_mb=1000,
+        runtime="30m",
+        slurm_partition="vds"
     params:
         extra_af3_flags = EXTRA_AF3_FLAGS,
         exclusive_lock = "true" if EXCLUSIVE_LOCK else "false",
@@ -61,8 +60,6 @@ rule AF3_INFERENCE:
         """
         CC=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader,nounits \
                 2>/dev/null | head -n 1 | cut -d'.' -f1 || echo 0)
-        echo CC
-        echo $CC
         if [[ "$CC" -ge 8 ]]; then
             FLASH_ARG=""
         else
@@ -70,7 +67,7 @@ rule AF3_INFERENCE:
             FLASH_ARG="--flash_attention_implementation=xla"
         fi
         if [ "{params.exclusive_lock}" = "true" ]; then
-            LOCK_PREFIX="bash {input._helper} $PWD/.snakemake/.gpu_locks"
+            LOCK_PREFIX="bash {WORKFLOW_DIR}/scripts/gpu_lock.sh $PWD/.snakemake/.gpu_locks"
         else
             LOCK_PREFIX=""
         fi

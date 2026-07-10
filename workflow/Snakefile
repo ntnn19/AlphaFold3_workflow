@@ -29,6 +29,7 @@ localrules: PREPROCESSING, MERGE_MONO_AND_MULTI_JSON
 if config.get("run_data_pipeline_locally", False):
     localrules: AF3_DATA_SPEEDY_PIPELINE,PREPROCESSING, MERGE_MONO_AND_MULTI_JSON, AGGREGATE_RESULTS, DATAVZRD_REPORT, MUTATE
 
+
 # ── Wildcard constraints ─────────────────────────────────────────────────────
 wildcard_constraints:
     mono  = r"[A-Za-z0-9_\-\.]+",
@@ -39,6 +40,7 @@ wildcard_constraints:
 _raise_nofile_limit()
 
 prepare_container_binds(
+    workflow_directory=WORKFLOW_DIR,
     output_directory=config["output_dir"],
     config=config
 )

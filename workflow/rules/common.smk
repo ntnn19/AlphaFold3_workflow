@@ -83,7 +83,7 @@ def load_sample_sheet(sheet_key):
     """Safely load a sample sheet, returns (path, dataframe)."""
     path = config.get("sample_sheets", {}).get(sheet_key)
     columns = SAMPLE_SHEET_SCHEMAS.get(sheet_key, [])
-        
+
     if not path:
         return None, pd.DataFrame(columns=columns)
 
@@ -168,6 +168,11 @@ def get_multi_to_monomeric_dict(wildcards):
     PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
     map_df = pd.read_csv(os.path.join(PREPROCESSING_DIR, "metadata", "inference_to_data_pipeline_map.tsv"), sep="\t")
     return map_df
+
+def get_multi_to_monomeric_dict_(wildcards):
+    PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
+    map_df = pd.read_csv(os.path.join(PREPROCESSING_DIR, "metadata", "inference_samples.tsv"), sep="\t")
+    return map_df.sample_id.to_list()
 
 def get_merge_inputs(wildcards):
     """
@@ -256,7 +261,7 @@ def _collect_inference_targets(wildcards, *, use_lock: bool) -> list:
                     for seed, sample in product(seeds, range(N_SAMPLES))
                 ]
             )
-    
+
         external.extend(
             path
             for paths in DATA_PIPELINE_READY_DF["file"].apply(expand_paths)
@@ -289,13 +294,13 @@ def _collect_inference_targets(wildcards, *, use_lock: bool) -> list:
                     + [f"{base(seed, sample)}_model_15_15.txt" if versioned else f"{base(seed, sample)}model_15_15.txt" for seed, sample in combos]
                     + [f"{base(seed, sample)}_model_10_15.txt" if versioned else f"{base(seed, sample)}model_10_15.txt" for seed, sample in combos]
                 )
-    
+
             external.extend(
                 path
                 for paths in _user_mr["multimer_file"].apply(expand_paths_mr)
                 for path in paths
             )
-    
+
     if not INFERENCE_READY_DF.empty:
         def expand_paths_inf(x):
             stem = Path(x).stem
@@ -316,21 +321,15 @@ def _collect_inference_targets(wildcards, *, use_lock: bool) -> list:
             for paths in INFERENCE_READY_DF["file"].apply(expand_paths_inf)
             for path in paths
         )
-    
+
     external = list(dict.fromkeys(external))  # dedupe while preserving order
 
     if not RAW_DATA_DF.empty:
         PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
         JOB_NAMES_MULTIMERS, = glob_wildcards(os.path.join(PREPROCESSING_DIR, "multimers", "{multi}.json"))
-    
         base_names_with_mutations = set(MUTATION_DF["sample_id"].unique()) if not MUTATION_DF.empty else set()
-        JOB_NAMES_MULTIMERS = [
-            m for m in JOB_NAMES_MULTIMERS
-            if re.sub(r"_seed-\d+$", "", m) not in base_names_with_mutations
-        ]
-    
         SEEDS = list(map(lambda x: re.search(r'seed-(\d+)', x).group(1), JOB_NAMES_MULTIMERS))
-
+        print("SEEDS", SEEDS)
 
         internal.append([
             path
@@ -377,6 +376,7 @@ def _collect_inference_targets(wildcards, *, use_lock: bool) -> list:
     if not MUTATION_DF.empty:
         all_mutations = []
         all_seeds = []
+
         PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
         JOB_NAMES_MULTIMERS, = glob_wildcards(
             os.path.join(PREPROCESSING_DIR, "multimers", "{multi}.json")
@@ -385,11 +385,11 @@ def _collect_inference_targets(wildcards, *, use_lock: bool) -> list:
         for multi in JOB_NAMES_MULTIMERS:
             if re.sub(r"_seed-\d+$", "", multi) not in base_names_with_mutations:
                 continue
-            MUTATE_DIR = checkpoints.MUTATE.get(multi=multi).output[0]
-            muts, = glob_wildcards(os.path.join(MUTATE_DIR, "{mut}.json"))
-            seeds = list(map(lambda x: re.search(r'seed-(\d+)', x).group(1), muts))
-            all_mutations.extend(muts)
-            all_seeds.extend(seeds)
+        MUTATE_DIR = checkpoints.MUTATE.get(**wildcards).output[0]
+        muts, = glob_wildcards(os.path.join(MUTATE_DIR, "{mut}.json"))
+        seeds = list(map(lambda x: re.search(r'seed-(\d+)', x).group(1), muts))
+        all_mutations.extend(muts)
+        all_seeds.extend(seeds)
         internal.append([
             path
             for mut, seed in zip(all_mutations, all_seeds)
@@ -429,6 +429,7 @@ def _collect_inference_targets(wildcards, *, use_lock: bool) -> list:
     return []
 
 
+
 def inference_outputs(wildcards):
     """Return all final inference output paths for the `rule all` target."""
     return _collect_inference_targets(wildcards, use_lock=EXCLUSIVE_LOCK)
@@ -461,7 +462,11 @@ def aggregate_outputs(wildcards):
         if p.endswith(model_suffix)
     ]
     return [*global_, *per_chain_, *per_chain_pair_, *ipsae]
+<<<<<<< HEAD
     
+=======
+
+>>>>>>> no_checkpoints
 
 def meta_aggregate_outputs(wildcards):
     """Return the three project-level summary TSV paths."""
@@ -514,6 +519,7 @@ def _collect_roots(paths: Iterable[str | Path]) -> set[str]:
 
 def prepare_container_binds(
     *,
+    workflow_directory: str,
     output_directory: str,
     config: dict[str, Any],
 ) -> None:
@@ -530,7 +536,7 @@ def prepare_container_binds(
             interest.add(Path(value))
     roots = sorted(_collect_roots(interest))
     bind_spec = ",".join(f"{r}:{r}" for r in roots)
-    bind_spec +=  f",{Path(workflow.source_path('../scripts/gpu_lock.sh'))}:/app/scripts/gpu_lock.sh"
+    bind_spec +=  f",{Path(workflow_directory)}:{Path(workflow_directory)}"
     for var in ("APPTAINER_BINDPATH", "SINGULARITY_BINDPATH"):
         os.environ.setdefault(var, bind_spec)
     for var in ("APPTAINER_NV", "SINGULARITY_NV"):

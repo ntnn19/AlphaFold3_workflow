@@ -286,7 +286,10 @@ def mutate(input_json, mutation_list, output_dir):
         return
 
     os.makedirs(output_dir, exist_ok=True)
-
+    wt_path = os.path.join(output_dir, f"{full_name}.json")
+    with open(wt_path, "w") as f:
+        json.dump(data, f, indent=2)
+    click.echo(f"Written WT: {wt_path}")
     for variant_id, group in sample_mutations.groupby("variant", sort=False):
         mutated_data = copy.deepcopy(data)
         sequences = mutated_data.get("sequences", [])
