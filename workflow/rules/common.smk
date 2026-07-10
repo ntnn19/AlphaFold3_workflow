@@ -261,7 +261,7 @@ def _collect_inference_targets(wildcards, *, use_lock: bool) -> list:
                     for seed, sample in product(seeds, range(N_SAMPLES))
                 ]
             )
-    
+
         external.extend(
             path
             for paths in DATA_PIPELINE_READY_DF["file"].apply(expand_paths)
@@ -294,13 +294,13 @@ def _collect_inference_targets(wildcards, *, use_lock: bool) -> list:
                     + [f"{base(seed, sample)}_model_15_15.txt" if versioned else f"{base(seed, sample)}model_15_15.txt" for seed, sample in combos]
                     + [f"{base(seed, sample)}_model_10_15.txt" if versioned else f"{base(seed, sample)}model_10_15.txt" for seed, sample in combos]
                 )
-    
+
             external.extend(
                 path
                 for paths in _user_mr["multimer_file"].apply(expand_paths_mr)
                 for path in paths
             )
-    
+
     if not INFERENCE_READY_DF.empty:
         def expand_paths_inf(x):
             stem = Path(x).stem
@@ -321,21 +321,22 @@ def _collect_inference_targets(wildcards, *, use_lock: bool) -> list:
             for paths in INFERENCE_READY_DF["file"].apply(expand_paths_inf)
             for path in paths
         )
-    
+
     external = list(dict.fromkeys(external))  # dedupe while preserving order
 
     if not RAW_DATA_DF.empty:
         PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
         JOB_NAMES_MULTIMERS, = glob_wildcards(os.path.join(PREPROCESSING_DIR, "multimers", "{multi}.json"))
-    
+        print("JOB_NAMES_MULTIMERS", JOB_NAMES_MULTIMERS)
         base_names_with_mutations = set(MUTATION_DF["sample_id"].unique()) if not MUTATION_DF.empty else set()
-        JOB_NAMES_MULTIMERS = [
-            m for m in JOB_NAMES_MULTIMERS
-            if re.sub(r"_seed-\d+$", "", m) not in base_names_with_mutations
-        ]
-    
+        print("base_names_with_mutations", base_names_with_mutations)
+        #JOB_NAMES_MULTIMERS = [
+            #m for m in JOB_NAMES_MULTIMERS
+            #if re.sub(r"_seed-\d+$", "", m) not in base_names_with_mutations
+            #]
+        #print("JOB_NAMES_MULTIMERS", JOB_NAMES_MULTIMERS)
         SEEDS = list(map(lambda x: re.search(r'seed-(\d+)', x).group(1), JOB_NAMES_MULTIMERS))
-
+        print("SEEDS", SEEDS)
 
         internal.append([
             path
@@ -382,19 +383,19 @@ def _collect_inference_targets(wildcards, *, use_lock: bool) -> list:
     if not MUTATION_DF.empty:
         all_mutations = []
         all_seeds = []
-        PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
-        JOB_NAMES_MULTIMERS, = glob_wildcards(
-            os.path.join(PREPROCESSING_DIR, "multimers", "{multi}.json")
-        )
-        base_names_with_mutations = set(MUTATION_DF["sample_id"].unique())
-        for multi in JOB_NAMES_MULTIMERS:
-            if re.sub(r"_seed-\d+$", "", multi) not in base_names_with_mutations:
-                continue
-            MUTATE_DIR = checkpoints.MUTATE.get(multi=multi).output[0]
-            muts, = glob_wildcards(os.path.join(MUTATE_DIR, "{mut}.json"))
-            seeds = list(map(lambda x: re.search(r'seed-(\d+)', x).group(1), muts))
-            all_mutations.extend(muts)
-            all_seeds.extend(seeds)
+#        PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
+#        JOB_NAMES_MULTIMERS, = glob_wildcards(
+ #           os.path.join(PREPROCESSING_DIR, "multimers", "{multi}.json")
+ #       )
+ #       base_names_with_mutations = set(MUTATION_DF["sample_id"].unique())
+ #       for multi in JOB_NAMES_MULTIMERS:
+  #          if re.sub(r"_seed-\d+$", "", multi) not in base_names_with_mutations:
+   #             continue
+        MUTATE_DIR = checkpoints.MUTATE.get(**wildcards).output[0]
+        muts, = glob_wildcards(os.path.join(MUTATE_DIR, "{mut}.json"))
+        seeds = list(map(lambda x: re.search(r'seed-(\d+)', x).group(1), muts))
+        all_mutations.extend(muts)
+        all_seeds.extend(seeds)
         internal.append([
             path
             for mut, seed in zip(all_mutations, all_seeds)
@@ -467,7 +468,7 @@ def aggregate_outputs(wildcards):
         if p.endswith(model_suffix)
     ]
     return [*global_, *per_chain_, *per_chain_pair_, *ipsae]
-    
+
 
 def meta_aggregate_outputs(wildcards):
     """Return the three project-level summary TSV paths."""

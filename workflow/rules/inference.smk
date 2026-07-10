@@ -19,7 +19,6 @@ rule AF3_INFERENCE:
             otherwise=lambda w: (
                 os.path.join(
                     OUTPUT_DIR, "rule_MUTATE",
-                    re.match(r"(.+_seed-\d+)", w.mut).group(1),
                     f"{w.mut}.json"
                 )
                 if MUTATION_DF_PATH is not None

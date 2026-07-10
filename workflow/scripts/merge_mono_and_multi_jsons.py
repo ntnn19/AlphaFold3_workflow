@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 import copy
+from collections import defaultdict
 import click
 from loguru import logger
 
@@ -84,6 +85,21 @@ def main(multimer_file, monomer_file, output_file, inference_to_data_map):
                 "since that can silently attach the wrong monomer to a chain."
             )
 
+        # For homo-multimers, several target chains share an identical
+        # sequence (e.g. chains A and B of a homodimer), but the monomer JSON
+        # generated for that sequence was only ever computed once and embeds
+        # a single representative chain id (e.g. "A"). If the same monomer
+        # file is supplied more than once (once per copy in the multimer),
+        # a strict id-match would make every copy claim chain "A" and fail.
+        # We build a (mol_type, sequence) -> [unused chain ids] lookup so
+        # that once the direct id match is unavailable/already used, we can
+        # fall back to placing the monomer's data into another unused chain
+        # with the same sequence and molecule type.
+        sequence_to_chains = defaultdict(list)
+        for chain_id, (entry, mol_type) in target_map.items():
+            seq = entry[mol_type].get("sequence")
+            sequence_to_chains[(mol_type, seq)].append(chain_id)
+
         used_chain_ids = set()
         for mf in monomer_file:
             with open(mf, "r") as f:
@@ -91,25 +107,51 @@ def main(multimer_file, monomer_file, output_file, inference_to_data_map):
             mol_type = next(iter(monomer_data["sequences"][0]))
             monomer_entry = monomer_data["sequences"][0][mol_type]
             source_chain_id = monomer_entry.get("id")
+            source_sequence = monomer_entry.get("sequence")
 
-            if source_chain_id is None or source_chain_id not in target_map:
+            target_chain_id = None
+
+            # 1) Preferred path: exact chain-id match (hetero-multimers, or
+            #    the first copy of a homo-multimer chain).
+            if (
+                source_chain_id is not None
+                and source_chain_id in target_map
+                and source_chain_id not in used_chain_ids
+            ):
+                candidate_entry, candidate_mol_type = target_map[source_chain_id]
+                if candidate_mol_type == mol_type:
+                    target_chain_id = source_chain_id
+
+            # 2) Fallback path: homo-multimer case. The direct id is either
+            #    missing, already consumed, or doesn't match this multimer's
+            #    chains. Look for any unused chain with the same molecule
+            #    type and identical sequence and attach the monomer data
+            #    there instead of failing outright.
+            if target_chain_id is None:
+                candidates = [
+                    cid
+                    for cid in sequence_to_chains.get((mol_type, source_sequence), [])
+                    if cid not in used_chain_ids
+                ]
+                if candidates:
+                    target_chain_id = candidates[0]
+
+            if target_chain_id is None:
                 raise click.UsageError(
                     f"Monomer file '{mf}' has chain id '{source_chain_id}', "
-                    f"which does not match any polymer chain id in the "
-                    f"multimer JSON ({sorted(target_map)})."
+                    "which does not match any unused polymer chain id in the "
+                    f"multimer JSON ({sorted(target_map)}), and no unused "
+                    "chain with a matching sequence/molecule type could be "
+                    "found for a homo-multimer fallback either."
                 )
-            if source_chain_id in used_chain_ids:
-                raise click.UsageError(
-                    f"Chain id '{source_chain_id}' is supplied by more than "
-                    "one monomer file."
-                )
-            used_chain_ids.add(source_chain_id)
 
-            entry, target_mol_type = target_map[source_chain_id]
+            used_chain_ids.add(target_chain_id)
+
+            entry, target_mol_type = target_map[target_chain_id]
             if target_mol_type != mol_type:
                 raise click.UsageError(
                     f"Monomer file '{mf}' has molecule type '{mol_type}' but "
-                    f"target chain '{source_chain_id}' is of type "
+                    f"target chain '{target_chain_id}' is of type "
                     f"'{target_mol_type}'."
                 )
 
