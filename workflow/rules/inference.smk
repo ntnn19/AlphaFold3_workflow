@@ -53,7 +53,8 @@ rule AF3_INFERENCE:
         exclusive_lock = "true" if EXCLUSIVE_LOCK else "false",
         models_dir = MODELS_DIR,
         output_dir = OUTPUT_DIR,
-        database_dir = DB_DIR
+        database_dir = DB_DIR,
+        _helper = f"{WORKFLOW_DIR}/scripts/gpu_lock.sh"
     container:
         AF3_CONTAINER
     shell:
@@ -67,7 +68,7 @@ rule AF3_INFERENCE:
             FLASH_ARG="--flash_attention_implementation=xla"
         fi
         if [ "{params.exclusive_lock}" = "true" ]; then
-            LOCK_PREFIX="bash {WORKFLOW_DIR}/scripts/gpu_lock.sh $PWD/.snakemake/.gpu_locks"
+            LOCK_PREFIX="bash {params._helper} $PWD/.snakemake/.gpu_locks/${{SLURM_JOB_ID:-standalone}}"
         else
             LOCK_PREFIX=""
         fi

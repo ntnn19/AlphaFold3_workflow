@@ -84,14 +84,14 @@ rule IPSAE:
         confidences_glob = "*_confidences.json" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "confidences.json",
         confidences_suffix = "_confidences.json" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "confidences.json",
         model_suffix = "_model.cif" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "model.cif",
-        script = workflow.source_path("../scripts/ipsae.py"),
+        _helper = f"{WORKFLOW_DIR}/scripts/ipsae.py" # added this to allow clean deployment
     shell:
         """
         for f in {params.inference_dir}/seed-*_sample-*/{params.confidences_glob}; do
             if [[ "$f" != *summary* ]]; then
                 model="${{f%{params.confidences_suffix}}}{params.model_suffix}"
-                python {params.script} "$f" "$model" 10 15
-                python {params.script} "$f" "$model" 15 15
+                python {params._helper} "$f" "$model" 10 15
+                python {params._helper} "$f" "$model" 15 15
             fi
         done
         """

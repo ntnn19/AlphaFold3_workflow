@@ -12,7 +12,7 @@ rule EXTRACT_SCORES:
     params:
         inference_dir = os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{multi}") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{mut}"),
         out_dir = os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", "{multi}") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", "{mut}"),
-        script = workflow.source_path("../scripts/extract_scores.py"),
+        helper_ = f"{WORKFLOW_DIR}/scripts/extract_scores.py",
     log:
         os.path.join(OUTPUT_DIR, "logs", "rule_EXTRACT_SCORES", "{multi}", "{multi}_seed-{seed}.log") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "logs", "rule_EXTRACT_SCORES","{mut}", "{mut}_seed-{seed}.log"),
     benchmark:
@@ -23,7 +23,7 @@ rule EXTRACT_SCORES:
     conda: "../envs/preprocessing.yaml"
     shell:
         """
-        python {params.script} \
+        python {params.helper_} \
             --inference_dir {params.inference_dir} \
             --out_dir {params.out_dir} \
         2>&1 | tee {log}
@@ -41,8 +41,8 @@ rule AGGREGATE_RESULTS:
         per_pair_tsv  = os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "all_af_per_chain_pair.tsv"),
         ipsae_tsv     = os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "all_ipsae.tsv"),
     params:
-        script     = workflow.source_path("../scripts/aggregate_scores.py"),
-        agg_dir    = os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES"),
+        helper_     = f"{WORKFLOW_DIR}/scripts/aggregate_scores.py",
+        agg_dir    = os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES")
     log:
         os.path.join(OUTPUT_DIR, "logs", "rule_AGGREGATE_RESULTS", "aggregate.log"),
     benchmark:
@@ -55,8 +55,8 @@ rule AGGREGATE_RESULTS:
         find {params.agg_dir} -name '*_af_per_chain_pair.tsv' ! -name 'all_*' | sort > {params.agg_dir}/filelist_af_per_chain_pair.txt
         find {params.agg_dir} -name '*_ipsae.tsv' ! -name 'all_*' | sort > {params.agg_dir}/filelist_ipsae.txt
 
-        python {params.script} {params.agg_dir}/filelist_af_global.txt        {output.global_tsv}    2>> {log}
-        python {params.script} {params.agg_dir}/filelist_af_per_chain.txt     {output.per_chain_tsv} 2>> {log}
-        python {params.script} {params.agg_dir}/filelist_af_per_chain_pair.txt {output.per_pair_tsv} 2>> {log}
-        python {params.script} {params.agg_dir}/filelist_ipsae.txt            {output.ipsae_tsv}    2>> {log}
+        python {params.helper_} {params.agg_dir}/filelist_af_global.txt        {output.global_tsv}    2>> {log}
+        python {params.helper_} {params.agg_dir}/filelist_af_per_chain.txt     {output.per_chain_tsv} 2>> {log}
+        python {params.helper_} {params.agg_dir}/filelist_af_per_chain_pair.txt {output.per_pair_tsv} 2>> {log}
+        python {params.helper_} {params.agg_dir}/filelist_ipsae.txt            {output.ipsae_tsv}    2>> {log}
         """
