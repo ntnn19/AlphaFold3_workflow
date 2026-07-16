@@ -172,6 +172,8 @@ def get_multi_to_monomeric_dict(wildcards):
 def get_multi_to_monomeric_dict_(wildcards):
     PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
     map_df = pd.read_csv(os.path.join(PREPROCESSING_DIR, "metadata", "inference_samples.tsv"), sep="\t")
+    print(map_df)
+    print(map_df.sample_id.to_list())
     return map_df.sample_id.to_list()
 
 def get_merge_inputs(wildcards):
@@ -462,11 +464,6 @@ def aggregate_outputs(wildcards):
         if p.endswith(model_suffix)
     ]
     return [*global_, *per_chain_, *per_chain_pair_, *ipsae]
-<<<<<<< HEAD
-    
-=======
-
->>>>>>> no_checkpoints
 
 def meta_aggregate_outputs(wildcards):
     """Return the three project-level summary TSV paths."""

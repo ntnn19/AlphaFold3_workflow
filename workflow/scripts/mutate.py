@@ -277,19 +277,22 @@ def mutate(input_json, mutation_list, output_dir):
 
     mut_df = load_mutation_table(mutation_list)
     sample_mutations = mut_df[mut_df["sample_id"] == base_name]
-
+    no_mutations = False
     if sample_mutations.empty:
-        click.echo(
-            f"No mutations found for base name '{base_name}' "
-            f"(full name: '{full_name}'). Exiting."
-        )
-        return
+        no_mutations = True
 
     os.makedirs(output_dir, exist_ok=True)
     wt_path = os.path.join(output_dir, f"{full_name}.json")
     with open(wt_path, "w") as f:
         json.dump(data, f, indent=2)
     click.echo(f"Written WT: {wt_path}")
+    if no_mutations:
+        click.echo(
+            f"No mutations found for base name '{base_name}' "
+            f"(full name: '{full_name}'). Exiting."
+        )
+        return
+    
     for variant_id, group in sample_mutations.groupby("variant", sort=False):
         mutated_data = copy.deepcopy(data)
         sequences = mutated_data.get("sequences", [])
@@ -365,7 +368,7 @@ def mutate(input_json, mutation_list, output_dir):
             if applied:
                 chain_mutations.append((chain_id, applied))
 
-                if row_ptm == "ufm":
+                if row_ptm in ["ufm", "ufmylation"]:
                     for mutation_code in applied:
                         position = mutation_position(mutation_code)
                         if position is None:
