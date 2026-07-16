@@ -74,7 +74,7 @@ rule AF3_INFERENCE:
         """
         {params.flash_detect}
         if [ "{params.exclusive_lock}" = "true" ]; then
-            LOCK_PREFIX="bash {params._helper} $PWD/.snakemake/.gpu_locks"
+            LOCK_PREFIX="bash {params._helper} $PWD/.snakemake/.gpu_locks/${{SLURM_JOB_ID:-standalone}}"
         else
             LOCK_PREFIX=""
         fi
