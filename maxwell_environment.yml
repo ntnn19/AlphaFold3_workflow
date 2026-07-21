@@ -1,0 +1,57 @@
+name: alphafold3_snakemake 
+channels:
+    - conda-forge
+    - bioconda
+    - nodefaults
+dependencies:
+    - python=3.12
+    - pip
+    - git
+    - mamba
+    # Snakemake runtime deps (from snakemake-9.16.3/pyproject.toml)
+    - appdirs
+    - immutables
+    - configargparse
+    - connection_pool>=0.0.3
+    - docutils
+    - gitpython
+    - humanfriendly
+    - jinja2>=3.0,<4.0
+    - jsonschema
+    - nbformat
+    - packaging>=24.0,<26
+    - psutil
+    - pulp>=2.3.1,<3.4
+    - pyyaml
+    - referencing
+    - requests>=2.8.1,<3.0
+    - reretry
+    - smart_open>=4.0,<8.0
+    - tabulate
+    - throttler
+    - wrapt
+    - yte>=1.5.5,<2.0
+    # user's workflow deps
+    - click>=8.1.7
+    - pandas>=2.2.2
+    - numpy>=1.26.4
+    - conda=24.7.1
+    - gemmi=0.7.5
+    - scipy=1.15.0
+    - pyarrow=24.0.0
+    - pip:
+          # Patched Snakemake fork, pinned to the jobgroup-patch tag
+          - "git+https://github.com/ntnn19/snakemake_9.16.3_patched.git"
+          # SLURM plugin chain, pinned exactly to v0.8.0's compatibility range
+          - "snakemake-executor-plugin-slurm==0.8.0"
+          - "snakemake-executor-plugin-slurm-jobstep>=0.2.0,<0.3"
+          - "snakemake-interface-common>=1.13.0,<2"
+          - "snakemake-interface-executor-plugins>=9.1.1,<10"
+          # Extra interface libs Snakemake 9.16.3 imports at runtime
+          # (widened to whatever versions Snakemake 9.16.3 requires)
+          - "snakemake-interface-storage-plugins>=4.3.2,<5"
+          - "snakemake-interface-report-plugins>=1.2.0,<2"
+          - "snakemake-interface-logger-plugins>=1.1.0,<3"
+          - "snakemake-interface-scheduler-plugins>=2.0.0,<3"
+          - loguru
+          - biopython
