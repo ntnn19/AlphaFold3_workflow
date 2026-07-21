@@ -14,13 +14,27 @@ rule AF3_INFERENCE:
                 )
             )
         )
+    # NOTE: output/log/benchmark wildcard selection is gated on
+    # `MUTATION_DF_PATH is not None` — the SAME condition used above for
+    # `input.data` (and by the MUTATE checkpoint's own output declaration and by
+    # _collect_inference_targets' rule_MUTATE glob). Gating these on
+    # `MUTATION_DF.empty` instead (as the original code did) diverges from the
+    # input gate in exactly one edge case — a mutations sheet that is present but
+    # has zero data rows (e.g. header-only): there MUTATION_DF_PATH is not None
+    # (input resolves via {mut} -> rule_MUTATE/) while MUTATION_DF.empty is True
+    # (output would use {multi}), so the rule's wildcards would be {multi} while
+    # input.data references w.mut -> InputFunctionException ('Wildcards' object has
+    # no attribute 'mut'). Aligning every gate to MUTATION_DF_PATH keeps input and
+    # output on the same wildcard and makes the mutation path consistent for all
+    # streams (with mutate.py always writing a WT passthrough, rule_MUTATE/ always
+    # has a resolvable file per stem when the path is set).
     output:
         model=expand(
             os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{{multi}}",
                             "seed-{{seed}}_sample-{sample}",
                             "{{multi}}_seed-{{seed}}_sample-{sample}_model.cif" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "model.cif"),
             sample=range(N_SAMPLES)
-        ) if MUTATION_DF.empty else
+        ) if MUTATION_DF_PATH is None else
         expand(
             os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{{mut}}",
                             "seed-{{seed}}_sample-{sample}",
@@ -32,7 +46,7 @@ rule AF3_INFERENCE:
                             "seed-{{seed}}_sample-{sample}",
                             "{{multi}}_seed-{{seed}}_sample-{sample}_confidences.json" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "confidences.json"),
             sample=range(N_SAMPLES)
-        ) if MUTATION_DF.empty else
+        ) if MUTATION_DF_PATH is None else
         expand(
             os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{{mut}}",
                             "seed-{{seed}}_sample-{sample}",
@@ -40,9 +54,9 @@ rule AF3_INFERENCE:
             sample=range(N_SAMPLES)
         ),
     log:
-        os.path.join(OUTPUT_DIR, "logs", "rule_AF3_INFERENCE", "{multi}_seed-{seed}.log") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "logs", "rule_AF3_INFERENCE", "{mut}_seed-{seed}.log"),
+        os.path.join(OUTPUT_DIR, "logs", "rule_AF3_INFERENCE", "{multi}_seed-{seed}.log") if MUTATION_DF_PATH is None else os.path.join(OUTPUT_DIR, "logs", "rule_AF3_INFERENCE", "{mut}_seed-{seed}.log"),
     benchmark:
-        os.path.join(OUTPUT_DIR, "benchmarks", "rule_AF3_INFERENCE", "{multi}_seed-{seed}.tsv") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "benchmarks", "rule_AF3_INFERENCE", "{mut}_seed-{seed}.tsv"),
+        os.path.join(OUTPUT_DIR, "benchmarks", "rule_AF3_INFERENCE", "{multi}_seed-{seed}.tsv") if MUTATION_DF_PATH is None else os.path.join(OUTPUT_DIR, "benchmarks", "rule_AF3_INFERENCE", "{mut}_seed-{seed}.tsv"),
     resources:
         cpus_per_task=1,
         mem_mb=1000,

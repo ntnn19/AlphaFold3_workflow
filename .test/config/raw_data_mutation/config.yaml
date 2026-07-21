@@ -1,0 +1,14 @@
+sample_sheets:
+  raw_data: custom.tsv
+  mutations: mutations.tsv
+mode: custom
+msa_option: none
+n_splits: 1
+af3_flags:
+  af3_container: /tmp/af3.sif
+  models_dir: /tmp/af3_models
+  databases_dir: /tmp/af3_db
+output_dir: results
+run_data_pipeline_locally: true
+exclusive_lock: false
+n_seeds: 1

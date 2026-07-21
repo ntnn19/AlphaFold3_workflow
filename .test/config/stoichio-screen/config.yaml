@@ -1,0 +1,12 @@
+sample_sheets:
+  raw_data: stoichio_screen.tsv
+mode: stoichio-screen
+msa_option: none
+n_splits: 1
+af3_flags:
+  af3_container: /tmp/af3_container.sif
+  models_dir: /tmp/af3_models
+  databases_dir: /tmp/af3_db
+
+run_data_pipeline_locally: true
+exclusive_lock: true

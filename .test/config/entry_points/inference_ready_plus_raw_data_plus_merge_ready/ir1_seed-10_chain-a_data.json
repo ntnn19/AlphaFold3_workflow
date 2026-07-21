@@ -1,0 +1,19 @@
+{
+  "name": "ir1_seed-10_chain-a_data",
+  "modelSeeds": [
+    10
+  ],
+  "sequences": [
+    {
+      "protein": {
+        "sequence": "GMRESYANENQFGFKTINSDIHKIVIVGGYGKLGGLFARYLRASGYPISILDREDWAVAESILANADVVIVSVPINLTLETIERLKPYLTENMLLADLTSVKREPLAKMLEVHTGAVLGLHPMFGADIASMAKQVVVRCDGRFPERYEWLLEQIQIWGAKIYQTNATEHDHNMTYIQALRHFSTFANGLHLSKQPINLANLLALSSPIYRLELAMIGRLFAQDAELYADIIMDKSENLAVIETLKQTYDEALTFFENNDRQGFIDAFHKVRDWFGDYSEQFLKESRQLLQQANDLKQG",
+        "unpairedMsa": "",
+        "pairedMsa": "",
+        "templates": [],
+        "id": "A"
+      }
+    }
+  ],
+  "dialect": "alphafold3",
+  "version": 1
+}

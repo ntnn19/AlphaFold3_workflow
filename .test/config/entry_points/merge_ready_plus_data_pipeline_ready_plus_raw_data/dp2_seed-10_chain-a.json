@@ -1,0 +1,19 @@
+{
+  "name": "dp2_seed-10_chain-a",
+  "modelSeeds": [
+    10
+  ],
+  "sequences": [
+    {
+      "protein": {
+        "sequence": "MPTESKKVRFENTASDKGKNPSKVIKSYYGTMDIKKINEGLLDSKILSAFNTVIALLGSIVIIVMNIMIIQNYTRCTDNQAMIKDALQSIQQQIKGLADKIGTEIGPKVSLIDTSSTITIPANIGLLGSKISQSTASINENVNEKCKFTLPPLKIHECNISCPNPLPFREYKPQTEGVSNLVGLPNNICLQKTSNQILKPKLISYTLPVVGQSGTCITDPLLAMDEGY",
+        "unpairedMsa": "",
+        "pairedMsa": "",
+        "templates": [],
+        "id": "A"
+      }
+    }
+  ],
+  "dialect": "alphafold3",
+  "version": 1
+}

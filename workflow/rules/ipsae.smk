@@ -1,45 +1,56 @@
-#SEED=re.search(r'seed-(\d+)', multi).group(1),
+# NOTE on seed resolution:
+# rule IPSAE's output/log/benchmark declare `{seed}` as a genuine wildcard
+# (output pattern rule_AF3_INFERENCE/{multi}/seed-{seed}_sample-{n}/...), so
+# Snakemake binds `w.seed` when the rule fires. The input functions below use
+# that already-resolved `w.seed` directly. The seed value originates from the
+# JSON `modelSeeds` (via common.smk `get_seeds`, defaulting to [1] when absent)
+# and NEVER from regex-parsing the filename. This is what lets the workflow
+# accept ANY filesystem/Python-valid sample name — bare (`job1`), descriptive
+# (`myprotein`), or already-seeded (`job1_seed-10`) — without requiring a
+# `seed-<N>` token in the name.
+
+
 rule IPSAE:
     input:
         model = branch(
-            lambda w: (w.multi if MUTATION_DF.empty else w.mut) in SCORING_READY_DF["sample_id"].values,
+            lambda w: (w.multi if (MUTATION_DF_PATH is None) else w.mut) in SCORING_READY_DF["sample_id"].values,
             then=lookup(
-                query="sample_id == '{multi}'" if MUTATION_DF.empty else "sample_id == '{mut}'",
+                query="sample_id == '{multi}'" if (MUTATION_DF_PATH is None) else "sample_id == '{mut}'",
                 within=SCORING_READY_DF, cols="model"
             ),
             otherwise=lambda w: expand(
                 os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{key}",
                              "seed-{seed}_sample-{sample}",
                              "{key}_seed-{seed}_sample-{sample}_model.cif"),
-                key=w.multi if MUTATION_DF.empty else w.mut,
-                seed=re.search(r'seed-(\d+)', w.multi if MUTATION_DF.empty else w.mut).group(1),
+                key=w.multi if (MUTATION_DF_PATH is None) else w.mut,
+                seed=w.seed,
                 sample=range(N_SAMPLES)
             ) if AF3_VERSION not in ["v3.0.1", "v3.0.0"] else expand(
                 os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{key}",
                              "seed-{seed}_sample-{sample}", "model.cif"),
-                key=w.multi if MUTATION_DF.empty else w.mut,
-                seed=re.search(r'seed-(\d+)', w.multi if MUTATION_DF.empty else w.mut).group(1),
+                key=w.multi if (MUTATION_DF_PATH is None) else w.mut,
+                seed=w.seed,
                 sample=range(N_SAMPLES)
             )
         ),
         confidences = branch(
-            lambda w: (w.multi if MUTATION_DF.empty else w.mut) in SCORING_READY_DF["sample_id"].values,
+            lambda w: (w.multi if (MUTATION_DF_PATH is None) else w.mut) in SCORING_READY_DF["sample_id"].values,
             then=lookup(
-                query="sample_id == '{multi}'" if MUTATION_DF.empty else "sample_id == '{mut}'",
+                query="sample_id == '{multi}'" if (MUTATION_DF_PATH is None) else "sample_id == '{mut}'",
                 within=SCORING_READY_DF, cols="confidence"
             ),
             otherwise=lambda w: expand(
                 os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{key}",
                              "seed-{seed}_sample-{sample}",
                              "{key}_seed-{seed}_sample-{sample}_confidences.json"),
-                key=w.multi if MUTATION_DF.empty else w.mut,
-                seed=re.search(r'seed-(\d+)', w.multi if MUTATION_DF.empty else w.mut).group(1),
+                key=w.multi if (MUTATION_DF_PATH is None) else w.mut,
+                seed=w.seed,
                 sample=range(N_SAMPLES)
             ) if AF3_VERSION not in ["v3.0.1", "v3.0.0"] else expand(
                 os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{key}",
                              "seed-{seed}_sample-{sample}", "confidences.json"),
-                key=w.multi if MUTATION_DF.empty else w.mut,
-                seed=re.search(r'seed-(\d+)', w.multi if MUTATION_DF.empty else w.mut).group(1),
+                key=w.multi if (MUTATION_DF_PATH is None) else w.mut,
+                seed=w.seed,
                 sample=range(N_SAMPLES)
             )
         ),
@@ -49,7 +60,7 @@ rule IPSAE:
                          "seed-{{seed}}_sample-{sample}",
                          "{{multi}}_seed-{{seed}}_sample-{sample}_model_15_15.txt" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "model_15_15.txt"),
             sample=range(N_SAMPLES)
-        ) if MUTATION_DF.empty else
+        ) if (MUTATION_DF_PATH is None) else
         expand(
             os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{{mut}}",
                          "seed-{{seed}}_sample-{sample}",
@@ -61,7 +72,7 @@ rule IPSAE:
                          "seed-{{seed}}_sample-{sample}",
                          "{{multi}}_seed-{{seed}}_sample-{sample}_model_10_15.txt" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "model_10_15.txt"),
             sample=range(N_SAMPLES)
-        ) if MUTATION_DF.empty else
+        ) if (MUTATION_DF_PATH is None) else
         expand(
             os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{{mut}}",
                          "seed-{{seed}}_sample-{sample}",
@@ -69,17 +80,17 @@ rule IPSAE:
             sample=range(N_SAMPLES)
         ),
     log:
-        os.path.join(OUTPUT_DIR, "logs", "rule_IPSAE", "{multi}_seed-{seed}.log") if MUTATION_DF.empty else
+        os.path.join(OUTPUT_DIR, "logs", "rule_IPSAE", "{multi}_seed-{seed}.log") if (MUTATION_DF_PATH is None) else
         os.path.join(OUTPUT_DIR, "logs", "rule_IPSAE", "{mut}_seed-{seed}.log"),
     benchmark:
-        os.path.join(OUTPUT_DIR, "benchmarks", "rule_IPSAE", "{multi}_seed-{seed}.tsv") if MUTATION_DF.empty else
+        os.path.join(OUTPUT_DIR, "benchmarks", "rule_IPSAE", "{multi}_seed-{seed}.tsv") if (MUTATION_DF_PATH is None) else
         os.path.join(OUTPUT_DIR, "benchmarks", "rule_IPSAE", "{mut}_seed-{seed}.tsv"),
     resources:
         mem_mb  = 1000,
         runtime = 480,
     conda: "../envs/structure_scoring.yaml"
     params:
-        inference_dir = os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{multi}") if MUTATION_DF.empty else
+        inference_dir = os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{multi}") if (MUTATION_DF_PATH is None) else
                         os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{mut}"),
         confidences_glob = "*_confidences.json" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "confidences.json",
         confidences_suffix = "_confidences.json" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "confidences.json",

@@ -1,0 +1,11 @@
+sample_sheets:
+  inference_ready: inference_ready_samples.tsv
+mode: custom
+msa_option: none
+af3_flags:
+  af3_container: /tmp/af3.sif
+  models_dir: /tmp/af3_models
+  databases_dir: /tmp/af3_db
+output_dir: results
+run_data_pipeline_locally: true
+exclusive_lock: false

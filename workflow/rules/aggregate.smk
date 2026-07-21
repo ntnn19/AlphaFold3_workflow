@@ -5,18 +5,18 @@ rule EXTRACT_SCORES:
         rules.AF3_INFERENCE.output.model,
         rules.AF3_INFERENCE.output.scores
     output:
-        global_tsv    = temp(expand(os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", "{{multi}}", "{{multi}}_seed-{{seed}}_sample-{sample}_af_global.tsv"), sample=range(N_SAMPLES)) if MUTATION_DF.empty else temp(expand(os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES","{{mut}}", "{{mut}}_seed-{{seed}}_sample-{sample}_af_global.tsv"), sample=range(N_SAMPLES)))),
-        per_chain_tsv = temp(expand(os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", "{{multi}}", "{{multi}}_seed-{{seed}}_sample-{sample}_af_per_chain.tsv"), sample=range(N_SAMPLES)) if MUTATION_DF.empty else temp(expand(os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", "{{mut}}", "{{mut}}_seed-{{seed}}_sample-{sample}_af_per_chain.tsv"), sample=range(N_SAMPLES)))),
-        per_pair_tsv  = temp(expand(os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", "{{multi}}", "{{multi}}_seed-{{seed}}_sample-{sample}_af_per_chain_pair.tsv"), sample=range(N_SAMPLES)) if MUTATION_DF.empty else temp(expand(os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", "{{mut}}", "{{mut}}_seed-{{seed}}_sample-{sample}_af_per_chain_pair.tsv"), sample=range(N_SAMPLES)))),
-        ipsae  = temp(expand(os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", "{{multi}}", "{{multi}}_seed-{{seed}}_sample-{sample}_ipsae.tsv"), sample=range(N_SAMPLES)) if MUTATION_DF.empty else temp(expand(os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", "{{mut}}", "{{mut}}_seed-{{seed}}_sample-{sample}_ipsae.tsv"), sample=range(N_SAMPLES)))),
+        global_tsv    = temp(expand(os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", "{{multi}}", "{{multi}}_seed-{{seed}}_sample-{sample}_af_global.tsv"), sample=range(N_SAMPLES)) if (MUTATION_DF_PATH is None) else temp(expand(os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES","{{mut}}", "{{mut}}_seed-{{seed}}_sample-{sample}_af_global.tsv"), sample=range(N_SAMPLES)))),
+        per_chain_tsv = temp(expand(os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", "{{multi}}", "{{multi}}_seed-{{seed}}_sample-{sample}_af_per_chain.tsv"), sample=range(N_SAMPLES)) if (MUTATION_DF_PATH is None) else temp(expand(os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", "{{mut}}", "{{mut}}_seed-{{seed}}_sample-{sample}_af_per_chain.tsv"), sample=range(N_SAMPLES)))),
+        per_pair_tsv  = temp(expand(os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", "{{multi}}", "{{multi}}_seed-{{seed}}_sample-{sample}_af_per_chain_pair.tsv"), sample=range(N_SAMPLES)) if (MUTATION_DF_PATH is None) else temp(expand(os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", "{{mut}}", "{{mut}}_seed-{{seed}}_sample-{sample}_af_per_chain_pair.tsv"), sample=range(N_SAMPLES)))),
+        ipsae  = temp(expand(os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", "{{multi}}", "{{multi}}_seed-{{seed}}_sample-{sample}_ipsae.tsv"), sample=range(N_SAMPLES)) if (MUTATION_DF_PATH is None) else temp(expand(os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", "{{mut}}", "{{mut}}_seed-{{seed}}_sample-{sample}_ipsae.tsv"), sample=range(N_SAMPLES)))),
     params:
-        inference_dir = os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{multi}") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{mut}"),
-        out_dir = os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", "{multi}") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", "{mut}"),
+        inference_dir = os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{multi}") if (MUTATION_DF_PATH is None) else os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{mut}"),
+        out_dir = os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", "{multi}") if (MUTATION_DF_PATH is None) else os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", "{mut}"),
         helper_ = f"{WORKFLOW_DIR}/scripts/extract_scores.py",
     log:
-        os.path.join(OUTPUT_DIR, "logs", "rule_EXTRACT_SCORES", "{multi}", "{multi}_seed-{seed}.log") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "logs", "rule_EXTRACT_SCORES","{mut}", "{mut}_seed-{seed}.log"),
+        os.path.join(OUTPUT_DIR, "logs", "rule_EXTRACT_SCORES", "{multi}", "{multi}_seed-{seed}.log") if (MUTATION_DF_PATH is None) else os.path.join(OUTPUT_DIR, "logs", "rule_EXTRACT_SCORES","{mut}", "{mut}_seed-{seed}.log"),
     benchmark:
-        os.path.join(OUTPUT_DIR, "benchmarks", "rule_EXTRACT_SCORES", "{multi}", "{multi}_seed-{seed}.tsv") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "benchmarks", "rule_EXTRACT_SCORES","{mut}", "{mut}_seed-{seed}.tsv"),
+        os.path.join(OUTPUT_DIR, "benchmarks", "rule_EXTRACT_SCORES", "{multi}", "{multi}_seed-{seed}.tsv") if (MUTATION_DF_PATH is None) else os.path.join(OUTPUT_DIR, "benchmarks", "rule_EXTRACT_SCORES","{mut}", "{mut}_seed-{seed}.tsv"),
     resources:
         mem_mb  = 2000,
         runtime = 10,
