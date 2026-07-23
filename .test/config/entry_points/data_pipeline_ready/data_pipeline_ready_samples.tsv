@@ -1,6 +1,6 @@
 sample_id	file
-job1_seed-10_chain-a	job1_seed-10_chain-a.json
-job3_test_seed-10_chain-a	job3_test_seed-10_chain-a.json
+job2_seed-10_chain-a	job2_seed-10_chain-a.json
+job2_seed-10_chain-a	job2_seed-10_chain-a.json
 job1	job1.json
-job3	job3.json
+job1	job1.json
 

@@ -86,11 +86,14 @@ rule AF3_INFERENCE:
         else
             LOCK_PREFIX=""
         fi
+        tmp=$(mktemp -d "${{PWD}}/.af3_tmp.XXXXXX")
         $LOCK_PREFIX python /app/alphafold/run_alphafold.py $FLASH_ARG --json_path={input.data} \
         --model_dir={params.models_dir} \
-        --output_dir={params.output_dir}/rule_AF3_INFERENCE \
+        --output_dir=$tmp \
         --db_dir={params.database_dir} \
         --run_data_pipeline=false \
         --run_inference=true \
-        {params.extra_af3_flags} 2>&1 | tee {log}
+        {params.extra_af3_flags} 2>&1 | tee {log}        
+        cp -a "$tmp"/. "{params.output_dir}/rule_AF3_INFERENCE/"
+        rm -rf "$tmp"
         """
