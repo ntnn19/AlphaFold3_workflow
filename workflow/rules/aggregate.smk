@@ -17,9 +17,6 @@ rule EXTRACT_SCORES:
         os.path.join(OUTPUT_DIR, "logs", "rule_EXTRACT_SCORES", "{multi}", "{multi}_seed-{seed}.log") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "logs", "rule_EXTRACT_SCORES","{mut}", "{mut}_seed-{seed}.log"),
     benchmark:
         os.path.join(OUTPUT_DIR, "benchmarks", "rule_EXTRACT_SCORES", "{multi}", "{multi}_seed-{seed}.tsv") if MUTATION_DF.empty else os.path.join(OUTPUT_DIR, "benchmarks", "rule_EXTRACT_SCORES","{mut}", "{mut}_seed-{seed}.tsv"),
-    resources:
-        mem_mb  = 2000,
-        runtime = 10,
     conda: "../envs/preprocessing.yaml"
     shell:
         """

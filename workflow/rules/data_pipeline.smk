@@ -22,9 +22,6 @@ rule AF3_DATA_SPEEDY_PIPELINE:
         os.path.join(OUTPUT_DIR, "logs", "rule_AF3_DATA_PIPELINE", "{mono}.log"),
     benchmark:
         os.path.join(OUTPUT_DIR, "benchmarks", "rule_AF3_DATA_PIPELINE", "{mono}.tsv"),
-    resources:
-        mem_mb  = 2000,
-        runtime = 10,
     container:
         AF3_CONTAINER
     shell:
@@ -35,6 +32,6 @@ rule AF3_DATA_SPEEDY_PIPELINE:
         --db_dir={params.databases_dir} \
         --run_data_pipeline=true \
         --run_inference=false \
-        {params.extra_af3_flags} \
+        {params.extra_af3_data_flags} \
         2>&1 | tee {log}
         """

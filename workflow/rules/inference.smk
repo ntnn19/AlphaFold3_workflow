@@ -39,11 +39,6 @@ rule AF3_INFERENCE:
         os.path.join(OUTPUT_DIR, "logs", "rule_AF3_INFERENCE", "{multi}_seed-{seed}.log") if MUTATION_DF_PATH is None else os.path.join(OUTPUT_DIR, "logs", "rule_AF3_INFERENCE", "{mut}_seed-{seed}.log"),
     benchmark:
         os.path.join(OUTPUT_DIR, "benchmarks", "rule_AF3_INFERENCE", "{multi}_seed-{seed}.tsv") if MUTATION_DF_PATH is None else os.path.join(OUTPUT_DIR, "benchmarks", "rule_AF3_INFERENCE", "{mut}_seed-{seed}.tsv"),
-    resources:
-        cpus_per_task=1,
-        mem_mb=1000,
-        runtime="30m",
-        slurm_partition="vds"
     params:
         extra_af3_flags = EXTRA_AF3_FLAGS,
         exclusive_lock = "true" if EXCLUSIVE_LOCK else "false",
@@ -75,7 +70,7 @@ rule AF3_INFERENCE:
         --db_dir={params.database_dir} \
         --run_data_pipeline=false \
         --run_inference=true \
-        {params.extra_af3_flags} 2>&1 | tee {log}        
+        {params.extra_af3_inference_flags} 2>&1 | tee {log}        
         cp -a "$tmp"/. "{params.output_dir}/rule_AF3_INFERENCE/"
         rm -rf "$tmp"
         """

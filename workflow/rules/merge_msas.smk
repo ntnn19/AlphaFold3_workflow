@@ -5,9 +5,6 @@ rule MERGE_MONO_AND_MULTI_JSON:
         os.path.join(OUTPUT_DIR, "logs", "rule_MERGE_MONOMERS_TO_MULTIMERS", "{multi}.log"),
     benchmark:
         os.path.join(OUTPUT_DIR, "benchmarks", "rule_MERGE_MONOMERS_TO_MULTIMERS", "{multi}.tsv"),
-    resources:
-        mem_mb  = 2000,
-        runtime = 10,
     params:
         _helper = workflow.source_path("../scripts/merge_mono_and_multi_jsons.py"),
         chain_map = f"{OUTPUT_DIR}/rule_PREPROCESSING/metadata/inference_to_data_pipeline_map.tsv" if DATA_PIPELINE_READY_DF.empty else f"{NORMALIZED_INPUTS_DIR}/inference_to_data_pipeline_map.tsv"

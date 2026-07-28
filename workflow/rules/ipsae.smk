@@ -74,9 +74,6 @@ rule IPSAE:
     benchmark:
         os.path.join(OUTPUT_DIR, "benchmarks", "rule_IPSAE", "{multi}_seed-{seed}.tsv") if MUTATION_DF.empty else
         os.path.join(OUTPUT_DIR, "benchmarks", "rule_IPSAE", "{mut}_seed-{seed}.tsv"),
-    resources:
-        mem_mb  = 1000,
-        runtime = 480,
     conda: "../envs/structure_scoring.yaml"
     params:
         inference_dir = os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{multi}") if MUTATION_DF.empty else

@@ -6,9 +6,6 @@ checkpoint MUTATE:
         directory(os.path.join(OUTPUT_DIR, "rule_MUTATE")) if MUTATION_DF_PATH is not None else []
     log:
         os.path.join(OUTPUT_DIR, "logs", "rule_MUTATE", "MUTATE.log")
-    resources:
-        mem_mb      = 16000,
-        runtime     = 480,
     benchmark:
         os.path.join(OUTPUT_DIR, "benchmarks", "rule_MUTATE", "MUTATE.tsv"),
     params:
