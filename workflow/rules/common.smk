@@ -17,6 +17,16 @@ from snakemake.utils import validate, min_version
 from snakemake.exceptions import WorkflowError
 from itertools import product
 import json
+from typing import (
+    Any,
+    Iterable,
+    Mapping,
+    Optional,
+    Sequence,
+    Union,
+    Literal,
+    Tuple
+)
 # ── Snakemake version guard ──────────────────────────────────────────────────
 min_version("8.0")
 
@@ -44,7 +54,8 @@ AF3_VERSION = config.get("af3_version","v3.0.2")
 print("AF3_VERSION=", AF3_VERSION)
 # ── Utility ──────────────────────────────────────────────────────────────────
 _ALLOWED = frozenset("abcdefghijklmnopqrstuvwxyz0123456789_-.")
-
+NORMALIZED_INPUTS_DIR = os.path.join(OUTPUT_DIR, "normalized_inputs")
+os.makedirs(NORMALIZED_INPUTS_DIR, exist_ok=True)
 # A4: flatten a list-of-lists into a flat list
 def flatten(lst):
     """Flatten one level of nesting from a list of lists."""
@@ -98,13 +109,221 @@ def load_sample_sheet(sheet_key):
             f"Failed to load sample sheet '{path}': {e}"
         ) from e
 
+# Reverse / round-trip utility
+#
+# main() consumes a "sample sheet" (read at pd.read_csv(sample_sheet, sep="\t"))
+# whose rows describe AF3 *entities* (job_name, type, id, sequence, ...) and
+# expands it into AF3 fold-input JSON files plus three bookkeeping TSVs:
+#   * data_pipeline_samples.tsv / inference_samples.tsv   -> columns: sample_id, file, ...
+#   * inference_to_data_pipeline_map.tsv                  -> columns: multimer_file,
+#                                                            monomer_chain_id, monomer_file, sample_id
+#
+# The helpers below invert that process: given one of those TSVs (which list AF3
+# JSON files), they read the referenced JSON(s) and rebuild a sample sheet in the
+# exact schema main() expects, so the result can be fed straight back into line
+# `df = pd.read_csv(sample_sheet, sep="\t")`.
+# ---------------------------------------------------------------------------
+
+# Canonical column order of the sample sheet consumed by main().
+SAMPLE_SHEET_COLUMNS = [
+    "job_name",
+    "type",
+    "id",
+    "sequence",
+    "modifications",
+    "msa_option",
+    "unpaired_msa",
+    "paired_msa",
+    "templates",
+    "ccd_codes",
+    "smiles",
+    "model_seeds",
+    "bonded_atom_pairs",
+    "user_ccd",
+]
+
+
+def _json_dump_field(value):
+    """Serialise a list/dict field (modifications, templates, bonded_atom_pairs)
+    back to the compact JSON string form that parse_json_field() expects.
+
+    None is returned unchanged (-> becomes an empty cell in the TSV); a bare
+    string is passed through (parse_json_field also accepts raw strings, e.g. a
+    template path)."""
+    if value is None:
+        return None
+    if isinstance(value, (list, dict)):
+        return json.dumps(value)
+    return value
+
+
+def _msa_option_from_entry(entry: Mapping[str, Any]) -> Tuple[str, Optional[str], Optional[str]]:
+    """Recover (msa_option, unpaired_msa, paired_msa) from a polymer entry.
+
+    Mirrors create_protein_sequence_data / create_rna_sequence_data:
+      * field absent or null  -> "auto"   (AF3 builds the MSA)
+      * field == ""           -> "none"   (MSA-free)
+      * field is a non-empty  -> "upload" (custom MSA carried through)
+    Protein entries may also carry unpairedMsaPath / pairedMsaPath (the 'upload'
+    branch); those are preferred as the round-tripped MSA payload when present.
+    """
+    if "unpairedMsa" not in entry and "unpairedMsaPath" not in entry:
+        # e.g. DNA entries, or a ligand-like polymer with no MSA keys at all.
+        return "auto", None, None
+
+    unpaired = entry.get("unpairedMsaPath", entry.get("unpairedMsa"))
+    paired = entry.get("pairedMsaPath", entry.get("pairedMsa"))
+
+    if unpaired is None:
+        return "auto", None, None
+    if unpaired == "":
+        return "none", None, None
+    return "upload", unpaired, (None if paired in (None, "") else paired)
+
+
+def af3_json_to_sample_rows(task: Mapping[str, Any]) -> list:
+    """Invert create_batch_task(): turn one parsed AF3 fold-input JSON into a
+    list of sample-sheet row dicts (one per entity/chain), preserving the order
+    of the ``sequences`` array."""
+    job_name = task.get("name")
+
+    model_seeds = task.get("modelSeeds")
+    if isinstance(model_seeds, (list, tuple)):
+        model_seeds = ",".join(str(s) for s in model_seeds)
+    elif model_seeds is not None:
+        model_seeds = str(model_seeds)
+
+    bonded_atom_pairs = _json_dump_field(task.get("bondedAtomPairs"))
+    user_ccd = task.get("userCCD")
+
+    rows = []
+    for seq_wrapper in task.get("sequences", []):
+        # Each element is a single-key dict: {"protein"|"rna"|"dna"|"ligand": {...}}
+        if not isinstance(seq_wrapper, Mapping) or len(seq_wrapper) != 1:
+            raise ValueError(f"Unexpected sequence entry in job {job_name!r}: {seq_wrapper!r}")
+        (entity_type, entry), = seq_wrapper.items()
+
+        row = {c: None for c in SAMPLE_SHEET_COLUMNS}
+        row["job_name"] = job_name
+        row["type"] = entity_type
+        row["id"] = entry.get("id")
+        row["modifications"] = _json_dump_field(entry.get("modifications"))
+        row["model_seeds"] = model_seeds
+        row["bonded_atom_pairs"] = bonded_atom_pairs
+        row["user_ccd"] = user_ccd
+
+        if entity_type in ("protein", "rna", "dna"):
+            row["sequence"] = entry.get("sequence")
+            msa_option, unpaired, paired = _msa_option_from_entry(entry)
+            row["msa_option"] = msa_option
+            row["unpaired_msa"] = unpaired
+            row["paired_msa"] = paired
+            # templates: None -> auto search; [] -> template-free; list -> custom.
+            if "templates" in entry:
+                row["templates"] = _json_dump_field(entry.get("templates"))
+        elif entity_type == "ligand":
+            ccd_codes = entry.get("ccdCodes")
+            if isinstance(ccd_codes, (list, tuple)):
+                ccd_codes = ",".join(str(c) for c in ccd_codes)
+            row["ccd_codes"] = ccd_codes
+            row["smiles"] = entry.get("smiles")
+        else:
+            raise ValueError(
+                f"Unknown entity type {entity_type!r} in job {job_name!r}. "
+                "Must be 'protein', 'rna', 'dna', or 'ligand'."
+            )
+
+        rows.append(row)
+    return rows
+
+
+def build_sample_sheet_from_json_tsv(
+        tsv_path: Union[str, Path],
+        output_tsv: Optional[Union[str, Path]] = None,
+        json_column: Optional[str] = None,
+) -> pd.DataFrame:
+    """Reconstruct the line-`pd.read_csv(sample_sheet)` sample sheet from a TSV
+    that lists AF3 JSON files.
+
+    This is the inverse of main(): it reads the AF3 fold-input JSON files
+    referenced by one of the pipeline's bookkeeping TSVs and rebuilds a sample
+    sheet in the schema main() consumes (SAMPLE_SHEET_COLUMNS), one row per
+    entity/chain.
+
+    Two TSV layouts are auto-detected (override with ``json_column`` if needed):
+
+    * inference / data-pipeline sheet -> has a ``file`` column
+      (as written to data_pipeline_samples.tsv / inference_samples.tsv), e.g.::
+
+          sample_id   file
+          s1          s1.json
+          s2          s2.json
+
+    * merge sheet -> has a ``multimer_file`` column
+      (as written to inference_to_data_pipeline_map.tsv), e.g.::
+
+          multimer_file  monomer_chain_id  monomer_file  sample_id
+          s1.json        A                 s2.json       s1
+          s1.json        B                 s2.json       s1
+
+      Because this sheet repeats one row per chain, the referenced multimer JSON
+      files are de-duplicated (preserving first-seen order) and each multimer
+      JSON is reconstructed once into its constituent chains.
+
+    :param tsv_path: path to the JSON-listing TSV.
+    :param output_tsv: if given, the reconstructed sample sheet is written there
+        (tab-separated, no index) so it can be fed straight back into main().
+    :param json_column: force which column holds the JSON paths. If None, the
+        column is auto-detected (``multimer_file`` -> else ``file``).
+    :return: the reconstructed sample-sheet DataFrame.
+    """
+    if tsv_path is None:
+        return pd.DataFrame()
+
+    listing = pd.read_csv(tsv_path, sep="\t")
+
+    if json_column is None:
+        if "multimer_file" in listing.columns:
+            json_column = "multimer_file"      # merge-ready sheet
+        elif "file" in listing.columns:
+            json_column = "file"               # inference / data-pipeline sheet
+        else:
+            raise ValueError(
+                f"Could not find a JSON-path column in {tsv_path}. Expected "
+                f"'multimer_file' or 'file'; got columns {list(listing.columns)}. "
+                "Pass json_column= explicitly."
+            )
+    elif json_column not in listing.columns:
+        raise ValueError(f"json_column={json_column!r} not present in {tsv_path} "
+                         f"(columns: {list(listing.columns)}).")
+
+    # De-duplicate JSON paths while preserving first-seen order (the merge sheet
+    # lists the same multimer_file once per chain).
+    json_paths = list(dict.fromkeys(listing[json_column].dropna().tolist()))
+
+    rows = []
+    for jp in json_paths:
+        with open(jp) as fh:
+            task = json.load(fh)
+        rows.extend(af3_json_to_sample_rows(task))
+
+    sample_sheet = pd.DataFrame(rows, columns=SAMPLE_SHEET_COLUMNS)
+
+    if output_tsv is not None:
+        os.makedirs(os.path.dirname(os.path.abspath(output_tsv)), exist_ok=True)
+        sample_sheet.to_csv(output_tsv, sep="\t", index=False)
+        logger.info(f"Reconstructed sample sheet ({len(sample_sheet)} rows from "
+                    f"{len(json_paths)} JSON files) written to {output_tsv}")
+
+    return sample_sheet
+
+
 RAW_DATA_PATH, RAW_DATA_DF = load_sample_sheet("raw_data")
 DATA_PIPELINE_READY_PATH, DATA_PIPELINE_READY_DF = load_sample_sheet("data_pipeline_ready")
 INFERENCE_READY_PATH, INFERENCE_READY_DF = load_sample_sheet("inference_ready")
 MERGE_READY_PATH, MERGE_READY_DF = load_sample_sheet("merge_ready")
 MUTATION_DF_PATH, MUTATION_DF = load_sample_sheet("mutations")
 SCORING_READY_PATH, SCORING_READY_DF = load_sample_sheet("scoring_ready")
-
 # ── Sample-sheet validation ──────────────────────────────────────────────────
 if not RAW_DATA_DF.empty:
     validate(RAW_DATA_DF, schema="../schemas/sample_sheet.raw_data.schema.yaml")
@@ -115,6 +334,15 @@ if not INFERENCE_READY_DF.empty:
 if not MERGE_READY_DF.empty:
     validate(MERGE_READY_DF, schema="../schemas/sample_sheet.merge_ready.schema.yaml")
 
+DATA_PIPELINE_READY_DF_AS_RAW_DATA_DF = build_sample_sheet_from_json_tsv(DATA_PIPELINE_READY_PATH)
+INFERENCE_READY_DF_AS_RAW_DATA_DF = build_sample_sheet_from_json_tsv(INFERENCE_READY_PATH)
+MERGE_READY_DF_AS_RAW_DATA_DF = build_sample_sheet_from_json_tsv(MERGE_READY_PATH)
+#SCORING_READY_DF_AS_RAW_DATA_DF = build_sample_sheet_from_json_tsv(SCORING_READY_PATH)#
+
+RAW_DATA_DF = pd.concat([RAW_DATA_DF, DATA_PIPELINE_READY_DF_AS_RAW_DATA_DF, INFERENCE_READY_DF_AS_RAW_DATA_DF, MERGE_READY_DF_AS_RAW_DATA_DF])
+RAW_DATA_PATH = os.path.join(NORMALIZED_INPUTS_DIR, "raw_data.tsv")
+RAW_DATA_DF.to_csv(RAW_DATA_PATH,sep="\t",index=False)
+DATA_PIPELINE_READY_DF, INFERENCE_READY_DF, MERGE_READY_DF = pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 # ── Synthetic merge rows for data_pipeline_ready entries ────────────────────
 # data_pipeline_ready jobs are routed through MERGE_MONO_AND_MULTI_JSON, which
 # looks up each wildcard in MERGE_READY_DF.  When data_pipeline_ready is
@@ -237,142 +465,142 @@ def _collect_inference_targets(wildcards, *, use_lock: bool) -> list:
     :returns: Flat list of target file paths.
     """
     internal = []
-    external = []
+    # external = []
 
-    if not DATA_PIPELINE_READY_DF.empty:
-        def expand_paths(x):
-            stem = Path(x).stem
-            seeds = get_seeds(x)
-            return (
-                [
-                    f"{OUTPUT_DIR}/rule_AF3_INFERENCE/{stem}/seed-{seed}_sample-{sample}/"
-                    + (f"{stem}_seed-{seed}_sample-{sample}_model.cif"
-                       if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "model.cif")
-                    for seed, sample in product(seeds, range(N_SAMPLES))
-                ]
-                + [
-                    f"{OUTPUT_DIR}/rule_AF3_INFERENCE/{stem}/seed-{seed}_sample-{sample}/"
-                    + (f"{stem}_seed-{seed}_sample-{sample}_model_15_15.txt"
-                       if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "model_15_15.txt")
-                    for seed, sample in product(seeds, range(N_SAMPLES))
-                ]
-                + [
-                    f"{OUTPUT_DIR}/rule_AF3_INFERENCE/{stem}/seed-{seed}_sample-{sample}/"
-                    + (f"{stem}_seed-{seed}_sample-{sample}_model_10_15.txt"
-                       if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "model_10_15.txt")
-                    for seed, sample in product(seeds, range(N_SAMPLES))
-                ]
-            )
+    # if not DATA_PIPELINE_READY_DF.empty:
+    #     def expand_paths(x):
+    #         stem = Path(x).stem
+    #         seeds = get_seeds(x)
+    #         return (
+    #             [
+    #                 f"{OUTPUT_DIR}/rule_AF3_INFERENCE/{stem}/seed-{seed}_sample-{sample}/"
+    #                 + (f"{stem}_seed-{seed}_sample-{sample}_model.cif"
+    #                    if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "model.cif")
+    #                 for seed, sample in product(seeds, range(N_SAMPLES))
+    #             ]
+    #             + [
+    #                 f"{OUTPUT_DIR}/rule_AF3_INFERENCE/{stem}/seed-{seed}_sample-{sample}/"
+    #                 + (f"{stem}_seed-{seed}_sample-{sample}_model_15_15.txt"
+    #                    if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "model_15_15.txt")
+    #                 for seed, sample in product(seeds, range(N_SAMPLES))
+    #             ]
+    #             + [
+    #                 f"{OUTPUT_DIR}/rule_AF3_INFERENCE/{stem}/seed-{seed}_sample-{sample}/"
+    #                 + (f"{stem}_seed-{seed}_sample-{sample}_model_10_15.txt"
+    #                    if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "model_10_15.txt")
+    #                 for seed, sample in product(seeds, range(N_SAMPLES))
+    #             ]
+    #         )
 
-        external.extend(
-            path
-            for paths in DATA_PIPELINE_READY_DF["file"].apply(expand_paths)
-            for path in paths
+    #     external.extend(
+    #         path
+    #         for paths in DATA_PIPELINE_READY_DF["file"].apply(expand_paths)
+    #         for path in paths
+    #     )
+    # if not MERGE_READY_DF.empty:
+    #     # MERGE_READY_DF may contain both user-supplied merge_ready rows AND
+    #     # synthetic rows appended from data_pipeline_ready.  Collect unique
+    #     # inference targets from the user-supplied merge_ready rows only
+    #     # (identified by the original MERGE_READY_PATH) to avoid double-counting
+    #     # dp_ready targets that are already collected above.
+    #     _user_mr = MERGE_READY_DF[
+    #         ~MERGE_READY_DF["multimer_file"].isin(
+    #             DATA_PIPELINE_READY_DF["file"].tolist() if not DATA_PIPELINE_READY_DF.empty else []
+    #         )
+    #     ]
+    #     if not _user_mr.empty:
+    #         def expand_paths_mr(x):
+    #             stem = Path(x).stem
+    #             seeds = get_seeds(x)
+    #             combos = list(product(seeds, range(N_SAMPLES)))
+    #             versioned = AF3_VERSION not in ["v3.0.0", "v3.0.1"]
+    #             base = lambda seed, sample: (
+    #                 f"{OUTPUT_DIR}/rule_AF3_INFERENCE/{stem}/seed-{seed}_sample-{sample}/{stem}_seed-{seed}_sample-{sample}"
+    #                 if versioned
+    #                 else f"{OUTPUT_DIR}/rule_AF3_INFERENCE/{stem}/seed-{seed}_sample-{sample}/"
+    #             )
+    #             return (
+    #                 [f"{base(seed, sample)}_model.cif" if versioned else f"{base(seed, sample)}model.cif" for seed, sample in combos]
+    #                 + [f"{base(seed, sample)}_model_15_15.txt" if versioned else f"{base(seed, sample)}model_15_15.txt" for seed, sample in combos]
+    #                 + [f"{base(seed, sample)}_model_10_15.txt" if versioned else f"{base(seed, sample)}model_10_15.txt" for seed, sample in combos]
+    #             )
+
+    #         external.extend(
+    #             path
+    #             for paths in _user_mr["multimer_file"].apply(expand_paths_mr)
+    #             for path in paths
+    #         )
+
+    # if not INFERENCE_READY_DF.empty:
+    #     def expand_paths_inf(x):
+    #         stem = Path(x).stem
+    #         seeds = get_seeds(x)
+    #         combos = list(product(seeds, range(N_SAMPLES)))
+    #         versioned = AF3_VERSION not in ["v3.0.0", "v3.0.1"]
+    #         base_dir = lambda seed, sample: f"{OUTPUT_DIR}/rule_AF3_INFERENCE/{stem}/seed-{seed}_sample-{sample}"
+    #         fname = lambda seed, sample, suffix: (
+    #             f"{stem}_seed-{seed}_sample-{sample}_{suffix}" if versioned else suffix
+    #         )
+    #         return (
+    #             [f"{base_dir(seed, sample)}/{fname(seed, sample, 'model.cif')}" for seed, sample in combos]
+    #             + [f"{base_dir(seed, sample)}/{fname(seed, sample, 'model_15_15.txt')}" for seed, sample in combos]
+    #             + [f"{base_dir(seed, sample)}/{fname(seed, sample, 'model_10_15.txt')}" for seed, sample in combos]
+    #         )
+    #     external.extend(
+    #         path
+    #         for paths in INFERENCE_READY_DF["file"].apply(expand_paths_inf)
+    #         for path in paths
+    #     )
+
+    # external = list(dict.fromkeys(external))  # dedupe while preserving order
+
+
+    PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
+    JOB_NAMES_MULTIMERS, = glob_wildcards(os.path.join(PREPROCESSING_DIR, "multimers", "{multi}.json"))
+    base_names_with_mutations = set(MUTATION_DF["sample_id"].unique()) if not MUTATION_DF.empty else set()
+    SEEDS = list(map(lambda x: re.search(r'seed-(\d+)', x).group(1), JOB_NAMES_MULTIMERS))
+
+
+    internal.append([
+        path
+        for multi, seed in zip(JOB_NAMES_MULTIMERS, SEEDS)
+        for path in expand(
+            os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{multi}",
+                            "seed-{seed}_sample-{sample}",
+                            "{multi}_seed-{seed}_sample-{sample}_model.cif" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "model.cif"),
+            multi=multi, seed=seed, sample=range(N_SAMPLES)
         )
-    if not MERGE_READY_DF.empty:
-        # MERGE_READY_DF may contain both user-supplied merge_ready rows AND
-        # synthetic rows appended from data_pipeline_ready.  Collect unique
-        # inference targets from the user-supplied merge_ready rows only
-        # (identified by the original MERGE_READY_PATH) to avoid double-counting
-        # dp_ready targets that are already collected above.
-        _user_mr = MERGE_READY_DF[
-            ~MERGE_READY_DF["multimer_file"].isin(
-                DATA_PIPELINE_READY_DF["file"].tolist() if not DATA_PIPELINE_READY_DF.empty else []
-            )
-        ]
-        if not _user_mr.empty:
-            def expand_paths_mr(x):
-                stem = Path(x).stem
-                seeds = get_seeds(x)
-                combos = list(product(seeds, range(N_SAMPLES)))
-                versioned = AF3_VERSION not in ["v3.0.0", "v3.0.1"]
-                base = lambda seed, sample: (
-                    f"{OUTPUT_DIR}/rule_AF3_INFERENCE/{stem}/seed-{seed}_sample-{sample}/{stem}_seed-{seed}_sample-{sample}"
-                    if versioned
-                    else f"{OUTPUT_DIR}/rule_AF3_INFERENCE/{stem}/seed-{seed}_sample-{sample}/"
-                )
-                return (
-                    [f"{base(seed, sample)}_model.cif" if versioned else f"{base(seed, sample)}model.cif" for seed, sample in combos]
-                    + [f"{base(seed, sample)}_model_15_15.txt" if versioned else f"{base(seed, sample)}model_15_15.txt" for seed, sample in combos]
-                    + [f"{base(seed, sample)}_model_10_15.txt" if versioned else f"{base(seed, sample)}model_10_15.txt" for seed, sample in combos]
-                )
-
-            external.extend(
-                path
-                for paths in _user_mr["multimer_file"].apply(expand_paths_mr)
-                for path in paths
-            )
-
-    if not INFERENCE_READY_DF.empty:
-        def expand_paths_inf(x):
-            stem = Path(x).stem
-            seeds = get_seeds(x)
-            combos = list(product(seeds, range(N_SAMPLES)))
-            versioned = AF3_VERSION not in ["v3.0.0", "v3.0.1"]
-            base_dir = lambda seed, sample: f"{OUTPUT_DIR}/rule_AF3_INFERENCE/{stem}/seed-{seed}_sample-{sample}"
-            fname = lambda seed, sample, suffix: (
-                f"{stem}_seed-{seed}_sample-{sample}_{suffix}" if versioned else suffix
-            )
-            return (
-                [f"{base_dir(seed, sample)}/{fname(seed, sample, 'model.cif')}" for seed, sample in combos]
-                + [f"{base_dir(seed, sample)}/{fname(seed, sample, 'model_15_15.txt')}" for seed, sample in combos]
-                + [f"{base_dir(seed, sample)}/{fname(seed, sample, 'model_10_15.txt')}" for seed, sample in combos]
-            )
-        external.extend(
-            path
-            for paths in INFERENCE_READY_DF["file"].apply(expand_paths_inf)
-            for path in paths
+    ])
+    internal.append([
+        path
+        for multi, seed in zip(JOB_NAMES_MULTIMERS, SEEDS)
+        for path in expand(
+            os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{multi}",
+                            "seed-{seed}_sample-{sample}",
+                            "{multi}_seed-{seed}_sample-{sample}_confidences.json" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "confidences.json"),
+            multi=multi, seed=seed, sample=range(N_SAMPLES)
         )
-
-    external = list(dict.fromkeys(external))  # dedupe while preserving order
-
-    if not RAW_DATA_DF.empty:
-        PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
-        JOB_NAMES_MULTIMERS, = glob_wildcards(os.path.join(PREPROCESSING_DIR, "multimers", "{multi}.json"))
-        base_names_with_mutations = set(MUTATION_DF["sample_id"].unique()) if not MUTATION_DF.empty else set()
-        SEEDS = list(map(lambda x: re.search(r'seed-(\d+)', x).group(1), JOB_NAMES_MULTIMERS))
-        print("SEEDS", SEEDS)
-
-        internal.append([
-            path
-            for multi, seed in zip(JOB_NAMES_MULTIMERS, SEEDS)
-            for path in expand(
-                os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{multi}",
-                                "seed-{seed}_sample-{sample}",
-                                "{multi}_seed-{seed}_sample-{sample}_model.cif" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "model.cif"),
-                multi=multi, seed=seed, sample=range(N_SAMPLES)
-            )
-        ])
-        internal.append([
-            path
-            for multi, seed in zip(JOB_NAMES_MULTIMERS, SEEDS)
-            for path in expand(
-                os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{multi}",
-                                "seed-{seed}_sample-{sample}",
-                                "{multi}_seed-{seed}_sample-{sample}_confidences.json" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "confidences.json"),
-                multi=multi, seed=seed, sample=range(N_SAMPLES)
-            )
-        ])
-        internal.append([
-            path
-            for multi, seed in zip(JOB_NAMES_MULTIMERS, SEEDS)
-            for path in expand(
-                os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{multi}",
-                                "seed-{seed}_sample-{sample}",
-                                "{multi}_seed-{seed}_sample-{sample}_model_15_15.txt" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "model_15_15.txt"),
-                multi=multi, seed=seed, sample=range(N_SAMPLES)
-            )
-        ])
-        internal.append([
-            path
-            for multi, seed in zip(JOB_NAMES_MULTIMERS, SEEDS)
-            for path in expand(
-                os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{multi}",
-                                "seed-{seed}_sample-{sample}",
-                                "{multi}_seed-{seed}_sample-{sample}_model_10_15.txt" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "model_10_15.txt"),
-                multi=multi, seed=seed, sample=range(N_SAMPLES)
-            )
-        ])
+    ])
+    internal.append([
+        path
+        for multi, seed in zip(JOB_NAMES_MULTIMERS, SEEDS)
+        for path in expand(
+            os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{multi}",
+                            "seed-{seed}_sample-{sample}",
+                            "{multi}_seed-{seed}_sample-{sample}_model_15_15.txt" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "model_15_15.txt"),
+            multi=multi, seed=seed, sample=range(N_SAMPLES)
+        )
+    ])
+    internal.append([
+        path
+        for multi, seed in zip(JOB_NAMES_MULTIMERS, SEEDS)
+        for path in expand(
+            os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{multi}",
+                            "seed-{seed}_sample-{sample}",
+                            "{multi}_seed-{seed}_sample-{sample}_model_10_15.txt" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "model_10_15.txt"),
+            multi=multi, seed=seed, sample=range(N_SAMPLES)
+        )
+    ])
 
 
     if not MUTATION_DF.empty:
@@ -422,13 +650,8 @@ def _collect_inference_targets(wildcards, *, use_lock: bool) -> list:
                 mut=mut, seed=seed, sample=range(N_SAMPLES)
             )
         ])
-    if internal and external:
-        return [*flatten(internal), *external]
-    if internal:
-        return flatten(internal)
-    if external:
-        return external
-    return []
+
+    return flatten(internal)
 
 
 
@@ -516,9 +739,8 @@ def _collect_roots(paths: Iterable[str | Path]) -> set[str]:
 
 def prepare_container_binds(
     *,
-    workflow_directory: str,
     output_directory: str,
-    config: dict[str, Any],
+    config: dict[str, Any]
 ) -> None:
     # Credit: https://github.com/KosinskiLab/AlphaPulldownSnakemake
     """Populate Singularity/Apptainer bind paths based on config."""
@@ -533,7 +755,6 @@ def prepare_container_binds(
             interest.add(Path(value))
     roots = sorted(_collect_roots(interest))
     bind_spec = ",".join(f"{r}:{r}" for r in roots)
-    bind_spec +=  f",{Path(workflow_directory)}:{Path(workflow_directory)}"
     for var in ("APPTAINER_BINDPATH", "SINGULARITY_BINDPATH"):
         os.environ.setdefault(var, bind_spec)
     for var in ("APPTAINER_NV", "SINGULARITY_NV"):

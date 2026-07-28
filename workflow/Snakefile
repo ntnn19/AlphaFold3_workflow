@@ -7,9 +7,6 @@ A modular, reproducible pipeline for high-throughput AF3 structure prediction.
 import os
 from pathlib import Path
 
-# ── Workflow directory (used in shell commands) ──────────────────────────────
-WORKFLOW_DIR = os.path.dirname(os.path.abspath(workflow.snakefile))
-
 # ── Shared helpers, constants, and input functions ───────────────────────────
 include: "rules/common.smk"
 
@@ -40,7 +37,6 @@ wildcard_constraints:
 _raise_nofile_limit()
 
 prepare_container_binds(
-    workflow_directory=WORKFLOW_DIR,
     output_directory=config["output_dir"],
     config=config
 )

@@ -1,0 +1,4 @@
+multimer_file	monomer_chain_id	monomer_file	sample_id
+job1.json	A	job1_seed-10.json	mr1_seed-10
+job2_seed-10_chain-a.json	A	job2_seed-10_chain-a.json	mr2_seed-10
+job2_seed-10_chain-a.json	B	job2_seed-10_chain-a.json	mr2_seed-10

@@ -1,10 +1,11 @@
 rule AF3_DATA_SPEEDY_PIPELINE:
     input:
-        data = branch(
-            lookup(query="sample_id == '{mono}'",within=DATA_PIPELINE_READY_DF ,cols="file"),
-            then=lookup(query="sample_id == '{mono}'",within=DATA_PIPELINE_READY_DF ,cols="file"),
-            otherwise=os.path.join(OUTPUT_DIR,"rule_PREPROCESSING","monomers","{mono}.json")
-        ),
+        data = os.path.join(OUTPUT_DIR,"rule_PREPROCESSING","monomers","{mono}.json")
+        #data = branch(
+            #lookup(query="sample_id == '{mono}'",within=DATA_PIPELINE_READY_DF ,cols="file"),
+            #then=lookup(query="sample_id == '{mono}'",within=DATA_PIPELINE_READY_DF ,cols="file"),
+            #otherwise=os.path.join(OUTPUT_DIR,"rule_PREPROCESSING","monomers","{mono}.json")
+        #),
     params:
         mode = MODE,
         extra_af3_flags = EXTRA_AF3_FLAGS,

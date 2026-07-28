@@ -1,3 +1,4 @@
 sample_id	file
-job1_seed-10_chain-a_data	job1_seed-10_chain-a_data.json
-job3_test_seed-10_chain-a_data	job3_test_seed-10_chain-a_data.json
+job1	job1.json
+job2_seed-10_chain-a	job2_seed-10_chain-a.json
+job1_seed-10	job1_seed-10.json

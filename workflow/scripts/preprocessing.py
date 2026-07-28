@@ -32,6 +32,30 @@ import re
 import tempfile
 
 
+def _is_msa_path(value: Optional[str]) -> bool:
+    """Decide whether an MSA payload is a file *path* or inline A3M *content*.
+
+    AF3's schema treats ``unpairedMsa``/``pairedMsa`` (inline A3M content) and
+    ``unpairedMsaPath``/``pairedMsaPath`` (file paths) as mutually exclusive.
+    Inline A3M/FASTA content begins with a ``>`` header line and typically
+    contains newlines; a file path is a single-line string with no leading
+    ``>``. This lets the ``upload`` branch emit the field that matches what the
+    payload actually is, so a round-trip preserves the original inline form
+    instead of stuffing content into a ``*Path`` field (which AF3 would then
+    try to open as a file and fail).
+
+    Empty/None payloads are treated as content (the caller maps them to ``""``).
+    """
+    if not isinstance(value, str) or value == "":
+        return False
+    # A3M/FASTA content always starts with a '>' header. A real path never does.
+    if value.startswith(">"):
+        return False
+    # Multi-line content (newline-separated records) is inline, not a path.
+    if "\n" in value:
+        return False
+    return True
+
 def slice_sequence_by_range(seq: str, roi: Optional[str], seq_type: str) -> str:
     if seq_type.lower() not in {"rna", "dna", "protein"}:
         return seq  # skip ligands and other non-sequence types
@@ -715,11 +739,16 @@ def create_rna_sequence_data(
     elif msa_option == 'none':
         rna_entry["unpairedMsa"] = ""
     elif msa_option == 'upload':
-        rna_entry["unpairedMsa"] = unpaired_msa or ""
+        # Emit inline content vs file path to match the payload (see
+        # create_protein_sequence_data for the mutual-exclusivity rationale).
+        unpaired_val = unpaired_msa or ""
+        if _is_msa_path(unpaired_val):
+            rna_entry["unpairedMsaPath"] = unpaired_val
+        else:
+            rna_entry["unpairedMsa"] = unpaired_val
     else:
         raise ValueError(f"Invalid msa_option for RNA: {msa_option!r}. Must be 'auto', 'none', or 'upload'.")
     return rna_entry
-
 
 # modify the following function to be compatible with the following documentation:
 def create_protein_sequence_data(
@@ -777,12 +806,24 @@ def create_protein_sequence_data(
 
 
     elif msa_option == 'upload':
-        # Custom MSA provided
-        # Both unpairedMsa and pairedMsa must be set (non-null)
-        # Typically: unpairedMsa = custom A3M, pairedMsa = ""
-        protein_entry["unpairedMsaPath"] =     "" if pd.isna(unpaired_msa) else unpaired_msa #unpaired_msa if unpaired_msa is not None else ""
-        protein_entry["pairedMsaPath"] =     "" if pd.isna(paired_msa) else paired_msa  #paired_msa if paired_msa is not None else ""
-        protein_entry["pairedMsa"] =     "" if pd.isna(paired_msa) else paired_msa  #paired_msa if paired_msa is not None else ""
+        # Custom MSA. AF3 accepts the MSA either as inline content
+        # (unpairedMsa / pairedMsa) OR as file paths (unpairedMsaPath /
+        # pairedMsaPath) -- the two forms are MUTUALLY EXCLUSIVE per field.
+        # Emit whichever form matches the payload so a round-trip preserves the
+        # original format: inline A3M content (starts with '>' / has newlines)
+        # -> unpairedMsa/pairedMsa; a single-line path -> *Path. Never emit both
+        # forms for the same field (that previously produced an illegal mix of
+        # unpairedMsaPath + pairedMsaPath + pairedMsa in one entity).
+        unpaired_val = "" if pd.isna(unpaired_msa) else unpaired_msa
+        paired_val = "" if pd.isna(paired_msa) else paired_msa
+        if _is_msa_path(unpaired_val):
+            protein_entry["unpairedMsaPath"] = unpaired_val
+        else:
+            protein_entry["unpairedMsa"] = unpaired_val
+        if _is_msa_path(paired_val):
+            protein_entry["pairedMsaPath"] = paired_val
+        else:
+            protein_entry["pairedMsa"] = paired_val
         # Templates can be:
         # - Unset (null) to let AF3 search for templates using the provided MSA
         # - [] for template-free with custom MSA
@@ -793,6 +834,7 @@ def create_protein_sequence_data(
         raise ValueError(f"Invalid msa_option for protein: {msa_option!r}. Must be 'auto', 'none', or 'upload'.")
     protein_entry.pop("id")
     return protein_entry
+
 
 
 
