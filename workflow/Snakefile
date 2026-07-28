@@ -10,7 +10,7 @@ configfile: "config/config.yaml"
 # declare https://github.com/ntnn19/AlphaFold3_workflow as a module
 module AlphaFold3_workflow:
     snakefile: 
-        github("ntnn19/AlphaFold3_workflow", path="workflow/Snakefile", commit="1024341a582881eddb064b6b1d54101797e05f14")
+        github("ntnn19/AlphaFold3_workflow", path="workflow/Snakefile", branch="dev")
     config:
         config
 

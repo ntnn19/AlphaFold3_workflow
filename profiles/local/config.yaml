@@ -1,5 +1,5 @@
 executor: local
-cores: 8
+cores: 1
 use-singularity: true
 use-conda: true
 conda-frontend: mamba # or micromamba
@@ -10,3 +10,6 @@ rerun-incomplete: true
 rerun-triggers: mtime
 latency-wait: 60
 envvars: [APPTAINER_BINDPATH, SINGULARITY_BINDPATH, APPTAINER_NV, SINGULARITY_NV]
+set-resources:
+    AF3_INFERENCE:
+        mem_mb: 200000
