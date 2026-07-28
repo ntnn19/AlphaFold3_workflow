@@ -1,4 +1,3 @@
-#_helper = workflow.source_path("../scripts/prepare_af3_templates.py"),
 has_seeds = (
     "model_seeds" in RAW_DATA_DF.columns
     and RAW_DATA_DF["model_seeds"].notna().any()

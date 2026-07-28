@@ -1,11 +1,6 @@
 rule AF3_DATA_SPEEDY_PIPELINE:
     input:
         data = os.path.join(OUTPUT_DIR,"rule_PREPROCESSING","monomers","{mono}.json")
-        #data = branch(
-            #lookup(query="sample_id == '{mono}'",within=DATA_PIPELINE_READY_DF ,cols="file"),
-            #then=lookup(query="sample_id == '{mono}'",within=DATA_PIPELINE_READY_DF ,cols="file"),
-            #otherwise=os.path.join(OUTPUT_DIR,"rule_PREPROCESSING","monomers","{mono}.json")
-        #),
     params:
         mode = MODE,
         extra_af3_flags = EXTRA_AF3_FLAGS,
@@ -13,10 +8,6 @@ rule AF3_DATA_SPEEDY_PIPELINE:
         databases_dir = DB_DIR,
         output_dir = lambda w, output: str(Path(output[0]).parents[2])
     output:
-        # B2 fix: output is uncondi1tional — the branch() input logic already handles
-        # the case where no preprocessing was run (data_pipeline_ready entry point).
-        # The previous mode guard silently produced an empty output for any undocumented
-        # mode value, causing MSA generation to be skipped without error.
         data_pipeline_monomers=os.path.join(OUTPUT_DIR,"rule_AF3_DATA_PIPELINE","{mono}","{mono}_data.json"),
     log:
         os.path.join(OUTPUT_DIR, "logs", "rule_AF3_DATA_PIPELINE", "{mono}.log"),

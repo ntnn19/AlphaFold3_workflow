@@ -12,7 +12,6 @@ checkpoint MUTATE:
         output_dir = OUTPUT_DIR,
         data_dir   = os.path.join(OUTPUT_DIR, "rule_MERGE_MONOMERS_TO_MULTIMERS"),
         _helper = workflow.source_path("../scripts/mutate.py")
-    threads: 8
     conda:
         "../envs/preprocessing.yaml"
     shell:

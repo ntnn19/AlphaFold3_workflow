@@ -1,4 +1,3 @@
-#SEED=re.search(r'seed-(\d+)', multi).group(1),
 rule IPSAE:
     input:
         model = branch(

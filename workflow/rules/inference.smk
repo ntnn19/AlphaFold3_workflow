@@ -1,4 +1,3 @@
-
 rule AF3_INFERENCE:
     input:
         data = lambda w: (
