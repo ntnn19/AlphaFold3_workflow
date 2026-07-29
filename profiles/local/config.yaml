@@ -13,3 +13,5 @@ envvars: [APPTAINER_BINDPATH, SINGULARITY_BINDPATH, APPTAINER_NV, SINGULARITY_NV
 set-resources:
     AF3_INFERENCE:
         mem_mb: 200000
+        gpu: 2
+        threads: 1

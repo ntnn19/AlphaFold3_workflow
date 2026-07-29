@@ -17,6 +17,6 @@ af3_flags:
 
 output_dir: test_custom
 run_data_pipeline_locally: true
-exclusive_lock: false
+exclusive_lock: true
 n_seeds: 1
 af3_version: v3.0.2

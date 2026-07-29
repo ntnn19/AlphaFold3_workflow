@@ -1,0 +1,19 @@
+{
+  "name": "mr2_seed-10",
+  "modelSeeds": [
+    10
+  ],
+  "sequences": [
+    {
+      "protein": {
+        "sequence": "MPTESKKVRFENTASDKGKNPSKVIKSYYGTMDIKKINEGLLDSKILSAFNTVIALLGSIVIIVMNIMIIQNYTRCTDNQAMIKDALQSIQQQIKGLADKIGTEIGPKVSLIDTSSTITIPANIGLLGSKISQSTASINENVNEKCKFTLPPLKIHECNISCPNPLPFREYKPQTEGVSNLVGLPNNICLQKTSNQILKPKLISYTLPVVGQSGTCITDPLLAMDEGY",
+        "unpairedMsa": "",
+        "pairedMsa": "",
+        "templates": [],
+        "id": "A"
+      }
+    }
+  ],
+  "dialect": "alphafold3",
+  "version": 1
+}

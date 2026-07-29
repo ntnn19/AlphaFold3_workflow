@@ -1,19 +1,49 @@
-from snakemake.utils import min_version
+"""
+AlphaFold 3 Snakemake Workflow
+==============================
+A modular, reproducible pipeline for high-throughput AF3 structure prediction.
+"""
+
+import os
+from pathlib import Path
+
+# ── Shared helpers, constants, and input functions ───────────────────────────
+include: "rules/common.smk"
+
+# ── Rule modules ─────────────────────────────────────────────────────────────
+include: "rules/preprocessing.smk"
+include: "rules/data_pipeline.smk"
+include: "rules/merge_msas.smk"
+include: "rules/mutate.smk"
+include: "rules/inference.smk"
+include: "rules/ipsae.smk"
+include: "rules/aggregate.smk"
+include: "rules/report.smk"
+
+# ── Local rules ──────────────────────────────────────────────────────────────
+localrules: PREPROCESSING, MERGE_MONO_AND_MULTI_JSON, AGGREGATE_RESULTS, DATAVZRD_REPORT, MUTATE
+
+if config.get("run_data_pipeline_locally", False):
+    localrules: AF3_DATA_SPEEDY_PIPELINE,PREPROCESSING, MERGE_MONO_AND_MULTI_JSON, AGGREGATE_RESULTS, DATAVZRD_REPORT, MUTATE
 
 
-min_version("6.10.0")
+# ── Wildcard constraints ─────────────────────────────────────────────────────
+wildcard_constraints:
+    mono  = r"[A-Za-z0-9_\-\.]+",
+    multi = r"[A-Za-z0-9_\-\.]+",
+    split = r"\d+",
 
+# ── Target rule ──────────────────────────────────────────────────────────────
+_raise_nofile_limit()
 
-configfile: "config/config.yaml"
+prepare_container_binds(
+    output_directory=config["output_dir"],
+    config=config
+)
 
-
-# declare https://github.com/ntnn19/AlphaFold3_workflow as a module
-module AlphaFold3_workflow:
-    snakefile: 
-        github("ntnn19/AlphaFold3_workflow", path="workflow/Snakefile", branch="dev")
-    config:
-        config
-
-
-# use all rules from https://github.com/ntnn19/AlphaFold3_workflow
-use rule * from AlphaFold3_workflow
+rule all:
+    """Collect all final outputs."""
+    input:
+        inference_outputs,
+        datavzrd_output
+    default_target: True

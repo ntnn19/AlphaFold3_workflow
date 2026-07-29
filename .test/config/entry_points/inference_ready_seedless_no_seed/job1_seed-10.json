@@ -1,0 +1,18 @@
+{
+  "dialect": "alphafold3",
+  "version": 1,
+  "name": "job1_seed-10",
+  "sequences": [
+    {
+      "proteinChain": {
+        "sequence": "MVLSPADKTNVKAAWGKVGAHAGEYGAEALERMFLSFPTTKTYFPHF",
+        "count": 1
+      }
+    }
+  ],
+  "modelSeeds": [
+    1
+  ],
+  "bondedAtomPairs": [],
+  "userCCD": ""
+}
