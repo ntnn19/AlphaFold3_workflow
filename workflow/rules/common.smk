@@ -429,7 +429,7 @@ def get_merge_inputs(wildcards):
         "inference_to_data_pipeline_map.tsv",
     )
     mapping = pd.read_csv(checkpoint_output, sep="\t")
-    multimer_rows = mapping[mapping["multimer_file"].str.contains(wildcards.multi)]
+    multimer_rows = mapping[mapping["multimer_file"].apply(lambda x: Path(x).stem)==wildcards.multi]
     monomers = multimer_rows["monomer_file"].tolist()
     multimer_template = os.path.join(
         OUTPUT_DIR,
