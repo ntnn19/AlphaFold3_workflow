@@ -23,7 +23,7 @@ def main(multimer_file, monomer_file, output_file, inference_to_data_map):
 
     inference_to_data_map_df = pd.read_csv(inference_to_data_map, sep="\t")
     job_map_df = inference_to_data_map_df[
-        inference_to_data_map_df.multimer_file.str.contains(Path(multimer_file).stem)
+        inference_to_data_map_df.multimer_file.apply(lambda x: Path(x).stem) == Path(multimer_file).stem
     ]
     input_multimer_file = job_map_df.multimer_file.unique()[0]
 
