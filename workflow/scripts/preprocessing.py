@@ -979,6 +979,8 @@ def parse_list_field(value, data_type=str):
     """
     if pd.isna(value) or value == '':
         return None
+    if type(value) == int:
+        return [data_type(value)]
     return [data_type(item.strip()) for item in value.split(',') if item.strip()]
 
 
