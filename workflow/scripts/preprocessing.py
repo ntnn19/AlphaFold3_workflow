@@ -632,7 +632,7 @@ def extract_monomer_jobs(
         else monomers["job_name"]
     )
     if independent_monomers:
-        monomers = monomers.assign(model_seeds=monomers.model_seeds.str.split(",") if not n_seeds else [[str(i) for i in range(1, n_seeds + 1)]] * len(monomers)).explode("model_seeds")
+        monomers = monomers.assign(model_seeds=monomers.model_seeds.astype(str).str.split(",") if not n_seeds else [[str(i) for i in range(1, n_seeds + 1)]] * len(monomers)).explode("model_seeds")
         monomers["job_name"] = monomers["job_name"] + "_seed-" + monomers["model_seeds"] + "_chain-" + monomers["id"]
         monomers["original_job_name"] = monomers["job_name"].str.split("_chain-").str[0]
 
