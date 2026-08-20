@@ -583,7 +583,7 @@ def extract_multimer_jobs(
 
     # Split model_seeds and expand into separate rows TODO check if this respects the individual seeds specs
     df["model_seeds"] = (
-        df["model_seeds"].str.split(",")
+        df["model_seeds"].astype(str).str.split(",")
         if n_seeds is None
         else [[str(i) for i in range(1, n_seeds + 1)]] * len(df)
     )
