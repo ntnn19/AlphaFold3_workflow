@@ -1,12 +1,14 @@
 # Adapted from https://github.com/Hanziwww/AlphaFold3-GUI/blob/main/afusion/api.py
 
 import sys
+import os
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent))
 from collections import defaultdict
 from copy import deepcopy
 import numpy as np
-import os
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 import json
 import pandas as pd
 import string
@@ -23,7 +25,6 @@ from typing import (
     Literal,
     Tuple
 )
-
 import prepare_af3_templates
 from typing import Optional
 
@@ -530,7 +531,7 @@ def write_fold_inputs(
         if order == "monomers" and mode == "all-vs-all":
             continue
 
-        output_dir_ = os.path.join(output_dir + "/rule_PREPROCESSING", order)
+        output_dir_ = os.path.join(output_dir + "/preprocessing", order)
         os.makedirs(output_dir_, exist_ok=True)
 
         if order == "multimers" or is_fold_independent:
@@ -578,7 +579,7 @@ def extract_multimer_jobs(
         n_polymers = group_types.drop(labels=["ligand", "dna"], errors="ignore").sum()
         return n_polymers > 1
 
-    df["fold_input"] = output_dir + "/rule_PREPROCESSING/multimers/" + df["job_name"] + ".json"
+    df["fold_input"] = output_dir + "/preprocessing/multimers/" + df["job_name"] + ".json"
     # Assuming model_seeds is a comma-separated string like "1,2,3,4,5"
 
     # Split model_seeds and expand into separate rows TODO check if this respects the individual seeds specs
@@ -637,7 +638,7 @@ def extract_monomer_jobs(
         monomers["original_job_name"] = monomers["job_name"].str.split("_chain-").str[0]
 
     monomers["job_name"] = monomers["job_name"].apply(lambda x: sanitised_name(x))
-    monomers["fold_input"] = os.path.dirname(output_dir + "/rule_PREPROCESSING") + "/rule_AF3_DATA_PIPELINE/" + \
+    monomers["fold_input"] = os.path.dirname(output_dir + "/preprocessing") + "/rule_AF3_DATA_PIPELINE/" + \
                              monomers["job_name"] + "_data.json"
     monomers = monomers.drop(columns=["bonded_atom_pairs"]) if "bonded_atom_pairs" in monomers.columns.tolist() else monomers
     return monomers.reset_index(drop=True)
@@ -1154,7 +1155,7 @@ def main(sample_sheet, output_dir, mode, predict_individual_components, n_seeds,
     logger.info(f"#SAMPLES = {n_samples}")
 
 
-    metadata_dir = os.path.join(f"{output_dir}","rule_PREPROCESSING","metadata")
+    metadata_dir = os.path.join(f"{output_dir}","preprocessing","metadata")
     os.makedirs(metadata_dir, exist_ok=True)
 
     df = pd.read_csv(sample_sheet, sep="\t")
@@ -1240,7 +1241,7 @@ def main(sample_sheet, output_dir, mode, predict_individual_components, n_seeds,
 
     elif mode == "stoichio-screen":
         df, summary = transform_stoichio_screen_to_af3(df,n_seeds=n_seeds)
-        summary.to_csv(os.path.join(output_dir,"rule_PREPROCESSING","metadata","stoichio_screen.csv"), index=False)
+        summary.to_csv(os.path.join(output_dir,"preprocessing","metadata","stoichio_screen.csv"), index=False)
         cols_to_compare = df.columns.difference(['job_name'])
 
         df_dedup = remove_duplicate_jobs_scalable(df, cols_to_compare,log_file=os.path.join(metadata_dir,"duplicate_job_summary.json"))
@@ -1315,7 +1316,7 @@ def main(sample_sheet, output_dir, mode, predict_individual_components, n_seeds,
         for monomer_file in mapping.values()
     }
     logger.info(f"Referenced monomer files: {referenced_monomer_files}")
-    monomers_dir = f"{output_dir}/rule_PREPROCESSING/monomers"
+    monomers_dir = f"{output_dir}/preprocessing/monomers"
     if os.path.isdir(monomers_dir):
         c = 0
         for i, monomer_path in enumerate(os.listdir(monomers_dir)):
@@ -1340,24 +1341,24 @@ def main(sample_sheet, output_dir, mode, predict_individual_components, n_seeds,
     )
 
     #   Three sample sheets are generated:
-    #   1. samples for data pipeline (i.e. everything in {output_dir}/rule_PREPROCESSING/monomers)
-    #   2. samples for merging (i.e. : {output_dir}/rule_PREPROCESSING/inference_to_data_pipeline_map.tsv)
+    #   1. samples for data pipeline (i.e. everything in {output_dir}/preprocessing/monomers)
+    #   2. samples for merging (i.e. : {output_dir}/preprocessing/inference_to_data_pipeline_map.tsv)
     #   3. samples for inference (i.e. everything in {output_dir}/rule_MERGE_MONOMERS_TO_MULTIMER)
 
     data_pipeline_df = pd.DataFrame(
-        set([v.replace("rule_AF3_DATA_PIPELINE", "rule_PREPROCESSING/monomers").replace("_data.json", ".json") for d in
+        set([v.replace("rule_AF3_DATA_PIPELINE", "preprocessing/monomers").replace("_data.json", ".json") for d in
              inference_to_data_pipeline_map.values() for v in d.values()]),
         columns=["file"])
     data_pipeline_df["sample_id"] = data_pipeline_df["file"].apply(
         lambda x: Path(x).stem)
     data_pipeline_df["expected_output"] = data_pipeline_df["file"].apply(
-        lambda x: x.replace("rule_PREPROCESSING/monomers", f"rule_AF3_DATA_PIPELINE/{os.path.splitext(os.path.basename(x))[0]}"))
+        lambda x: x.replace("preprocessing/monomers", f"rule_AF3_DATA_PIPELINE/{os.path.splitext(os.path.basename(x))[0]}"))
     data_pipeline_df["expected_output"] = data_pipeline_df["expected_output"].apply(
         lambda x: x.replace(".json", "_data.json"))
 
 
     inference_df = pd.DataFrame(set([k.replace(
-        "rule_PREPROCESSING/multimers" if has_multimers_ else "rule_AF3_DATA_PIPELINE",
+        "preprocessing/multimers" if has_multimers_ else "rule_AF3_DATA_PIPELINE",
         "rule_MERGE_MONOMERS_TO_MULTIMERS").replace(".json", "_data.json") for k in
                                      inference_to_data_pipeline_map.keys()]), columns=["inference_samples"])
     long_inference_to_data_pipeline_df = long_inference_to_data_pipeline_df.dropna(subset=["monomer_file"]).sort_values(
@@ -1367,7 +1368,7 @@ def main(sample_sheet, output_dir, mode, predict_individual_components, n_seeds,
         if has_multimers_:
             inference_df = pd.DataFrame(np.vstack([inference_df.values,
                                                    pd.DataFrame(data_pipeline_df.file.str.replace(
-                                                       "rule_PREPROCESSING/monomers",
+                                                       "preprocessing/monomers",
                                                        "rule_MERGE_MONOMERS_TO_MULTIMERS").values)])
                                         , columns=inference_df.columns)
         if mode == "all-vs-all":
@@ -1392,9 +1393,9 @@ def main(sample_sheet, output_dir, mode, predict_individual_components, n_seeds,
             zip(multimer_to_monomer_df[["fold_input_mono", "model_seeds"]].drop_duplicates().fold_input_mono,
                 multimer_to_monomer_df[["fold_input_mono", "model_seeds"]].drop_duplicates().model_seeds))}
 
-        fold_input_to_model_seeds_map = {k.replace("_data.json" if "_data.json" in k else ".json", ".json" if "_data.json" in k else "_data.json").replace("rule_PREPROCESSING/multimers",
+        fold_input_to_model_seeds_map = {k.replace("_data.json" if "_data.json" in k else ".json", ".json" if "_data.json" in k else "_data.json").replace("preprocessing/multimers",
                                                                                   "rule_MERGE_MONOMERS_TO_MULTIMERS").replace(
-            "rule_PREPROCESSING/multimers", "rule_MERGE_MONOMERS_TO_MULTIMERS").replace("rule_AF3_DATA_PIPELINE",
+            "preprocessing/multimers", "rule_MERGE_MONOMERS_TO_MULTIMERS").replace("rule_AF3_DATA_PIPELINE",
                                                                                         "rule_MERGE_MONOMERS_TO_MULTIMERS"):v
         for k, v in fold_input_to_model_seeds_map.items()}
 
@@ -1449,13 +1450,13 @@ def main(sample_sheet, output_dir, mode, predict_individual_components, n_seeds,
     data_pipeline_df.to_csv(f"{metadata_dir}/data_pipeline_samples.tsv", sep="\t", index=False)
 
     inference_df = inference_df.sort_values(["job_name", "seed", "sample"])[["job_name", "inference_samples", "expected_output"]].rename(columns={"job_name":"sample_id","inference_samples":"file"})
-    inference_df["file"] = inference_df["file"].apply(lambda x: x.replace("rule_PREPROCESSING/multimers", "rule_MERGE_MONOMERS_TO_MULTIMERS"))
-    inference_df["expected_output"] = inference_df["expected_output"].apply(lambda x: x.replace("rule_PREPROCESSING/multimers", "rule_AF3_INFERENCE"))
+    inference_df["file"] = inference_df["file"].apply(lambda x: x.replace("preprocessing/multimers", "rule_MERGE_MONOMERS_TO_MULTIMERS"))
+    inference_df["expected_output"] = inference_df["expected_output"].apply(lambda x: x.replace("preprocessing/multimers", "rule_AF3_INFERENCE"))
     inference_df.to_csv(f"{metadata_dir}/inference_samples.tsv", sep="\t", index=False)
 
     logger.info(f"Rule PREPROCESSING was completed successfully!")
     logger.info(
-        f"Fold input files were saved to {output_dir}/rule_PREPROCESSING/monomers and {output_dir}/rule_PREPROCESSING/multimers")
+        f"Fold input files were saved to {output_dir}/preprocessing/monomers and {output_dir}/preprocessing/multimers")
     logger.info(
         f"Multimer to monomer map was saved to {metadata_dir}/inference_to_data_pipeline_map.tsv")
     logger.info(f"Data pipeline sample sheet was saved to {metadata_dir}/data_pipeline_samples.tsv")

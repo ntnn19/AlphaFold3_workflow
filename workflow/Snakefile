@@ -11,7 +11,7 @@ from pathlib import Path
 include: "rules/common.smk"
 
 # ── Rule modules ─────────────────────────────────────────────────────────────
-include: "rules/preprocessing.smk"
+#include: "rules/preprocessing.smk"
 include: "rules/data_pipeline.smk"
 include: "rules/merge_msas.smk"
 include: "rules/mutate.smk"

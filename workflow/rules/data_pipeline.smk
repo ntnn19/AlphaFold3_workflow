@@ -1,6 +1,6 @@
 rule AF3_DATA_SPEEDY_PIPELINE:
     input:
-        data = os.path.join(OUTPUT_DIR,"rule_PREPROCESSING","monomers","{mono}.json")
+        data = os.path.join(OUTPUT_DIR,"preprocessing","monomers","{mono}.json")
     params:
         mode = MODE,
         models_dir = MODELS_DIR,
