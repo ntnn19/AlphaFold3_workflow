@@ -8,8 +8,7 @@ required:
 
 additionalProperties: true
 
-properties:
-
+properties:  
   mode:
     type: string
     enum:
@@ -118,16 +117,24 @@ properties:
         type: string
         description: "TSV with mutation information per chain."
 
+  af3_inference_version:
+    type: string
+    description: "AlphaFold3 inference version to use."
+    
   af3_flags:
     type: object
     description: "AlphaFold3 container and path configuration."
     required:
-      - "af3_container"
+      - "af3_data_pipeline_container"
+      - "af3_inference_container"
       - "models_dir"
       - "databases_dir"
     additionalProperties: true
     properties:
-      "af3_container":
+      "af3_data_pipeline_container":
+        type: string
+        description: "Path to the AlphaFold3 Singularity/Apptainer image (.sif)."
+      "af3_inference_container":
         type: string
         description: "Path to the AlphaFold3 Singularity/Apptainer image (.sif)."
       "models_dir":
@@ -139,6 +146,10 @@ properties:
       "tmp_dir":
         type: string
         description: "Scratch space for AF3 temp files inside the container."
-      "extra_af3_flags":
+      "extra_af3_data_flags":
         type: string
         description: "Additional flags passed verbatim to run_alphafold.py."
+      "extra_af3_inference_flags":
+        type: string
+        description: "Additional flags passed verbatim to run_alphafold.py."
+        

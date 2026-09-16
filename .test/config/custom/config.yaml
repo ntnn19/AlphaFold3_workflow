@@ -4,19 +4,20 @@ mode: custom
 msa_option: none
 n_splits: 1 # Optional, for running using the 'parallel' branch of this repo. To maximize resources utilization, the value of this flag should correspond to min(number_of_predictions, number_of_multi-GPU_nodes).
 af3_flags:
-  #af3_container: "/data/singularity/alphafold3/alphafold3_latest_parallel_a100_40gb.sif"
-  af3_container: "/data/singularity/alphafold3/alphafold3_v3.0.3_cbdd420.sif"
+  af3_data_pipeline_container: "/data/singularity/alphafold3/alphafold3_v3.0.3_cbdd420.sif"
+  #af3_inference_container: "/data/singularity/alphafold3/alphafold3_v3.0.3_cbdd420.sif"
+  af3_inference_container: "/data/singularity/alphafold3/alphafold3_latest_parallel_a100_40gb.sif"
   models_dir: "/data/singularity/alphafold3/weights"       # AlphaFold 3 model weights
   databases_dir: "/var/lib/databases/af3db" # Genetic databases (~2 TB)
   tmp_dir: "tmp"                     # Scratch space for AF3 temp files
   # ---------------------------------------------------------------------------
   # Extra AlphaFold 3 flags (passed verbatim to run_alphafold.py)
   # ---------------------------------------------------------------------------
-  extra_af3_data_flags: "--server_mode --server_url http://131.169.143.240:8000 --force_output_dir"
-  extra_af3_inference_flags: "--force_output_dir"
+  #extra_af3_data_flags: "--server_mode --server_url http://131.169.143.240:8000 --force_output_dir"
+  #extra_af3_inference_flags: "--force_output_dir"
 
-output_dir: test_custom
+output_dir: test_custom_v3.0.1
 run_data_pipeline_locally: true
 exclusive_lock: true
 n_seeds: 1
-af3_version: v3.0.2
+af3_inference_version: v3.0.1

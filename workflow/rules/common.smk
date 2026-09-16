@@ -45,14 +45,15 @@ N_SPLITS     = config.get("n_node_splits", 1)
 RUN_OST      = config.get("run_ost_scoring", False)
 GT_DIR       = config.get("ground_truth_dir", "")
 N_OST_SPLITS = config.get("n_scoring_splits", 4)
-AF3_CONTAINER   = config["af3_flags"]["af3_container"]
+AF3_DATA_PIPELINE_CONTAINER   = config["af3_flags"]["af3_data_pipeline_container"]
+AF3_INFERENCE_CONTAINER   = config["af3_flags"]["af3_inference_container"]
 EXTRA_AF3_DATA_FLAGS = config["af3_flags"].get("--extra_af3_data_flags", config["af3_flags"].get("extra_af3_data_flags", ""))
 EXTRA_AF3_INFERENCE_FLAGS = config["af3_flags"].get("--extra_af3_inference_flags", config["af3_flags"].get("extra_af3_inference_flags", ""))
 MODELS_DIR   = config["af3_flags"]["models_dir"]
 DB_DIR       = config["af3_flags"]["databases_dir"]
 PREDICT_INDIVIDUAL_COMPONENTS = '--predict-individual-components' if config.get('predict_individual_components', False) else ''
-AF3_VERSION = config.get("af3_version","v3.0.2")
-print("AF3_VERSION=", AF3_VERSION)
+AF3_INFERENCE_VERSION = config.get("af3_inference_version","v3.0.2")
+print("AF3_INFERENCE_VERSION=", AF3_INFERENCE_VERSION)
 # ── Utility ──────────────────────────────────────────────────────────────────
 _ALLOWED = frozenset("abcdefghijklmnopqrstuvwxyz0123456789_-.")
 NORMALIZED_INPUTS_DIR = os.path.join(OUTPUT_DIR, "normalized_inputs")
@@ -466,95 +467,6 @@ def _collect_inference_targets(wildcards, *, use_lock: bool) -> list:
     :returns: Flat list of target file paths.
     """
     internal = []
-    # external = []
-
-    # if not DATA_PIPELINE_READY_DF.empty:
-    #     def expand_paths(x):
-    #         stem = Path(x).stem
-    #         seeds = get_seeds(x)
-    #         return (
-    #             [
-    #                 f"{OUTPUT_DIR}/rule_AF3_INFERENCE/{stem}/seed-{seed}_sample-{sample}/"
-    #                 + (f"{stem}_seed-{seed}_sample-{sample}_model.cif"
-    #                    if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "model.cif")
-    #                 for seed, sample in product(seeds, range(N_SAMPLES))
-    #             ]
-    #             + [
-    #                 f"{OUTPUT_DIR}/rule_AF3_INFERENCE/{stem}/seed-{seed}_sample-{sample}/"
-    #                 + (f"{stem}_seed-{seed}_sample-{sample}_model_15_15.txt"
-    #                    if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "model_15_15.txt")
-    #                 for seed, sample in product(seeds, range(N_SAMPLES))
-    #             ]
-    #             + [
-    #                 f"{OUTPUT_DIR}/rule_AF3_INFERENCE/{stem}/seed-{seed}_sample-{sample}/"
-    #                 + (f"{stem}_seed-{seed}_sample-{sample}_model_10_15.txt"
-    #                    if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "model_10_15.txt")
-    #                 for seed, sample in product(seeds, range(N_SAMPLES))
-    #             ]
-    #         )
-
-    #     external.extend(
-    #         path
-    #         for paths in DATA_PIPELINE_READY_DF["file"].apply(expand_paths)
-    #         for path in paths
-    #     )
-    # if not MERGE_READY_DF.empty:
-    #     # MERGE_READY_DF may contain both user-supplied merge_ready rows AND
-    #     # synthetic rows appended from data_pipeline_ready.  Collect unique
-    #     # inference targets from the user-supplied merge_ready rows only
-    #     # (identified by the original MERGE_READY_PATH) to avoid double-counting
-    #     # dp_ready targets that are already collected above.
-    #     _user_mr = MERGE_READY_DF[
-    #         ~MERGE_READY_DF["multimer_file"].isin(
-    #             DATA_PIPELINE_READY_DF["file"].tolist() if not DATA_PIPELINE_READY_DF.empty else []
-    #         )
-    #     ]
-    #     if not _user_mr.empty:
-    #         def expand_paths_mr(x):
-    #             stem = Path(x).stem
-    #             seeds = get_seeds(x)
-    #             combos = list(product(seeds, range(N_SAMPLES)))
-    #             versioned = AF3_VERSION not in ["v3.0.0", "v3.0.1"]
-    #             base = lambda seed, sample: (
-    #                 f"{OUTPUT_DIR}/rule_AF3_INFERENCE/{stem}/seed-{seed}_sample-{sample}/{stem}_seed-{seed}_sample-{sample}"
-    #                 if versioned
-    #                 else f"{OUTPUT_DIR}/rule_AF3_INFERENCE/{stem}/seed-{seed}_sample-{sample}/"
-    #             )
-    #             return (
-    #                 [f"{base(seed, sample)}_model.cif" if versioned else f"{base(seed, sample)}model.cif" for seed, sample in combos]
-    #                 + [f"{base(seed, sample)}_model_15_15.txt" if versioned else f"{base(seed, sample)}model_15_15.txt" for seed, sample in combos]
-    #                 + [f"{base(seed, sample)}_model_10_15.txt" if versioned else f"{base(seed, sample)}model_10_15.txt" for seed, sample in combos]
-    #             )
-
-    #         external.extend(
-    #             path
-    #             for paths in _user_mr["multimer_file"].apply(expand_paths_mr)
-    #             for path in paths
-    #         )
-
-    # if not INFERENCE_READY_DF.empty:
-    #     def expand_paths_inf(x):
-    #         stem = Path(x).stem
-    #         seeds = get_seeds(x)
-    #         combos = list(product(seeds, range(N_SAMPLES)))
-    #         versioned = AF3_VERSION not in ["v3.0.0", "v3.0.1"]
-    #         base_dir = lambda seed, sample: f"{OUTPUT_DIR}/rule_AF3_INFERENCE/{stem}/seed-{seed}_sample-{sample}"
-    #         fname = lambda seed, sample, suffix: (
-    #             f"{stem}_seed-{seed}_sample-{sample}_{suffix}" if versioned else suffix
-    #         )
-    #         return (
-    #             [f"{base_dir(seed, sample)}/{fname(seed, sample, 'model.cif')}" for seed, sample in combos]
-    #             + [f"{base_dir(seed, sample)}/{fname(seed, sample, 'model_15_15.txt')}" for seed, sample in combos]
-    #             + [f"{base_dir(seed, sample)}/{fname(seed, sample, 'model_10_15.txt')}" for seed, sample in combos]
-    #         )
-    #     external.extend(
-    #         path
-    #         for paths in INFERENCE_READY_DF["file"].apply(expand_paths_inf)
-    #         for path in paths
-    #     )
-
-    # external = list(dict.fromkeys(external))  # dedupe while preserving order
-
 
     PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
     JOB_NAMES_MULTIMERS, = glob_wildcards(os.path.join(PREPROCESSING_DIR, "multimers", "{multi}.json"))
@@ -568,7 +480,7 @@ def _collect_inference_targets(wildcards, *, use_lock: bool) -> list:
         for path in expand(
             os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{multi}",
                             "seed-{seed}_sample-{sample}",
-                            "{multi}_seed-{seed}_sample-{sample}_model.cif" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "model.cif"),
+                            "{multi}_seed-{seed}_sample-{sample}_model.cif" if AF3_INFERENCE_VERSION not in ["v3.0.0", "v3.0.1"] else "model.cif"),
             multi=multi, seed=seed, sample=range(N_SAMPLES)
         )
     ])
@@ -578,7 +490,7 @@ def _collect_inference_targets(wildcards, *, use_lock: bool) -> list:
         for path in expand(
             os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{multi}",
                             "seed-{seed}_sample-{sample}",
-                            "{multi}_seed-{seed}_sample-{sample}_confidences.json" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "confidences.json"),
+                            "{multi}_seed-{seed}_sample-{sample}_confidences.json" if AF3_INFERENCE_VERSION not in ["v3.0.0", "v3.0.1"] else "confidences.json"),
             multi=multi, seed=seed, sample=range(N_SAMPLES)
         )
     ])
@@ -588,7 +500,7 @@ def _collect_inference_targets(wildcards, *, use_lock: bool) -> list:
         for path in expand(
             os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{multi}",
                             "seed-{seed}_sample-{sample}",
-                            "{multi}_seed-{seed}_sample-{sample}_model_15_15.txt" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "model_15_15.txt"),
+                            "{multi}_seed-{seed}_sample-{sample}_model_15_15.txt" if AF3_INFERENCE_VERSION not in ["v3.0.0", "v3.0.1"] else "model_15_15.txt"),
             multi=multi, seed=seed, sample=range(N_SAMPLES)
         )
     ])
@@ -598,7 +510,7 @@ def _collect_inference_targets(wildcards, *, use_lock: bool) -> list:
         for path in expand(
             os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{multi}",
                             "seed-{seed}_sample-{sample}",
-                            "{multi}_seed-{seed}_sample-{sample}_model_10_15.txt" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "model_10_15.txt"),
+                            "{multi}_seed-{seed}_sample-{sample}_model_10_15.txt" if AF3_INFERENCE_VERSION not in ["v3.0.0", "v3.0.1"] else "model_10_15.txt"),
             multi=multi, seed=seed, sample=range(N_SAMPLES)
         )
     ])
@@ -627,7 +539,7 @@ def _collect_inference_targets(wildcards, *, use_lock: bool) -> list:
             for path in expand(
                 os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{mut}",
                                 "seed-{seed}_sample-{sample}",
-                                "{mut}_seed-{seed}_sample-{sample}_model.cif" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "model.cif"),
+                                "{mut}_seed-{seed}_sample-{sample}_model.cif" if AF3_INFERENCE_VERSION not in ["v3.0.0", "v3.0.1"] else "model.cif"),
                 mut=mut, seed=seed, sample=range(N_SAMPLES)
             )
         ])
@@ -637,7 +549,7 @@ def _collect_inference_targets(wildcards, *, use_lock: bool) -> list:
             for path in expand(
                 os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{mut}",
                                 "seed-{seed}_sample-{sample}",
-                                "{mut}_seed-{seed}_sample-{sample}_model_10_15.txt" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "model_10_15.txt"),
+                                "{mut}_seed-{seed}_sample-{sample}_model_10_15.txt" if AF3_INFERENCE_VERSION not in ["v3.0.0", "v3.0.1"] else "model_10_15.txt"),
                 mut=mut, seed=seed, sample=range(N_SAMPLES)
             )
         ])
@@ -647,7 +559,7 @@ def _collect_inference_targets(wildcards, *, use_lock: bool) -> list:
             for path in expand(
                 os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{mut}",
                                 "seed-{seed}_sample-{sample}",
-                                "{mut}_seed-{seed}_sample-{sample}_model_15_15.txt" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "model_15_15.txt"),
+                                "{mut}_seed-{seed}_sample-{sample}_model_15_15.txt" if AF3_INFERENCE_VERSION not in ["v3.0.0", "v3.0.1"] else "model_15_15.txt"),
                 mut=mut, seed=seed, sample=range(N_SAMPLES)
             )
         ])
@@ -665,7 +577,7 @@ def inference_outputs(wildcards):
 def aggregate_outputs(wildcards):
     """Return global TSV paths for all inference jobs (one per job)."""
     cif_paths = _collect_inference_targets(wildcards, use_lock=False)
-    model_suffix = "_model.cif" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "model.cif"
+    model_suffix = "_model.cif" if AF3_INFERENCE_VERSION not in ["v3.0.0", "v3.0.1"] else "model.cif"
 
     global_ = [
         os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", f"{Path(p).parent.parent.name}", f"{Path(p).parent.parent.name}_{Path(p).parent.name}_af_global.tsv")

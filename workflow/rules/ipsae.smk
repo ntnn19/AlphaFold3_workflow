@@ -13,7 +13,7 @@ rule IPSAE:
                 key=w.multi if MUTATION_DF.empty else w.mut,
                 seed=re.search(r'seed-(\d+)', w.multi if MUTATION_DF.empty else w.mut).group(1),
                 sample=range(N_SAMPLES)
-            ) if AF3_VERSION not in ["v3.0.1", "v3.0.0"] else expand(
+            ) if AF3_INFERENCE_VERSION not in ["v3.0.1", "v3.0.0"] else expand(
                 os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{key}",
                              "seed-{seed}_sample-{sample}", "model.cif"),
                 key=w.multi if MUTATION_DF.empty else w.mut,
@@ -34,7 +34,7 @@ rule IPSAE:
                 key=w.multi if MUTATION_DF.empty else w.mut,
                 seed=re.search(r'seed-(\d+)', w.multi if MUTATION_DF.empty else w.mut).group(1),
                 sample=range(N_SAMPLES)
-            ) if AF3_VERSION not in ["v3.0.1", "v3.0.0"] else expand(
+            ) if AF3_INFERENCE_VERSION not in ["v3.0.1", "v3.0.0"] else expand(
                 os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{key}",
                              "seed-{seed}_sample-{sample}", "confidences.json"),
                 key=w.multi if MUTATION_DF.empty else w.mut,
@@ -46,25 +46,25 @@ rule IPSAE:
         ipsae_15_15 = expand(
             os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{{multi}}",
                          "seed-{{seed}}_sample-{sample}",
-                         "{{multi}}_seed-{{seed}}_sample-{sample}_model_15_15.txt" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "model_15_15.txt"),
+                         "{{multi}}_seed-{{seed}}_sample-{sample}_model_15_15.txt" if AF3_INFERENCE_VERSION not in ["v3.0.0", "v3.0.1"] else "model_15_15.txt"),
             sample=range(N_SAMPLES)
         ) if MUTATION_DF.empty else
         expand(
             os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{{mut}}",
                          "seed-{{seed}}_sample-{sample}",
-                         "{{mut}}_seed-{{seed}}_sample-{sample}_model_15_15.txt" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "model_15_15.txt"),
+                         "{{mut}}_seed-{{seed}}_sample-{sample}_model_15_15.txt" if AF3_INFERENCE_VERSION not in ["v3.0.0", "v3.0.1"] else "model_15_15.txt"),
             sample=range(N_SAMPLES)
         ),
         ipsae_10_15 = expand(
             os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{{multi}}",
                          "seed-{{seed}}_sample-{sample}",
-                         "{{multi}}_seed-{{seed}}_sample-{sample}_model_10_15.txt" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "model_10_15.txt"),
+                         "{{multi}}_seed-{{seed}}_sample-{sample}_model_10_15.txt" if AF3_INFERENCE_VERSION not in ["v3.0.0", "v3.0.1"] else "model_10_15.txt"),
             sample=range(N_SAMPLES)
         ) if MUTATION_DF.empty else
         expand(
             os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{{mut}}",
                          "seed-{{seed}}_sample-{sample}",
-                         "{{mut}}_seed-{{seed}}_sample-{sample}_model_10_15.txt" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "model_10_15.txt"),
+                         "{{mut}}_seed-{{seed}}_sample-{sample}_model_10_15.txt" if AF3_INFERENCE_VERSION not in ["v3.0.0", "v3.0.1"] else "model_10_15.txt"),
             sample=range(N_SAMPLES)
         ),
     log:
@@ -77,9 +77,9 @@ rule IPSAE:
     params:
         inference_dir = os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{multi}") if MUTATION_DF.empty else
                         os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{mut}"),
-        confidences_glob = "*_confidences.json" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "confidences.json",
-        confidences_suffix = "_confidences.json" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "confidences.json",
-        model_suffix = "_model.cif" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "model.cif",
+        confidences_glob = "*_confidences.json" if AF3_INFERENCE_VERSION not in ["v3.0.0", "v3.0.1"] else "confidences.json",
+        confidences_suffix = "_confidences.json" if AF3_INFERENCE_VERSION not in ["v3.0.0", "v3.0.1"] else "confidences.json",
+        model_suffix = "_model.cif" if AF3_INFERENCE_VERSION not in ["v3.0.0", "v3.0.1"] else "model.cif",
         _helper = workflow.source_path("../scripts/ipsae.py") # added this to allow clean deployment
     shell:
         """
