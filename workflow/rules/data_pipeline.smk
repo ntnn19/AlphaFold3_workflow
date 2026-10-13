@@ -14,7 +14,7 @@ rule AF3_DATA_SPEEDY_PIPELINE:
     benchmark:
         os.path.join(OUTPUT_DIR, "benchmarks", "rule_AF3_DATA_PIPELINE", "{mono}.tsv"),
     container:
-        AF3_CONTAINER
+        AF3_DATA_PIPELINE_CONTAINER
     shell:
         """
         python /app/alphafold/run_alphafold.py --json_path={input.data} \

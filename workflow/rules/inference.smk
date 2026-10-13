@@ -14,25 +14,25 @@ rule AF3_INFERENCE:
         model=expand(
             os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{{multi}}",
                             "seed-{{seed}}_sample-{sample}",
-                            "{{multi}}_seed-{{seed}}_sample-{sample}_model.cif" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "model.cif"),
+                            "{{multi}}_seed-{{seed}}_sample-{sample}_model.cif" if AF3_INFERENCE_VERSION not in ["v3.0.0", "v3.0.1"] else "model.cif"),
             sample=range(N_SAMPLES)
         ) if MUTATION_DF_PATH is None else
         expand(
             os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{{mut}}",
                             "seed-{{seed}}_sample-{sample}",
-                            "{{mut}}_seed-{{seed}}_sample-{sample}_model.cif" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "model.cif"),
+                            "{{mut}}_seed-{{seed}}_sample-{sample}_model.cif" if AF3_INFERENCE_VERSION not in ["v3.0.0", "v3.0.1"] else "model.cif"),
             sample=range(N_SAMPLES)
         ),
         scores=expand(
             os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{{multi}}",
                             "seed-{{seed}}_sample-{sample}",
-                            "{{multi}}_seed-{{seed}}_sample-{sample}_confidences.json" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "confidences.json"),
+                            "{{multi}}_seed-{{seed}}_sample-{sample}_confidences.json" if AF3_INFERENCE_VERSION not in ["v3.0.0", "v3.0.1"] else "confidences.json"),
             sample=range(N_SAMPLES)
         ) if MUTATION_DF_PATH is None else
         expand(
             os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{{mut}}",
                             "seed-{{seed}}_sample-{sample}",
-                            "{{mut}}_seed-{{seed}}_sample-{sample}_confidences.json" if AF3_VERSION not in ["v3.0.0", "v3.0.1"] else "confidences.json"),
+                            "{{mut}}_seed-{{seed}}_sample-{sample}_confidences.json" if AF3_INFERENCE_VERSION not in ["v3.0.0", "v3.0.1"] else "confidences.json"),
             sample=range(N_SAMPLES)
         ),
     log:
@@ -49,7 +49,7 @@ rule AF3_INFERENCE:
         database_dir = DB_DIR,
         _helper = workflow.source_path("../scripts/gpu_lock.sh")
     container:
-        AF3_CONTAINER
+        AF3_INFERENCE_CONTAINER
     shell:
         """
         CC=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader,nounits \
