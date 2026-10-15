@@ -9,9 +9,10 @@ executor: slurm
 use-apptainer: true
 jobs: 200
 rerun-incomplete: true
+keep-incomplete: true
 keep-going: true
 printshellcmds: true
-
+cores: 64
 groups:
   AF3_INFERENCE: af3_inference_batch
 group-components:
@@ -19,8 +20,9 @@ group-components:
 
 default-resources:
     slurm_partition: "vds"       # CHANGE ME: your cluster partition name
-    slurm_account: "topf"        # CHANGE ME: your SLURM account/project
-
+    slurm_account: "cssb"        # CHANGE ME: your SLURM account/project
+set-threads:
+    ALPHAFAST: 64 
 set-resources:
     AF3_INFERENCE:
         slurm_partition: "vds"   # CHANGE ME: GPU partition name
@@ -30,6 +32,11 @@ set-resources:
         tasks_per_gpu: 0
         mem_mb: 16000
     AF3_DATA_SPEEDY_PIPELINE:
+        slurm_partition: "vds"   # CHANGE ME: CPU partition name
+        nodes: 1
+        runtime: 10000
+        mem_mb: 100000
+    ALPHAFAST:
         slurm_partition: "vds"   # CHANGE ME: CPU partition name
         nodes: 1
         runtime: 10000

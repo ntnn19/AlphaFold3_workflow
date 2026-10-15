@@ -1,24 +1,21 @@
-rule AF3_DATA_SPEEDY_PIPELINE:
+checkpoint AF3_DATA_SPEEDY_PIPELINE:
     input:
-        data = os.path.join(OUTPUT_DIR,"rule_PREPROCESSING","monomers","{mono}.json")
+        data = get_monomeric_json_outputs
     params:
-        mode = MODE,
-        models_dir = MODELS_DIR,
         databases_dir = DB_DIR,
         extra_af3_data_flags = EXTRA_AF3_DATA_FLAGS,
         output_dir = lambda w, output: str(Path(output[0]).parents[2])
     output:
-        data_pipeline_monomers=os.path.join(OUTPUT_DIR,"rule_AF3_DATA_PIPELINE","{mono}","{mono}_data.json"),
+        data_pipeline_monomers=directory(os.path.join(OUTPUT_DIR,"rule_AF3_DATA_PIPELINE"))
     log:
-        os.path.join(OUTPUT_DIR, "logs", "rule_AF3_DATA_PIPELINE", "{mono}.log"),
+        os.path.join(OUTPUT_DIR, "logs", "rule_AF3_DATA_PIPELINE", "rule_AF3_DATA_PIPELINE.log"),
     benchmark:
-        os.path.join(OUTPUT_DIR, "benchmarks", "rule_AF3_DATA_PIPELINE", "{mono}.tsv"),
+        os.path.join(OUTPUT_DIR, "benchmarks", "rule_AF3_DATA_PIPELINE", "rule_AF3_DATA_PIPELINE.tsv"),
     container:
-        AF3_DATA_PIPELINE_CONTAINER
+        ALPHAFAST_CONTAINER
     shell:
         """
         python /app/alphafold/run_alphafold.py --json_path={input.data} \
-        --model_dir={params.models_dir} \
         --output_dir={params.output_dir}/rule_AF3_DATA_PIPELINE \
         --db_dir={params.databases_dir} \
         --run_data_pipeline=true \

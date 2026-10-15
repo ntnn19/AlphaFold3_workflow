@@ -11,7 +11,8 @@ from pathlib import Path
 include: "rules/common.smk"
 
 # ── Rule modules ─────────────────────────────────────────────────────────────
-include: "rules/preprocessing.smk"
+#include: "rules/preprocessing.smk"
+include: "rules/alphafast.smk"
 include: "rules/data_pipeline.smk"
 include: "rules/merge_msas.smk"
 include: "rules/mutate.smk"
@@ -44,6 +45,7 @@ prepare_container_binds(
 rule all:
     """Collect all final outputs."""
     input:
-        inference_outputs,
-        datavzrd_output
+        "done.txt",
+        #inference_outputs,
+        #datavzrd_output
     default_target: True

@@ -10,11 +10,6 @@ af3_flags:
   models_dir: "/data/singularity/alphafold3/weights"       # AlphaFold 3 model weights
   databases_dir: "/var/lib/databases/af3db" # Genetic databases (~2 TB)
   tmp_dir: "tmp"                     # Scratch space for AF3 temp files
-  # ---------------------------------------------------------------------------
-  # Extra AlphaFold 3 flags (passed verbatim to run_alphafold.py)
-  # ---------------------------------------------------------------------------
-  #extra_af3_data_flags: "--server_mode --server_url http://131.169.143.240:8000 --force_output_dir"
-  #extra_af3_inference_flags: "--force_output_dir"
 
 output_dir: test_custom_v3.0.1
 run_data_pipeline_locally: true

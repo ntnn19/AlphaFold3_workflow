@@ -6,7 +6,7 @@ main Snakefile.  Nothing here emits jobs; it only defines Python-level
 constants and input functions used by the rule files.
 """
 
-
+import subprocess
 import os
 import re
 from pathlib import Path
@@ -54,11 +54,102 @@ DB_DIR       = config["af3_flags"]["databases_dir"]
 PREDICT_INDIVIDUAL_COMPONENTS = '--predict-individual-components' if config.get('predict_individual_components', False) else ''
 AF3_INFERENCE_VERSION = config.get("af3_inference_version","v3.0.2")
 print("AF3_INFERENCE_VERSION=", AF3_INFERENCE_VERSION)
+
+# ── AlphaFast params (user-controllable options of run_alphafast.sh) ─────────
+# Mirrors the CLI options of AlphaFast's scripts/run_alphafast.sh so the same
+# knobs are exposed via config.yaml.  output_dir, db_dir (databases_dir),
+# weights_dir (models_dir) and the container images are already covered by
+# OUTPUT_DIR, DB_DIR, MODELS_DIR and AF3_DATA_PIPELINE_CONTAINER /
+# AF3_INFERENCE_CONTAINER above.
+ALPHAFAST_INPUT_DIR                  = config.get("input_dir", "")
+ALPHAFAST_BATCH_SIZE                 = config.get("batch_size", "auto")  # "auto" = number of input JSONs
+ALPHAFAST_BACKEND                    = config.get("backend", "")         # "", "docker" or "singularity" ("" = auto-detect)
+ALPHAFAST_TEMP_DIR                   = config.get("temp_dir", "")        # MMseqs2 temp files (distinct from TMP_DIR)
+ALPHAFAST_RNA_MMSEQS_DB_DIR          = config.get("rna_mmseqs_db_dir", "")
+ALPHAFAST_USE_NHMMER                 = config.get("use_nhmmer", False)
+ALPHAFAST_JAX_COMPILATION_CACHE_DIR  = config.get("jax_compilation_cache_dir", "")
+ALPHAFAST_CONTAINER  = config.get("alphafast_container", "")
+# Container-internal mount points hardcoded in run_alphafast.sh (not user-facing)
+ALPHAFAST_JAX_CACHE_CONTAINER_DIR    = "/data/jax_cache"
+ALPHAFAST_TEMP_DIR_CONTAINER         = "/data/temp_dir"
+
 # ── Utility ──────────────────────────────────────────────────────────────────
 _ALLOWED = frozenset("abcdefghijklmnopqrstuvwxyz0123456789_-.")
 NORMALIZED_INPUTS_DIR = os.path.join(OUTPUT_DIR, "normalized_inputs")
 os.makedirs(NORMALIZED_INPUTS_DIR, exist_ok=True)
 # A4: flatten a list-of-lists into a flat list
+
+def run_preprocessing(
+    sample_sheet,
+    output_dir,
+    mode,
+    n_seeds=None,
+    n_samples=1,
+    msa_option=None,
+    batch_size=1,
+    predict_individual_components="",
+    helper_scripts=[workflow.source_path("../scripts/preprocessing.py"), workflow.source_path("../scripts/prepare_af3_templates.py")],
+    log_path=None,
+):
+    """Subprocess equivalent of the Snakemake PREPROCESSING checkpoint."""
+    print(f"Output directory: {output_dir,os.getcwd()}")
+    # Actually: out_dir = parent of the output directory token, matching the lambda
+    # In Snakemake, output[0] is the directory itself, so parent is OUTPUT_DIR
+    print(f"Output directory: {output_dir}")
+
+    out_dir = str(Path(output_dir))
+    preprocessing_dir = Path(output_dir) / "preprocessing"
+
+    os.makedirs(preprocessing_dir, exist_ok=True)
+    print(f"Output directory: {out_dir}")
+    # Replicate the has_seeds / N_SEEDS_ logic
+    if n_seeds:
+        n_seeds_arg = f"--n-seeds {n_seeds}"
+    elif sample_sheet and has_seeds(sample_sheet):
+        n_seeds_arg = ""
+    else:
+        n_seeds_arg = "--n-seeds 1"
+
+    cmd = [
+        "python", helper_scripts[0],
+        str(sample_sheet) if sample_sheet else "",
+        out_dir,
+        f"--mode={mode}",
+        *n_seeds_arg.split(),
+        "--n-samples", str(n_samples),
+        *predict_individual_components.split(),
+    ]
+    # Optional AlphaFast batch_size (config key "batch_size", "auto" = disabled):
+    # when a positive integer, preprocessing.py distributes the fold-input JSON
+    # files into batch_N subdirectories inside the output dir.
+    if batch_size:
+        try:
+            cmd.append(f"--batch-size={int(batch_size)}")
+        except Exception as e:
+            raise ValueError(f"Invalid batch_size '{batch_size}' in config. "
+                            f"Expected a positive integer or 'auto'. Error: {e}")
+    # Remove empty strings
+    cmd = [c for c in cmd if c]
+    print(f"Running command: {' '.join(cmd)}")
+
+    log_file = open(log_path, "w") if log_path else None
+    try:
+        result = subprocess.check_output(
+            cmd,
+            stderr=subprocess.STDOUT,  # 2>&1 equivalent
+            text=True,
+        )
+        if log_file:
+            log_file.write(result)
+        return result
+    except subprocess.CalledProcessError as e:
+        if log_file:
+            log_file.write(e.output)
+        raise
+    finally:
+        if log_file:
+            log_file.close()
+
 def flatten(lst):
     """Flatten one level of nesting from a list of lists."""
     return [item for sublist in lst for item in sublist]
@@ -339,68 +430,75 @@ if not MERGE_READY_DF.empty:
 DATA_PIPELINE_READY_DF_AS_RAW_DATA_DF = build_sample_sheet_from_json_tsv(DATA_PIPELINE_READY_PATH)
 INFERENCE_READY_DF_AS_RAW_DATA_DF = build_sample_sheet_from_json_tsv(INFERENCE_READY_PATH)
 MERGE_READY_DF_AS_RAW_DATA_DF = build_sample_sheet_from_json_tsv(MERGE_READY_PATH)
-#SCORING_READY_DF_AS_RAW_DATA_DF = build_sample_sheet_from_json_tsv(SCORING_READY_PATH)#
+#SCORING_READY_DF_AS_RAW_DATA_DF = build_sample_sheet_from_json_tsv(SCORING_READY_PATH)# need to implement
 
 RAW_DATA_DF = pd.concat([RAW_DATA_DF, DATA_PIPELINE_READY_DF_AS_RAW_DATA_DF, INFERENCE_READY_DF_AS_RAW_DATA_DF, MERGE_READY_DF_AS_RAW_DATA_DF])
 RAW_DATA_PATH = os.path.join(NORMALIZED_INPUTS_DIR, "raw_data.tsv")
-RAW_DATA_DF.to_csv(RAW_DATA_PATH,sep="\t",index=False)
-DATA_PIPELINE_READY_DF, INFERENCE_READY_DF, MERGE_READY_DF = pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
-# ── Synthetic merge rows for data_pipeline_ready entries ────────────────────
-# data_pipeline_ready jobs are routed through MERGE_MONO_AND_MULTI_JSON, which
-# looks up each wildcard in MERGE_READY_DF.  When data_pipeline_ready is
-# provided we synthesise a trivial merge row for each monomer (chain A, monomer
-# file = AF3_DATA_PIPELINE output) and append it to MERGE_READY_DF.  This
-# works whether or not the user also supplied a merge_ready sheet.
-DATA_PIPELINE_OUTPUTS = []
-if not DATA_PIPELINE_READY_DF.empty:
-    _dp_synthetic = DATA_PIPELINE_READY_DF.copy()
-    _dp_synthetic = _dp_synthetic.rename(columns={"file": "multimer_file"})
-    _dp_synthetic["monomer_file"] = _dp_synthetic["multimer_file"].apply(
-        lambda x: os.path.join(OUTPUT_DIR, "rule_AF3_DATA_PIPELINE", Path(x).stem, f"{Path(x).stem}_data.json")
+preprocessing_dir = os.path.join(OUTPUT_DIR, "preprocessing")
+
+if not os.path.exists(RAW_DATA_PATH):
+    RAW_DATA_DF.to_csv(RAW_DATA_PATH,sep="\t",index=False)
+    # create sample sheet
+    run_preprocessing(
+        RAW_DATA_PATH,
+        OUTPUT_DIR,
+        MODE,
+        n_seeds=N_SEEDS,
+        n_samples=N_SAMPLES,
+        msa_option=MSA_OPTION,
+        batch_size=ALPHAFAST_BATCH_SIZE,
+        predict_individual_components=PREDICT_INDIVIDUAL_COMPONENTS,
+        helper_scripts=[workflow.source_path("../scripts/preprocessing.py"), workflow.source_path("../scripts/prepare_af3_templates.py")],
+        log_path=os.path.join(OUTPUT_DIR, "preprocessing", "preprocessing.log"),
     )
-    _dp_synthetic["monomer_chain_id"] = "A"
-    DATA_PIPELINE_OUTPUTS = _dp_synthetic["monomer_file"].tolist()
-    # Append to any user-supplied merge_ready rows (or replace the empty DF)
-    MERGE_READY_DF = pd.concat([MERGE_READY_DF, _dp_synthetic], ignore_index=True)
+else:
+    print(f"Normalized input table already exists at {RAW_DATA_PATH}. Skipping writing it to" )
+
 
 
 # ── Wildcard resolution helpers ──────────────────────────────────────────────
-def get_preprocessing_outputs(wildcards):
-    PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
-    JOB_NAMES, = glob_wildcards(os.path.join(PREPROCESSING_DIR, "{i}.json"))
-    return list(expand(os.path.join(PREPROCESSING_DIR, "{i}.json"), i=JOB_NAMES))
-
-def get_individual_jobs(wildcards):
-    # C2 fix: use rule_ prefix to match the actual rule output directory
-    PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
-    JOB_NAMES, = glob_wildcards(os.path.join(PREPROCESSING_DIR, "{i}.json"))
-    return list(expand(os.path.join(OUTPUT_DIR, "rule_CREATE_AF3_INFERENCE_JOBS", "{i}_af3_inference_job.txt"), i=JOB_NAMES))
-
-def get_data_pipeline_outputs(wildcards):
-    PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
-    JOB_NAMES, = glob_wildcards(os.path.join(PREPROCESSING_DIR, "{i}.json"))
-    return list(expand(os.path.join(OUTPUT_DIR, "rule_AF3_DATA_PIPELINE", "{i}/{i}_data.json"), i=JOB_NAMES))
-
 def get_multimeric_json_outputs(wildcards):
-    PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
+    PREPROCESSING_DIR = preprocessing_dir
     JOB_NAMES_MULTIMERS, = glob_wildcards(os.path.join(PREPROCESSING_DIR, "multimers", "{multi}.json"))
     return [
         *expand(os.path.join(PREPROCESSING_DIR, "multimers", "{multi}.json"), multi=JOB_NAMES_MULTIMERS),
         *expand(os.path.join(OUTPUT_DIR, "rule_MERGE_MONOMERS_TO_MULTIMERS", "{multi}_data.json"), multi=JOB_NAMES_MULTIMERS),
     ]
 
-def get_monomeric_json_outputs(wildcards):
-    PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
+def get_monomeric_json_outputs(wildcards): 
+    PREPROCESSING_DIR = preprocessing_dir
     JOB_NAMES_MONOMERS, = glob_wildcards(os.path.join(PREPROCESSING_DIR, "monomers", "{mono}.json"))
     return list(expand(os.path.join(OUTPUT_DIR, "rule_AF3_DATA_PIPELINE", "{mono}/{mono}_data.json"), mono=JOB_NAMES_MONOMERS))
 
+def get_alphafast_inputs(wildcards): 
+    PREPROCESSING_DIR = preprocessing_dir
+    BATCH = [b for b in glob_wildcards(
+                os.path.join(PREPROCESSING_DIR, "batch_{batch,[^/]+}")).batch
+             if os.path.isdir(os.path.join(PREPROCESSING_DIR, f"batch_{b}"))]
+    print(BATCH, list(expand(os.path.join(PREPROCESSING_DIR,"batch_{batch}"),batch=BATCH)))
+    return BATCH
+    
+def get_alphafast_outputs(w):
+    ALPHAFAST_DIR = checkpoints.ALPHAFAST.get(batch=w.batch).output.data_pipeline_monomers
+    PARTITION, JOB_NAME, SEED, SAMPLE, = glob_wildcards(os.path.join(
+        ALPHAFAST_DIR, "partition_{partition}", "{job_name}",
+        "seed-{seed}_sample-{sample}",
+        "{job_name}_seed-{seed}_sample-{sample}_model.cif"))
+    return expand(os.path.join(
+        ALPHAFAST_DIR, "partition_{partition}", "{job_name}",
+        "seed-{seed}_sample-{sample}",
+        "{job_name}_seed-{seed}_sample-{sample}_model.cif"),
+        zip, partition=PARTITION, job_name=JOB_NAME, seed=SEED, sample=SAMPLE)
+    
+
+
 def get_multi_to_monomeric_dict(wildcards):
-    PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
+    PREPROCESSING_DIR = preprocessing_dir
     map_df = pd.read_csv(os.path.join(PREPROCESSING_DIR, "metadata", "inference_to_data_pipeline_map.tsv"), sep="\t")
     return map_df
 
 def get_multi_to_monomeric_dict_(wildcards):
-    PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
+    PREPROCESSING_DIR = preprocessing_dir
     map_df = pd.read_csv(os.path.join(PREPROCESSING_DIR, "metadata", "inference_samples.tsv"), sep="\t")
     print(map_df)
     print(map_df.sample_id.to_list())
@@ -425,7 +523,7 @@ def get_merge_inputs(wildcards):
         }
 
     checkpoint_output = os.path.join(
-        checkpoints.PREPROCESSING.get(**wildcards).output[0],
+        preprocessing_dir,
         "metadata",
         "inference_to_data_pipeline_map.tsv",
     )
@@ -434,7 +532,7 @@ def get_merge_inputs(wildcards):
     monomers = multimer_rows["monomer_file"].tolist()
     multimer_template = os.path.join(
         OUTPUT_DIR,
-        "rule_PREPROCESSING",
+        "preprocessing",
         "multimers",
         f"{wildcards.multi}.json",
     )
@@ -468,7 +566,7 @@ def _collect_inference_targets(wildcards, *, use_lock: bool) -> list:
     """
     internal = []
 
-    PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
+    PREPROCESSING_DIR = preprocessing_dir
     JOB_NAMES_MULTIMERS, = glob_wildcards(os.path.join(PREPROCESSING_DIR, "multimers", "{multi}.json"))
     base_names_with_mutations = set(MUTATION_DF["sample_id"].unique()) if not MUTATION_DF.empty else set()
     SEEDS = list(map(lambda x: re.search(r'seed-(\d+)', x).group(1), JOB_NAMES_MULTIMERS))
@@ -520,7 +618,7 @@ def _collect_inference_targets(wildcards, *, use_lock: bool) -> list:
         all_mutations = []
         all_seeds = []
 
-        PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
+        PREPROCESSING_DIR = preprocessing_dir
         JOB_NAMES_MULTIMERS, = glob_wildcards(
             os.path.join(PREPROCESSING_DIR, "multimers", "{multi}.json")
         )
