@@ -18,13 +18,16 @@ checkpoint ALPHAFAST:
     output:
         data_pipeline_monomers=directory(os.path.join(OUTPUT_DIR,"rule_ALPHAFAST","batch_{batch}"))
     log:
-        os.path.join(OUTPUT_DIR, "logs", "rule_ALPHAFAST", "rule_ALPHAFAST_{batch}.log"),
+        os.path.join(OUTPUT_DIR, "logs", "rule_ALPHAFAST", "batch_{batch}.log"),
     benchmark:
-        os.path.join(OUTPUT_DIR, "benchmarks", "rule_ALPHAFAST", "rule_ALPHAFAST_{batch}.tsv"),
+        os.path.join(OUTPUT_DIR, "benchmarks", "rule_ALPHAFAST", "batch_{batch}.tsv"),
     container:
         ALPHAFAST_CONTAINER
     shell:
         """
+        (
+        set -euo pipefail
+        set -x
         CC=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader,nounits \
                 2>/dev/null | head -n 1 | cut -d'.' -f1 || echo 0)
         if [[ "$CC" -ge 8 ]]; then
@@ -36,13 +39,14 @@ checkpoint ALPHAFAST:
         NUM_GPUS=$(nvidia-smi -L | wc -l)
         LOGICAL_GPU_LIST=$(seq -s, 0 $((NUM_GPUS - 1)))
         /app/alphafold/scripts/run_multigpu.sh \
-                            {input.data} {params.output_dir}/rule_ALPHAFAST/msas/batch_{wildcards.batch} \
-                            {params.output_dir}/rule_ALPHAFAST/predictions/batch_{wildcards.batch} \
-                            $NUM_GPUS $FLASH_ARG {params.batch_size} $LOGICAL_GPU_LIST
+                            {input.data} {params.output_dir}/rule_ALPHAFAST/batch_{wildcards.batch} \
+                            {params.output_dir}/rule_ALPHAFAST/batch_{wildcards.batch} \
+                            $NUM_GPUS {params.batch_size} $LOGICAL_GPU_LIST $FLASH_ARG \
+                            ) > {log} 2>&1
         """
 
 rule batch_done:
-    input: get_alphafast_outputs
+    input: get_ipsae_outputs
     output: touch(os.path.join(OUTPUT_DIR, "flags", "alphafast_batch_{batch}.done"))
 
 rule MOCK:

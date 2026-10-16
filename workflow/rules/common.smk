@@ -7,6 +7,7 @@ constants and input functions used by the rule files.
 """
 
 import subprocess
+import math
 import os
 import re
 from pathlib import Path
@@ -454,7 +455,16 @@ if not os.path.exists(RAW_DATA_PATH):
 else:
     print(f"Normalized input table already exists at {RAW_DATA_PATH}. Skipping writing it to" )
 
-
+fold_input_dirs = [
+    Path(OUTPUT_DIR) / "preprocessing" / "multimers"
+]
+json_paths = []
+for dir_path in fold_input_dirs:
+    if dir_path.is_dir():
+        json_paths.extend(
+            sorted(p for p in dir_path.iterdir() if p.is_file() and p.suffix == ".json")
+        )
+n_batches = math.ceil(len(json_paths) / ALPHAFAST_BATCH_SIZE)
 
 # ── Wildcard resolution helpers ──────────────────────────────────────────────
 def get_multimeric_json_outputs(wildcards):
@@ -465,32 +475,58 @@ def get_multimeric_json_outputs(wildcards):
         *expand(os.path.join(OUTPUT_DIR, "rule_MERGE_MONOMERS_TO_MULTIMERS", "{multi}_data.json"), multi=JOB_NAMES_MULTIMERS),
     ]
 
-def get_monomeric_json_outputs(wildcards): 
+def get_monomeric_json_outputs(wildcards):
     PREPROCESSING_DIR = preprocessing_dir
     JOB_NAMES_MONOMERS, = glob_wildcards(os.path.join(PREPROCESSING_DIR, "monomers", "{mono}.json"))
     return list(expand(os.path.join(OUTPUT_DIR, "rule_AF3_DATA_PIPELINE", "{mono}/{mono}_data.json"), mono=JOB_NAMES_MONOMERS))
 
-def get_alphafast_inputs(wildcards): 
+def get_alphafast_inputs(wildcards):
+    print("WILDCARDS=",wildcards)
     PREPROCESSING_DIR = preprocessing_dir
     BATCH = [b for b in glob_wildcards(
                 os.path.join(PREPROCESSING_DIR, "batch_{batch,[^/]+}")).batch
              if os.path.isdir(os.path.join(PREPROCESSING_DIR, f"batch_{b}"))]
-    print(BATCH, list(expand(os.path.join(PREPROCESSING_DIR,"batch_{batch}"),batch=BATCH)))
     return BATCH
-    
+
 def get_alphafast_outputs(w):
     ALPHAFAST_DIR = checkpoints.ALPHAFAST.get(batch=w.batch).output.data_pipeline_monomers
-    PARTITION, JOB_NAME, SEED, SAMPLE, = glob_wildcards(os.path.join(
-        ALPHAFAST_DIR, "partition_{partition}", "{job_name}",
+    print(ALPHAFAST_DIR)
+    BATCH,JOB_NAME, SEED, SAMPLE, = glob_wildcards(os.path.join(
+        ALPHAFAST_DIR, "batch_{batch}", "{job_name}",
         "seed-{seed}_sample-{sample}",
         "{job_name}_seed-{seed}_sample-{sample}_model.cif"))
-    return expand(os.path.join(
-        ALPHAFAST_DIR, "partition_{partition}", "{job_name}",
+    model_output_files = list(expand(os.path.join(
+        ALPHAFAST_DIR, "batch_{batch}", "{job_name}",
         "seed-{seed}_sample-{sample}",
         "{job_name}_seed-{seed}_sample-{sample}_model.cif"),
-        zip, partition=PARTITION, job_name=JOB_NAME, seed=SEED, sample=SAMPLE)
-    
+        zip, batch=BATCH, job_name=JOB_NAME, seed=SEED, sample=SAMPLE))
+    scores_output_files = list(expand(os.path.join(
+        ALPHAFAST_DIR, "batch_{batch}", "{job_name}",
+        "seed-{seed}_sample-{sample}",
+        "{job_name}_seed-{seed}_sample-{sample}_confidences.json"),
+        zip, batch=BATCH, job_name=JOB_NAME, seed=SEED, sample=SAMPLE))
+    print("Expected output files:",(model_output_files + scores_output_files)[:3])
+    return model_output_files + scores_output_files
 
+def get_ipsae_outputs(w):
+    ALPHAFAST_DIR = checkpoints.ALPHAFAST.get(batch=w.batch).output.data_pipeline_monomers
+    print(ALPHAFAST_DIR)
+    BATCH,JOB_NAME, SEED, SAMPLE, = glob_wildcards(os.path.join(
+        OUTPUT_DIR,"rule_ALPHAFAST", "batch_{batch}", "{job_name}",
+        "seed-{seed}_sample-{sample}",
+        "{job_name}_seed-{seed}_sample-{sample}_model.cif"))
+    pae_15_output_files = list(expand(os.path.join(
+        OUTPUT_DIR,"rule_ALPHAFAST", "batch_{batch}", "{job_name}",
+        "seed-{seed}_sample-{sample}",
+        "{job_name}_seed-{seed}_sample-{sample}_model_15_15.txt"),
+        zip, batch=BATCH, job_name=JOB_NAME, seed=SEED, sample=SAMPLE))
+    pae_10_output_files = list(expand(os.path.join(
+        OUTPUT_DIR,"rule_ALPHAFAST", "batch_{batch}", "{job_name}",
+        "seed-{seed}_sample-{sample}",
+        "{job_name}_seed-{seed}_sample-{sample}_model_10_15.txt"),
+        zip, batch=BATCH, job_name=JOB_NAME, seed=SEED, sample=SAMPLE))
+    print("Expected output files:",(pae_15_output_files + pae_10_output_files)[:3])
+    return pae_15_output_files + pae_10_output_files
 
 def get_multi_to_monomeric_dict(wildcards):
     PREPROCESSING_DIR = preprocessing_dir
@@ -565,51 +601,68 @@ def _collect_inference_targets(wildcards, *, use_lock: bool) -> list:
     :returns: Flat list of target file paths.
     """
     internal = []
+    ALPHAFAST_DIR = checkpoints.ALPHAFAST.get(**wildcards).output.data_pipeline_monomers
+    print("587:", ALPHAFAST_DIR)
+    JOB_NAME, SEED, SAMPLE, = glob_wildcards(os.path.join(
+        ALPHAFAST_DIR, "{job_name}",
+        "seed-{seed}_sample-{sample}",
+        "{job_name}_seed-{seed}_sample-{sample}_model.cif"))
+    model_output_files = list(expand(os.path.join(
+        ALPHAFAST_DIR, "{job_name}",
+        "seed-{seed}_sample-{sample}",
+        "{job_name}_seed-{seed}_sample-{sample}_model.cif"),
+        zip, job_name=JOB_NAME, seed=SEED, sample=SAMPLE))
+    scores_output_files = list(expand(os.path.join(
+        ALPHAFAST_DIR, "{job_name}",
+        "seed-{seed}_sample-{sample}",
+        "{job_name}_seed-{seed}_sample-{sample}_confidences.json"),
+        zip, job_name=JOB_NAME, seed=SEED, sample=SAMPLE))
+    print("Expected output files:",output_files[:3])
+    return model_output_files + scores_output_files
 
-    PREPROCESSING_DIR = preprocessing_dir
-    JOB_NAMES_MULTIMERS, = glob_wildcards(os.path.join(PREPROCESSING_DIR, "multimers", "{multi}.json"))
+
     base_names_with_mutations = set(MUTATION_DF["sample_id"].unique()) if not MUTATION_DF.empty else set()
-    SEEDS = list(map(lambda x: re.search(r'seed-(\d+)', x).group(1), JOB_NAMES_MULTIMERS))
+    SEEDS = list(map(lambda x: re.search(r'seed-(\d+)', x).group(1), JOB_NAME))
 
 
     internal.append([
         path
-        for multi, seed in zip(JOB_NAMES_MULTIMERS, SEEDS)
+        for job_name, seed in zip(JOB_NAME, SEEDS)
         for path in expand(
-            os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{multi}",
+            os.path.join(ALPHAFAST_DIR, "{job_name}",
                             "seed-{seed}_sample-{sample}",
-                            "{multi}_seed-{seed}_sample-{sample}_model.cif" if AF3_INFERENCE_VERSION not in ["v3.0.0", "v3.0.1"] else "model.cif"),
-            multi=multi, seed=seed, sample=range(N_SAMPLES)
+                            "{job_name}_seed-{seed}_sample-{sample}_model.cif" if AF3_INFERENCE_VERSION not in ["v3.0.0", "v3.0.1"] else "model.cif"),
+            job_name=job_name, seed=seed, sample=range(N_SAMPLES)
         )
     ])
     internal.append([
         path
-        for multi, seed in zip(JOB_NAMES_MULTIMERS, SEEDS)
+        for job_name, seed in zip(JOB_NAME, SEEDS)
         for path in expand(
-            os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{multi}",
+            os.path.join(ALPHAFAST_DIR, "{job_name}",
                             "seed-{seed}_sample-{sample}",
-                            "{multi}_seed-{seed}_sample-{sample}_confidences.json" if AF3_INFERENCE_VERSION not in ["v3.0.0", "v3.0.1"] else "confidences.json"),
-            multi=multi, seed=seed, sample=range(N_SAMPLES)
+                            "{job_name}_seed-{seed}_sample-{sample}_confidences.json" if AF3_INFERENCE_VERSION not in ["v3.0.0", "v3.0.1"] else "confidences.json"),
+            job_name=job_name, seed=seed, sample=range(N_SAMPLES)
         )
     ])
     internal.append([
         path
-        for multi, seed in zip(JOB_NAMES_MULTIMERS, SEEDS)
+        for job_name, seed in zip(JOB_NAME, SEEDS)
         for path in expand(
-            os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{multi}",
+            os.path.join(ALPHAFAST_DIR, "{job_name}",
                             "seed-{seed}_sample-{sample}",
-                            "{multi}_seed-{seed}_sample-{sample}_model_15_15.txt" if AF3_INFERENCE_VERSION not in ["v3.0.0", "v3.0.1"] else "model_15_15.txt"),
-            multi=multi, seed=seed, sample=range(N_SAMPLES)
+                            "{job_name}_seed-{seed}_sample-{sample}_model_15_15.txt" if AF3_INFERENCE_VERSION not in ["v3.0.0", "v3.0.1"] else "model_15_15.txt"),
+            job_name=job_name, seed=seed, sample=range(N_SAMPLES)
         )
     ])
     internal.append([
         path
-        for multi, seed in zip(JOB_NAMES_MULTIMERS, SEEDS)
+        for job_name, seed in zip(JOB_NAME, SEEDS)
         for path in expand(
-            os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{multi}",
+            os.path.join(ALPHAFAST_DIR, "{job_name}",
                             "seed-{seed}_sample-{sample}",
-                            "{multi}_seed-{seed}_sample-{sample}_model_10_15.txt" if AF3_INFERENCE_VERSION not in ["v3.0.0", "v3.0.1"] else "model_10_15.txt"),
-            multi=multi, seed=seed, sample=range(N_SAMPLES)
+                            "{job_name}_seed-{seed}_sample-{sample}_model_10_15.txt" if AF3_INFERENCE_VERSION not in ["v3.0.0", "v3.0.1"] else "model_10_15.txt"),
+            job_name=job_name, seed=seed, sample=range(N_SAMPLES)
         )
     ])
 
@@ -619,7 +672,7 @@ def _collect_inference_targets(wildcards, *, use_lock: bool) -> list:
         all_seeds = []
 
         PREPROCESSING_DIR = preprocessing_dir
-        JOB_NAMES_MULTIMERS, = glob_wildcards(
+        JOB_NAME, = glob_wildcards(
             os.path.join(PREPROCESSING_DIR, "multimers", "{multi}.json")
         )
         base_names_with_mutations = set(MUTATION_DF["sample_id"].unique())
@@ -635,7 +688,7 @@ def _collect_inference_targets(wildcards, *, use_lock: bool) -> list:
             path
             for mut, seed in zip(all_mutations, all_seeds)
             for path in expand(
-                os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{mut}",
+                os.path.join(ALPHAFAST_DIR, "{mut}",
                                 "seed-{seed}_sample-{sample}",
                                 "{mut}_seed-{seed}_sample-{sample}_model.cif" if AF3_INFERENCE_VERSION not in ["v3.0.0", "v3.0.1"] else "model.cif"),
                 mut=mut, seed=seed, sample=range(N_SAMPLES)
@@ -645,7 +698,7 @@ def _collect_inference_targets(wildcards, *, use_lock: bool) -> list:
             path
             for mut, seed in zip(all_mutations, all_seeds)
             for path in expand(
-                os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{mut}",
+                os.path.join(ALPHAFAST_DIR, "{mut}",
                                 "seed-{seed}_sample-{sample}",
                                 "{mut}_seed-{seed}_sample-{sample}_model_10_15.txt" if AF3_INFERENCE_VERSION not in ["v3.0.0", "v3.0.1"] else "model_10_15.txt"),
                 mut=mut, seed=seed, sample=range(N_SAMPLES)
@@ -655,7 +708,7 @@ def _collect_inference_targets(wildcards, *, use_lock: bool) -> list:
             path
             for mut, seed in zip(all_mutations, all_seeds)
             for path in expand(
-                os.path.join(OUTPUT_DIR, "rule_AF3_INFERENCE", "{mut}",
+                os.path.join(ALPHAFAST_DIR, "{mut}",
                                 "seed-{seed}_sample-{sample}",
                                 "{mut}_seed-{seed}_sample-{sample}_model_15_15.txt" if AF3_INFERENCE_VERSION not in ["v3.0.0", "v3.0.1"] else "model_15_15.txt"),
                 mut=mut, seed=seed, sample=range(N_SAMPLES)

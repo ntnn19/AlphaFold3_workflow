@@ -12,17 +12,17 @@ rerun-incomplete: true
 keep-incomplete: true
 keep-going: true
 printshellcmds: true
-cores: 64
+cores: all
 groups:
   AF3_INFERENCE: af3_inference_batch
 group-components:
   af3_inference_batch: 20
-
+set-threads:
+    ALPHAFAST: 64
 default-resources:
     slurm_partition: "vds"       # CHANGE ME: your cluster partition name
     slurm_account: "cssb"        # CHANGE ME: your SLURM account/project
-set-threads:
-    ALPHAFAST: 64 
+
 set-resources:
     AF3_INFERENCE:
         slurm_partition: "vds"   # CHANGE ME: GPU partition name
@@ -41,3 +41,5 @@ set-resources:
         nodes: 1
         runtime: 10000
         mem_mb: 100000
+        slurm_extra: "--constraint=A100 --exclusive"
+

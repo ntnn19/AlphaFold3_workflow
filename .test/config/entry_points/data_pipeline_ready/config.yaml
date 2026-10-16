@@ -11,7 +11,7 @@ af3_flags:
   databases_dir: "/var/lib/databases/af3db" # Genetic databases (~2 TB)
   tmp_dir: "tmp"                     # Scratch space for AF3 temp files
 
-output_dir: test_custom_v3.0.1
+output_dir: test_alphafast
 run_data_pipeline_locally: true
 exclusive_lock: true
 n_seeds: 1

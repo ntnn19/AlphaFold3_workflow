@@ -13,19 +13,19 @@ include: "rules/common.smk"
 # ── Rule modules ─────────────────────────────────────────────────────────────
 #include: "rules/preprocessing.smk"
 include: "rules/alphafast.smk"
-include: "rules/data_pipeline.smk"
-include: "rules/merge_msas.smk"
-include: "rules/mutate.smk"
-include: "rules/inference.smk"
+#include: "rules/data_pipeline.smk"
+#include: "rules/merge_msas.smk"
+#include: "rules/mutate.smk"
+#include: "rules/inference.smk"
 include: "rules/ipsae.smk"
-include: "rules/aggregate.smk"
-include: "rules/report.smk"
+#include: "rules/aggregate.smk"
+#include: "rules/report.smk"
 
 # ── Local rules ──────────────────────────────────────────────────────────────
-localrules: PREPROCESSING, MERGE_MONO_AND_MULTI_JSON, AGGREGATE_RESULTS, DATAVZRD_REPORT, MUTATE
+localrules: PREPROCESSING, MERGE_MONO_AND_MULTI_JSON, AGGREGATE_RESULTS, DATAVZRD_REPORT, MUTATE, IPSAE
 
 if config.get("run_data_pipeline_locally", False):
-    localrules: AF3_DATA_SPEEDY_PIPELINE,PREPROCESSING, MERGE_MONO_AND_MULTI_JSON, AGGREGATE_RESULTS, DATAVZRD_REPORT, MUTATE
+    localrules: AF3_DATA_SPEEDY_PIPELINE,PREPROCESSING, MERGE_MONO_AND_MULTI_JSON, AGGREGATE_RESULTS, DATAVZRD_REPORT, MUTATE, IPSAE
 
 
 # ── Wildcard constraints ─────────────────────────────────────────────────────
@@ -46,6 +46,5 @@ rule all:
     """Collect all final outputs."""
     input:
         "done.txt",
-        #inference_outputs,
         #datavzrd_output
     default_target: True
