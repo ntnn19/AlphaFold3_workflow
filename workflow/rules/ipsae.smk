@@ -28,6 +28,10 @@ rule IPSAE:
         _helper = workflow.source_path("../scripts/ipsae.py") # added this to allow clean deployment
     shell:
         """
+        (
+        set -euo pipefail
+        set -x
         python {params._helper} {input.confidences} {input.model} 10 15
         python {params._helper} {input.confidences} {input.model} 15 15
+        ) > {log} 2>&1
         """

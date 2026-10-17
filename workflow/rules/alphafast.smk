@@ -46,7 +46,8 @@ checkpoint ALPHAFAST:
         """
 
 rule batch_done:
-    input: get_ipsae_outputs
+    input: 
+        get_aggregate_results_outputs,
     output: touch(os.path.join(OUTPUT_DIR, "flags", "alphafast_batch_{batch}.done"))
 
 rule MOCK:

@@ -528,6 +528,33 @@ def get_ipsae_outputs(w):
     print("Expected output files:",(pae_15_output_files + pae_10_output_files)[:3])
     return pae_15_output_files + pae_10_output_files
 
+def get_extract_scores_outputs(w):
+    ALPHAFAST_DIR = checkpoints.ALPHAFAST.get(batch=w.batch).output.data_pipeline_monomers
+    print(ALPHAFAST_DIR)
+    BATCH,JOB_NAME, SEED, SAMPLE, = glob_wildcards(os.path.join(
+        OUTPUT_DIR,"rule_ALPHAFAST", "batch_{batch}", "{job_name}",
+        "seed-{seed}_sample-{sample}",
+        "{job_name}_seed-{seed}_sample-{sample}_model.cif"))
+    scores = list(expand(os.path.join(
+        OUTPUT_DIR,"rule_EXTRACT_SCORES", "batch_{batch}", "{job_name}",
+        "{job_name}_seed-{seed}_sample-{sample}_{suffix}.tsv"),
+        zip, batch=BATCH, job_name=JOB_NAME, seed=SEED, sample=SAMPLE,suffix=["af_global","af_per_chain","af_per_chain_pair","ipsae"]))
+    print("Expected output files:",(scores)[:3])
+    return scores
+
+def get_aggregate_results_outputs(w):
+    ALPHAFAST_DIR = checkpoints.ALPHAFAST.get(batch=w.batch).output.data_pipeline_monomers
+    print(ALPHAFAST_DIR)
+    BATCH,JOB_NAME, SEED, SAMPLE, = glob_wildcards(os.path.join(
+        OUTPUT_DIR,"rule_ALPHAFAST", "batch_{batch}", "{job_name}",
+        "seed-{seed}_sample-{sample}",
+        "{job_name}_seed-{seed}_sample-{sample}_model.cif"))
+    batch_results = list(expand(os.path.join(
+        OUTPUT_DIR,"rule_AGGREGATE_RESULTS", "batch_{batch}", "all_{suffix}.tsv"),
+        batch=BATCH,suffix=["af_global","af_per_chain","af_per_chain_pair","ipsae"]))
+    print("Expected output files:",(batch_results)[:3])
+    return batch_results
+    
 def get_multi_to_monomeric_dict(wildcards):
     PREPROCESSING_DIR = preprocessing_dir
     map_df = pd.read_csv(os.path.join(PREPROCESSING_DIR, "metadata", "inference_to_data_pipeline_map.tsv"), sep="\t")
@@ -727,26 +754,28 @@ def inference_outputs(wildcards):
 
 def aggregate_outputs(wildcards):
     """Return global TSV paths for all inference jobs (one per job)."""
-    cif_paths = _collect_inference_targets(wildcards, use_lock=False)
+    cif_paths = get_alphafast_outputs(wildcards)
+    print(cif_paths)
+    
     model_suffix = "_model.cif" if AF3_INFERENCE_VERSION not in ["v3.0.0", "v3.0.1"] else "model.cif"
 
     global_ = [
-        os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", f"{Path(p).parent.parent.name}", f"{Path(p).parent.parent.name}_{Path(p).parent.name}_af_global.tsv")
+        os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", f"{Path(p).parent.parent.name}", f"{Path(p).parent.name}",f"{Path(p).stem}.tsv")
         for p in cif_paths
         if p.endswith(model_suffix)
     ]
     per_chain_ = [
-        os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", f"{Path(p).parent.parent.name}", f"{Path(p).parent.parent.name}_{Path(p).parent.name}_af_per_chain.tsv")
+        os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", f"{Path(p).parent.parent.name}", f"{Path(p).parent.name}",f"{Path(p).stem}_af_per_chain.tsv")
         for p in cif_paths
         if p.endswith(model_suffix)
     ]
     per_chain_pair_ = [
-        os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", f"{Path(p).parent.parent.name}", f"{Path(p).parent.parent.name}_{Path(p).parent.name}_af_per_chain_pair.tsv")
+        os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", f"{Path(p).parent.parent.name}", f"{Path(p).parent.name}",f"{Path(p).stem}_af_per_chain_pair.tsv")
         for p in cif_paths
         if p.endswith(model_suffix)
     ]
     ipsae = [
-        os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", f"{Path(p).parent.parent.name}", f"{Path(p).parent.parent.name}_{Path(p).parent.name}_ipsae.tsv")
+        os.path.join(OUTPUT_DIR, "rule_EXTRACT_SCORES", f"{Path(p).parent.parent.name}", f"{Path(p).parent.name}",f"{Path(p).stem}_ipsae.tsv")
         for p in cif_paths
         if p.endswith(model_suffix)
     ]
