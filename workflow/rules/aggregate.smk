@@ -72,18 +72,18 @@ rule AGGREGATE_ACROSS_BATCHES:
     input:
         unpack(get_aggregate_results_outputs)
     output:
-        af_global         = os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "all", "all_af_global.tsv"),
-        af_per_chain      = os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "all", "all_af_per_chain.tsv"),
-        af_per_chain_pair = os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "all", "all_af_per_chain_pair.tsv"),
-        ipsae             = os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "all", "all_ipsae.tsv"),
+        af_global         = os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "all_af_global.tsv"),
+        af_per_chain      = os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "all_af_per_chain.tsv"),
+        af_per_chain_pair = os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "all_af_per_chain_pair.tsv"),
+        ipsae             = os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "all_ipsae.tsv"),
     params:
         base = os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS"),
-        out  = os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "all"),
+        out  = os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS"),
         helper_     = workflow.source_path("../scripts/aggregate_batches.sh"),
     log:
-        os.path.join(OUTPUT_DIR, "logs", "rule_AGGREGATE_RESULTS", "all", "aggregate.log"),
+        os.path.join(OUTPUT_DIR, "logs", "rule_AGGREGATE_RESULTS", "aggregate.log"),
     benchmark:
-        os.path.join(OUTPUT_DIR, "benchmarks", "rule_AGGREGATE_RESULTS", "all", "aggregate.tsv")
+        os.path.join(OUTPUT_DIR, "benchmarks", "rule_AGGREGATE_RESULTS", "aggregate.tsv")
     shell:
         """
         (
@@ -95,7 +95,3 @@ rule AGGREGATE_ACROSS_BATCHES:
         ) > {log} 2>&1
         """
         
-        #rule MOCK:
-#    input:
-#        expand(os.path.join(OUTPUT_DIR, "flags", "alphafast_batch_{batch}.done"), batch=get_alphafast_inputs)
-#    output: touch("done.txt")

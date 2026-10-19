@@ -82,6 +82,15 @@ SUFFIXES = ["af_global", "af_per_chain", "af_per_chain_pair", "ipsae"]
 os.makedirs(NORMALIZED_INPUTS_DIR, exist_ok=True)
 # A4: flatten a list-of-lists into a flat list
 
+def deployed_ref():
+    """Read the ref that snakedeploy wrote into the deployed Snakefile."""
+    try:
+        txt = Path(workflow.main_snakefile).read_text()
+        m = re.search(r'github\([^)]*?\b(commit|tag|branch)\s*=\s*["\']([^"\']+)["\']', txt, re.S)
+        return f"{m.group(1)} {m.group(2)}" if m else "Unknown"
+    except Exception:
+        return "Unknown"
+
 def run_preprocessing(
     sample_sheet,
     output_dir,

@@ -14,13 +14,13 @@ include: "rules/common.smk"
 include: "rules/alphafast.smk"
 include: "rules/ipsae.smk"
 include: "rules/aggregate.smk"
-#include: "rules/report.smk"
+include: "rules/report.smk"
 
 # ── Local rules ──────────────────────────────────────────────────────────────
-localrules: PREPROCESSING, MERGE_MONO_AND_MULTI_JSON, AGGREGATE_RESULTS, DATAVZRD_REPORT, MUTATE, IPSAE, EXTRACT_SCORES, AGGREGATE_ACROSS_BATCHES, AGGREGATE_WITHIN_BATCHES
+localrules: PREPROCESSING, MERGE_MONO_AND_MULTI_JSON, AGGREGATE_RESULTS, DATAVZRD_REPORT, MUTATE, IPSAE, EXTRACT_SCORES, AGGREGATE_ACROSS_BATCHES, AGGREGATE_WITHIN_BATCHES,PROVENANCE_REPORT,DATAVZRD_REPORT
 
 if config.get("run_data_pipeline_locally", False):
-    localrules: AF3_DATA_SPEEDY_PIPELINE,PREPROCESSING, MERGE_MONO_AND_MULTI_JSON, AGGREGATE_RESULTS, DATAVZRD_REPORT, MUTATE, IPSAE, EXTRACT_SCORES, AGGREGATE_ACROSS_BATCHES, AGGREGATE_WITHIN_BATCHES
+    localrules: AF3_DATA_SPEEDY_PIPELINE,PREPROCESSING, MERGE_MONO_AND_MULTI_JSON, AGGREGATE_RESULTS, DATAVZRD_REPORT, MUTATE, IPSAE, EXTRACT_SCORES, AGGREGATE_ACROSS_BATCHES, AGGREGATE_WITHIN_BATCHES,PROVENANCE_REPORT, DATAVZRD_REPORT
 
 
 # ── Wildcard constraints ─────────────────────────────────────────────────────
@@ -43,5 +43,7 @@ rule all:
         rules.AGGREGATE_ACROSS_BATCHES.output.af_global,
         rules.AGGREGATE_ACROSS_BATCHES.output.af_per_chain,
         rules.AGGREGATE_ACROSS_BATCHES.output.af_per_chain_pair,
-        rules.AGGREGATE_ACROSS_BATCHES.output.ipsae
+        rules.AGGREGATE_ACROSS_BATCHES.output.ipsae,
+        rules.DATAVZRD_REPORT.output,
+        rules.PROVENANCE_REPORT.output
     default_target: True
