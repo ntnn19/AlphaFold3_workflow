@@ -11,21 +11,16 @@ from pathlib import Path
 include: "rules/common.smk"
 
 # ── Rule modules ─────────────────────────────────────────────────────────────
-#include: "rules/preprocessing.smk"
 include: "rules/alphafast.smk"
-#include: "rules/data_pipeline.smk"
-#include: "rules/merge_msas.smk"
-#include: "rules/mutate.smk"
-#include: "rules/inference.smk"
 include: "rules/ipsae.smk"
 include: "rules/aggregate.smk"
 #include: "rules/report.smk"
 
 # ── Local rules ──────────────────────────────────────────────────────────────
-localrules: PREPROCESSING, MERGE_MONO_AND_MULTI_JSON, AGGREGATE_RESULTS, DATAVZRD_REPORT, MUTATE, IPSAE
+localrules: PREPROCESSING, MERGE_MONO_AND_MULTI_JSON, AGGREGATE_RESULTS, DATAVZRD_REPORT, MUTATE, IPSAE, EXTRACT_SCORES, AGGREGATE_ACROSS_BATCHES, AGGREGATE_WITHIN_BATCHES
 
 if config.get("run_data_pipeline_locally", False):
-    localrules: AF3_DATA_SPEEDY_PIPELINE,PREPROCESSING, MERGE_MONO_AND_MULTI_JSON, AGGREGATE_RESULTS, DATAVZRD_REPORT, MUTATE, IPSAE
+    localrules: AF3_DATA_SPEEDY_PIPELINE,PREPROCESSING, MERGE_MONO_AND_MULTI_JSON, AGGREGATE_RESULTS, DATAVZRD_REPORT, MUTATE, IPSAE, EXTRACT_SCORES, AGGREGATE_ACROSS_BATCHES, AGGREGATE_WITHIN_BATCHES
 
 
 # ── Wildcard constraints ─────────────────────────────────────────────────────
@@ -45,5 +40,8 @@ prepare_container_binds(
 rule all:
     """Collect all final outputs."""
     input:
-        "done.txt"
+        rules.AGGREGATE_ACROSS_BATCHES.output.af_global,
+        rules.AGGREGATE_ACROSS_BATCHES.output.af_per_chain,
+        rules.AGGREGATE_ACROSS_BATCHES.output.af_per_chain_pair,
+        rules.AGGREGATE_ACROSS_BATCHES.output.ipsae
     default_target: True

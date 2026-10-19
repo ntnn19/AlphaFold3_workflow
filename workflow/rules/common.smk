@@ -77,6 +77,8 @@ ALPHAFAST_TEMP_DIR_CONTAINER         = "/data/temp_dir"
 # ── Utility ──────────────────────────────────────────────────────────────────
 _ALLOWED = frozenset("abcdefghijklmnopqrstuvwxyz0123456789_-.")
 NORMALIZED_INPUTS_DIR = os.path.join(OUTPUT_DIR, "normalized_inputs")
+SUFFIXES = ["af_global", "af_per_chain", "af_per_chain_pair", "ipsae"]
+
 os.makedirs(NORMALIZED_INPUTS_DIR, exist_ok=True)
 # A4: flatten a list-of-lists into a flat list
 
@@ -99,9 +101,9 @@ def run_preprocessing(
     print(f"Output directory: {output_dir}")
 
     out_dir = str(Path(output_dir))
-    preprocessing_dir = Path(output_dir) / "preprocessing"
+    PREPROCESSING_DIR = Path(output_dir) / "preprocessing"
 
-    os.makedirs(preprocessing_dir, exist_ok=True)
+    os.makedirs(PREPROCESSING_DIR, exist_ok=True)
     print(f"Output directory: {out_dir}")
     # Replicate the has_seeds / N_SEEDS_ logic
     if n_seeds:
@@ -435,7 +437,7 @@ MERGE_READY_DF_AS_RAW_DATA_DF = build_sample_sheet_from_json_tsv(MERGE_READY_PAT
 
 RAW_DATA_DF = pd.concat([RAW_DATA_DF, DATA_PIPELINE_READY_DF_AS_RAW_DATA_DF, INFERENCE_READY_DF_AS_RAW_DATA_DF, MERGE_READY_DF_AS_RAW_DATA_DF])
 RAW_DATA_PATH = os.path.join(NORMALIZED_INPUTS_DIR, "raw_data.tsv")
-preprocessing_dir = os.path.join(OUTPUT_DIR, "preprocessing")
+PREPROCESSING_DIR = os.path.join(OUTPUT_DIR, "preprocessing")
 
 if not os.path.exists(RAW_DATA_PATH):
     RAW_DATA_DF.to_csv(RAW_DATA_PATH,sep="\t",index=False)
@@ -455,20 +457,17 @@ if not os.path.exists(RAW_DATA_PATH):
 else:
     print(f"Normalized input table already exists at {RAW_DATA_PATH}. Skipping writing it to" )
 
-fold_input_dirs = [
-    Path(OUTPUT_DIR) / "preprocessing" / "multimers"
-]
-json_paths = []
-for dir_path in fold_input_dirs:
-    if dir_path.is_dir():
-        json_paths.extend(
-            sorted(p for p in dir_path.iterdir() if p.is_file() and p.suffix == ".json")
-        )
-n_batches = math.ceil(len(json_paths) / ALPHAFAST_BATCH_SIZE)
+
+batch_paths = sorted(
+    (p for p in Path(PREPROCESSING_DIR).glob("batch_*") if p.is_dir()),
+    key=lambda p: int(p.name.removeprefix("batch_"))
+)
+        
+n_batches = len(batch_paths)
 
 # ── Wildcard resolution helpers ──────────────────────────────────────────────
 def get_multimeric_json_outputs(wildcards):
-    PREPROCESSING_DIR = preprocessing_dir
+    PREPROCESSING_DIR = PREPROCESSING_DIR
     JOB_NAMES_MULTIMERS, = glob_wildcards(os.path.join(PREPROCESSING_DIR, "multimers", "{multi}.json"))
     return [
         *expand(os.path.join(PREPROCESSING_DIR, "multimers", "{multi}.json"), multi=JOB_NAMES_MULTIMERS),
@@ -476,13 +475,13 @@ def get_multimeric_json_outputs(wildcards):
     ]
 
 def get_monomeric_json_outputs(wildcards):
-    PREPROCESSING_DIR = preprocessing_dir
+    PREPROCESSING_DIR = PREPROCESSING_DIR
     JOB_NAMES_MONOMERS, = glob_wildcards(os.path.join(PREPROCESSING_DIR, "monomers", "{mono}.json"))
     return list(expand(os.path.join(OUTPUT_DIR, "rule_AF3_DATA_PIPELINE", "{mono}/{mono}_data.json"), mono=JOB_NAMES_MONOMERS))
 
 def get_alphafast_inputs(wildcards):
     print("WILDCARDS=",wildcards)
-    PREPROCESSING_DIR = preprocessing_dir
+    PREPROCESSING_DIR = PREPROCESSING_DIR
     BATCH = [b for b in glob_wildcards(
                 os.path.join(PREPROCESSING_DIR, "batch_{batch,[^/]+}")).batch
              if os.path.isdir(os.path.join(PREPROCESSING_DIR, f"batch_{b}"))]
@@ -530,38 +529,51 @@ def get_ipsae_outputs(w):
 
 def get_extract_scores_outputs(w):
     ALPHAFAST_DIR = checkpoints.ALPHAFAST.get(batch=w.batch).output.data_pipeline_monomers
-    print(ALPHAFAST_DIR)
     BATCH,JOB_NAME, SEED, SAMPLE, = glob_wildcards(os.path.join(
         OUTPUT_DIR,"rule_ALPHAFAST", "batch_{batch}", "{job_name}",
         "seed-{seed}_sample-{sample}",
         "{job_name}_seed-{seed}_sample-{sample}_model.cif"))
-    scores = list(expand(os.path.join(
-        OUTPUT_DIR,"rule_EXTRACT_SCORES", "batch_{batch}", "{job_name}",
-        "{job_name}_seed-{seed}_sample-{sample}_{suffix}.tsv"),
-        zip, batch=BATCH, job_name=JOB_NAME, seed=SEED, sample=SAMPLE,suffix=["af_global","af_per_chain","af_per_chain_pair","ipsae"]))
-    print("Expected output files:",(scores)[:3])
+    scores = []
+    for sc in SUFFIXES:
+        scores_ = list(expand(os.path.join(
+            OUTPUT_DIR,"rule_EXTRACT_SCORES", "batch_{batch}", "{job_name}",
+            "{job_name}_seed-{seed}_sample-{sample}"+f"_{sc}.tsv"),
+            zip, batch=BATCH, job_name=JOB_NAME, seed=SEED, sample=SAMPLE))
+        scores.append(scores_)
+    scores = [_ for scores_ in scores for _ in scores_]
+    
     return scores
 
+#def get_aggregate_results_outputs(w):
+#    ALPHAFAST_DIR = checkpoints.ALPHAFAST.get(batch=w.batch).output.data_pipeline_monomers
+#    print(ALPHAFAST_DIR)
+#    BATCH,JOB_NAME, SEED, SAMPLE, = glob_wildcards(os.path.join(
+#        OUTPUT_DIR,"rule_ALPHAFAST", "batch_{batch}", "{job_name}",
+#        "seed-{seed}_sample-{sample}",
+#        "{job_name}_seed-{seed}_sample-{sample}_model.cif"))
+#    batch_results = list(expand(os.path.join(
+#        OUTPUT_DIR,"rule_AGGREGATE_RESULTS", "batch_{batch}", "all_{suffix}.tsv"),
+#        batch=BATCH,suffix=SUFFIXES))
+#    print("Expected output files:",(batch_results)[:3])
+#    return batch_results
+
+
 def get_aggregate_results_outputs(w):
-    ALPHAFAST_DIR = checkpoints.ALPHAFAST.get(batch=w.batch).output.data_pipeline_monomers
-    print(ALPHAFAST_DIR)
-    BATCH,JOB_NAME, SEED, SAMPLE, = glob_wildcards(os.path.join(
-        OUTPUT_DIR,"rule_ALPHAFAST", "batch_{batch}", "{job_name}",
-        "seed-{seed}_sample-{sample}",
-        "{job_name}_seed-{seed}_sample-{sample}_model.cif"))
-    batch_results = list(expand(os.path.join(
-        OUTPUT_DIR,"rule_AGGREGATE_RESULTS", "batch_{batch}", "all_{suffix}.tsv"),
-        batch=BATCH,suffix=["af_global","af_per_chain","af_per_chain_pair","ipsae"]))
-    print("Expected output files:",(batch_results)[:3])
-    return batch_results
+    return {
+        s: expand(
+            os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "batch_{batch}", f"all_{s}.tsv"),
+            batch=range(1,n_batches+1),   # your list of batch ids
+        )
+        for s in SUFFIXES
+    }
     
 def get_multi_to_monomeric_dict(wildcards):
-    PREPROCESSING_DIR = preprocessing_dir
+    PREPROCESSING_DIR = PREPROCESSING_DIR
     map_df = pd.read_csv(os.path.join(PREPROCESSING_DIR, "metadata", "inference_to_data_pipeline_map.tsv"), sep="\t")
     return map_df
 
 def get_multi_to_monomeric_dict_(wildcards):
-    PREPROCESSING_DIR = preprocessing_dir
+    PREPROCESSING_DIR = PREPROCESSING_DIR
     map_df = pd.read_csv(os.path.join(PREPROCESSING_DIR, "metadata", "inference_samples.tsv"), sep="\t")
     print(map_df)
     print(map_df.sample_id.to_list())
@@ -586,7 +598,7 @@ def get_merge_inputs(wildcards):
         }
 
     checkpoint_output = os.path.join(
-        preprocessing_dir,
+        PREPROCESSING_DIR,
         "metadata",
         "inference_to_data_pipeline_map.tsv",
     )
@@ -698,7 +710,7 @@ def _collect_inference_targets(wildcards, *, use_lock: bool) -> list:
         all_mutations = []
         all_seeds = []
 
-        PREPROCESSING_DIR = preprocessing_dir
+        PREPROCESSING_DIR = PREPROCESSING_DIR
         JOB_NAME, = glob_wildcards(
             os.path.join(PREPROCESSING_DIR, "multimers", "{multi}.json")
         )

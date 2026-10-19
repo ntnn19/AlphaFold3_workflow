@@ -44,13 +44,3 @@ checkpoint ALPHAFAST:
                             $NUM_GPUS {params.batch_size} $LOGICAL_GPU_LIST $FLASH_ARG \
                             ) > {log} 2>&1
         """
-
-rule batch_done:
-    input: 
-        get_aggregate_results_outputs,
-    output: touch(os.path.join(OUTPUT_DIR, "flags", "alphafast_batch_{batch}.done"))
-
-rule MOCK:
-    input:
-        expand(os.path.join(OUTPUT_DIR, "flags", "alphafast_batch_{batch}.done"), batch=get_alphafast_inputs)
-    output: touch("done.txt")
