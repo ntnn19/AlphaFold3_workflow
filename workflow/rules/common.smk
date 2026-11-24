@@ -54,8 +54,7 @@ DB_DIR       = config["af3_flags"]["databases_dir"]
 PREDICT_INDIVIDUAL_COMPONENTS = '--predict-individual-components' if config.get('predict_individual_components', False) else ''
 AF3_INFERENCE_VERSION = config.get("af3_inference_version","v3.0.2")
 print("AF3_INFERENCE_VERSION=", AF3_INFERENCE_VERSION)
-# ── Utility ──────────────────────────────────────────────────────────────────
-_ALLOWED = frozenset("abcdefghijklmnopqrstuvwxyz0123456789_-.")
+# ── Utility ──────────────────────────────────────────────────────────────────────────
 NORMALIZED_INPUTS_DIR = os.path.join(OUTPUT_DIR, "normalized_inputs")
 os.makedirs(NORMALIZED_INPUTS_DIR, exist_ok=True)
 # A4: flatten a list-of-lists into a flat list
@@ -76,19 +75,6 @@ SAMPLE_SHEET_SCHEMAS = {
     "mutations": ["sample_id", "type", "id", "mutation"],
     "scoring_ready": ["sample_id", "type", "model", "confidences"],
 }
-
-def sanitise(name: str) -> str:
-    """Lowercase, replace spaces, strip non-alphanumeric chars."""
-    return "".join(c for c in name.lower().replace(" ", "_") if c in _ALLOWED)
-
-
-def _seed_tag(seed: int) -> str:
-    return f"seed-{seed}"
-
-
-def _job_seed(job: str, seed: int) -> str:
-    return f"{job}_{_seed_tag(seed)}"
-
 
 # ── Sample-sheet loading ─────────────────────────────────────────────────────
 
@@ -339,66 +325,14 @@ if not MERGE_READY_DF.empty:
 DATA_PIPELINE_READY_DF_AS_RAW_DATA_DF = build_sample_sheet_from_json_tsv(DATA_PIPELINE_READY_PATH)
 INFERENCE_READY_DF_AS_RAW_DATA_DF = build_sample_sheet_from_json_tsv(INFERENCE_READY_PATH)
 MERGE_READY_DF_AS_RAW_DATA_DF = build_sample_sheet_from_json_tsv(MERGE_READY_PATH)
-#SCORING_READY_DF_AS_RAW_DATA_DF = build_sample_sheet_from_json_tsv(SCORING_READY_PATH)#
 
 RAW_DATA_DF = pd.concat([RAW_DATA_DF, DATA_PIPELINE_READY_DF_AS_RAW_DATA_DF, INFERENCE_READY_DF_AS_RAW_DATA_DF, MERGE_READY_DF_AS_RAW_DATA_DF])
 RAW_DATA_PATH = os.path.join(NORMALIZED_INPUTS_DIR, "raw_data.tsv")
 RAW_DATA_DF.to_csv(RAW_DATA_PATH,sep="\t",index=False)
-DATA_PIPELINE_READY_DF, INFERENCE_READY_DF, MERGE_READY_DF = pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
-# ── Synthetic merge rows for data_pipeline_ready entries ────────────────────
-# data_pipeline_ready jobs are routed through MERGE_MONO_AND_MULTI_JSON, which
-# looks up each wildcard in MERGE_READY_DF.  When data_pipeline_ready is
-# provided we synthesise a trivial merge row for each monomer (chain A, monomer
-# file = AF3_DATA_PIPELINE output) and append it to MERGE_READY_DF.  This
-# works whether or not the user also supplied a merge_ready sheet.
-DATA_PIPELINE_OUTPUTS = []
-if not DATA_PIPELINE_READY_DF.empty:
-    _dp_synthetic = DATA_PIPELINE_READY_DF.copy()
-    _dp_synthetic = _dp_synthetic.rename(columns={"file": "multimer_file"})
-    _dp_synthetic["monomer_file"] = _dp_synthetic["multimer_file"].apply(
-        lambda x: os.path.join(OUTPUT_DIR, "rule_AF3_DATA_PIPELINE", Path(x).stem, f"{Path(x).stem}_data.json")
-    )
-    _dp_synthetic["monomer_chain_id"] = "A"
-    DATA_PIPELINE_OUTPUTS = _dp_synthetic["monomer_file"].tolist()
-    # Append to any user-supplied merge_ready rows (or replace the empty DF)
-    MERGE_READY_DF = pd.concat([MERGE_READY_DF, _dp_synthetic], ignore_index=True)
+
 
 
 # ── Wildcard resolution helpers ──────────────────────────────────────────────
-def get_preprocessing_outputs(wildcards):
-    PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
-    JOB_NAMES, = glob_wildcards(os.path.join(PREPROCESSING_DIR, "{i}.json"))
-    return list(expand(os.path.join(PREPROCESSING_DIR, "{i}.json"), i=JOB_NAMES))
-
-def get_individual_jobs(wildcards):
-    # C2 fix: use rule_ prefix to match the actual rule output directory
-    PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
-    JOB_NAMES, = glob_wildcards(os.path.join(PREPROCESSING_DIR, "{i}.json"))
-    return list(expand(os.path.join(OUTPUT_DIR, "rule_CREATE_AF3_INFERENCE_JOBS", "{i}_af3_inference_job.txt"), i=JOB_NAMES))
-
-def get_data_pipeline_outputs(wildcards):
-    PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
-    JOB_NAMES, = glob_wildcards(os.path.join(PREPROCESSING_DIR, "{i}.json"))
-    return list(expand(os.path.join(OUTPUT_DIR, "rule_AF3_DATA_PIPELINE", "{i}/{i}_data.json"), i=JOB_NAMES))
-
-def get_multimeric_json_outputs(wildcards):
-    PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
-    JOB_NAMES_MULTIMERS, = glob_wildcards(os.path.join(PREPROCESSING_DIR, "multimers", "{multi}.json"))
-    return [
-        *expand(os.path.join(PREPROCESSING_DIR, "multimers", "{multi}.json"), multi=JOB_NAMES_MULTIMERS),
-        *expand(os.path.join(OUTPUT_DIR, "rule_MERGE_MONOMERS_TO_MULTIMERS", "{multi}_data.json"), multi=JOB_NAMES_MULTIMERS),
-    ]
-
-def get_monomeric_json_outputs(wildcards):
-    PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
-    JOB_NAMES_MONOMERS, = glob_wildcards(os.path.join(PREPROCESSING_DIR, "monomers", "{mono}.json"))
-    return list(expand(os.path.join(OUTPUT_DIR, "rule_AF3_DATA_PIPELINE", "{mono}/{mono}_data.json"), mono=JOB_NAMES_MONOMERS))
-
-def get_multi_to_monomeric_dict(wildcards):
-    PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
-    map_df = pd.read_csv(os.path.join(PREPROCESSING_DIR, "metadata", "inference_to_data_pipeline_map.tsv"), sep="\t")
-    return map_df
-
 def get_multi_to_monomeric_dict_(wildcards):
     PREPROCESSING_DIR = checkpoints.PREPROCESSING.get(**wildcards).output[0]
     map_df = pd.read_csv(os.path.join(PREPROCESSING_DIR, "metadata", "inference_samples.tsv"), sep="\t")
@@ -445,11 +379,6 @@ def get_merge_inputs(wildcards):
 
 
 # ── Inference target collection ──────────────────────────────────────────────
-def get_seeds(json_path):
-    with open(json_path) as f:
-        data = json.load(f)
-    return data["modelSeeds"]  # adjust key if your AF3 json uses a different field
-
 def _collect_inference_targets(wildcards, *, use_lock: bool) -> list:
     """
     Shared implementation for inference_outputs() and get_multimeric_json_with_msas().
@@ -600,15 +529,6 @@ def aggregate_outputs(wildcards):
         if p.endswith(model_suffix)
     ]
     return [*global_, *per_chain_, *per_chain_pair_, *ipsae]
-
-def meta_aggregate_outputs(wildcards):
-    """Return the three project-level summary TSV paths."""
-    return [
-        os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "all_af_global.tsv"),
-        os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "all_af_per_chain.tsv"),
-        os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "all_af_per_chain_pair.tsv"),
-        os.path.join(OUTPUT_DIR, "rule_AGGREGATE_RESULTS", "all_ipsae.tsv"),
-    ]
 
 def datavzrd_output(wildcards):
     """Return the datavzrd HTML report directory path."""
